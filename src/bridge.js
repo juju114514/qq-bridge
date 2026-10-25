@@ -1233,6 +1233,76 @@ function withTimeout(promise, ms, label) {
 // 机器人自己的 QQ 号（模块级）：把「@自己」渲染成「@你」，避免模型看不懂别人在叫它
 let botSelfUin = '';
 
+/**
+ * 语音转文字兜底：QQ 侧的语音转写经常为空，本地用 faster-whisper 跑一遍。
+ * 只处理 SILK/AMR 音频，超时（默认 25s）就放弃，不拖慢消息处理。
+ */
+const asrInFlight = new Set();
+async function transcribeVoiceLocal(url, timeoutMs = 25000) {
+  const srcUrl = String(url || '').trim();
+  if (!srcUrl || asrInFlight.has(srcUrl)) return '';
+  // 快路径：常驻 ASR 服务（模型常驻，1~5 秒）
+  try {
+    const res = await fetch(`http://127.0.0.1:${process.env.ASR_PORT || 3111}/transcribe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: srcUrl }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => null);
+      if (j && j.ok && j.text) {
+        log(`[asr] 常驻服务转写成功（${String(j.text).slice(0, 40)}）`);
+        return String(j.text).replace(/\s+/g, ' ').slice(0, 300);
+      }
+    }
+  } catch { /* 服务没起，走下面的本地兜底 */ }
+  const script = process.env.ASR_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'voice_asr.py');
+  const python = process.env.ASR_PYTHON || 'python';
+  if (!fs.existsSync(script) || !fs.existsSync(python)) return '';
+  asrInFlight.add(srcUrl);
+  const outFile = path.join(os.tmpdir(), `qq-asr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.txt`);
+  try {
+    await new Promise((resolve, reject) => {
+      let child;
+      try {
+        child = spawn(python, [script, srcUrl, outFile, 'small'], { windowsHide: true, stdio: 'ignore' });
+      } catch (error) { reject(error); return; }
+      const timer = setTimeout(() => { try { child.kill(); } catch { } reject(new Error('ASR 超时')); }, timeoutMs);
+      child.on('error', (error) => { clearTimeout(timer); reject(error); });
+      child.on('exit', (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(`ASR 退出码 ${code}`)); });
+    });
+    const text = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8').trim() : '';
+    if (text) log(`[asr] 本地转写成功（${text.slice(0, 40)}）`);
+    return text.replace(/\s+/g, ' ').slice(0, 300);
+  } catch (error) {
+    log(`[asr] 本地转写失败：${error?.message ?? error}`);
+    return '';
+  } finally {
+    asrInFlight.delete(srcUrl);
+    try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch { }
+  }
+}
+
+// ── 运行路径解析：环境变量 → config.paths → 旧版默认（存在才用）→ 项目相对目录 ──
+const QQBOT_ROOT = process.env.QQBOT_ROOT || process.cwd();
+function resolveRuntimeDir(envKey, cfgKey, legacy) {
+  const fromEnv = process.env[envKey];
+  if (fromEnv) return fromEnv;
+  let fromCfg = '';
+  try {
+    // cfg 在 main() 里才初始化；模块级调用时用 typeof 兜住，避免 TDZ 报错
+    if (typeof cfg !== 'undefined' && cfg && cfg.paths) fromCfg = cfg.paths[cfgKey] || '';
+  } catch { fromCfg = ''; }
+  if (fromCfg) return String(fromCfg);
+  if (legacy && fs.existsSync(legacy)) return legacy;
+  return path.join(QQBOT_ROOT, cfgKey);
+}
+function ensureDirSafe(dir) {
+  try { fs.mkdirSync(dir, { recursive: true }); } catch { }
+  return dir;
+}
+
 async function segmentsToText(segments, options = {}) {
   const { resolveAtName, resolveReply, includeReply = true } = options ?? {};
   // 有些 OneBot 实现直接把纯文本消息放在 message 字段里（string）
@@ -1260,7 +1330,15 @@ async function segmentsToText(segments, options = {}) {
       // 市场表情（mface）在部分网关实现里出现：有 summary 就用它，别让模型只看到 "[mface]"。
       case 'mface': out.push(`[表情${d.summary ? `:${d.summary}` : ''}]`); break;
       case 'image': out.push('[图片]'); break;
-      case 'record': out.push('[语音]'); break;
+      case 'record': {
+        const voiceUrl = String(seg?.data?.url || seg?.data?.file || '');
+        let heard = '';
+        if (voiceUrl) {
+          try { heard = await transcribeVoiceLocal(voiceUrl); } catch { heard = ''; }
+        }
+        out.push(heard ? `[语音:${heard}]` : '[语音]');
+        break;
+      }
       case 'video': out.push('[视频]'); break;
       case 'file': out.push(`[文件${d.name ?? ''}]`); break;
       case 'reply': {
@@ -1288,7 +1366,7 @@ async function segmentsToText(segments, options = {}) {
         let rendered = '[卡片消息]';
         try {
           const raw = typeof seg?.data?.data === 'string' ? seg.data.data : JSON.stringify(seg?.data ?? {});
-          fs.appendFileSync('D:\\QQBot\\logs\\cards.log', `${new Date().toISOString()} ${raw.slice(0, 4000)}\n`);
+          try { const cardsLog = path.join(ensureDirSafe(resolveRuntimeDir('QQBOT_LOGS', 'logs', '')), 'cards.log'); fs.appendFileSync(cardsLog, `${new Date().toISOString()} ${raw.slice(0, 4000)}\n`); } catch { }
           const pick = (re) => { const m = raw.match(re); return m ? String(m[1]).trim() : ''; };
           const unescapeUrl = (u) => u.replace(/\\\//g, '/');
           const source = pick(/\bsource:([^,}]+)/) || pick(/\bnick:([^,}]+)/);
@@ -5384,7 +5462,7 @@ async function main() {
           if (req.headers['x-agent-token'] && !agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           const slugOf = (s) => String(s || '').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60) || 'untitled';
-          const DIR = 'D:\\QQBot\\data\\guides';
+          const DIR = path.join(ensureDirSafe(resolveRuntimeDir('QQBOT_DATA', 'data', '')), 'guides');
 
           if (action === 'list') {
             try {
@@ -5590,12 +5668,12 @@ async function main() {
             if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           }
           if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const songScript = 'D:\\QQBot\\launcher\\song.ps1';
+          const songScript = process.env.QQBOT_SONG_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1');
           if (!fs.existsSync(songScript)) { sendJson({ ok: false, error: '点歌脚本不存在' }, 500); return; }
           const nameFile = path.join(os.tmpdir(), `qq-song-${Date.now()}.txt`);
           try { fs.writeFileSync(nameFile, name, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写歌名文件失败：${error?.message ?? error}` }, 500); return; }
           let songLog = null;
-          try { songLog = fs.openSync('D:\\QQBot\\logs\\song-child.log', 'a'); } catch { songLog = null; }
+          try { songLog = fs.openSync(path.join(ensureDirSafe(resolveRuntimeDir('QQBOT_LOGS', 'logs', '')), 'song-child.log'), 'a'); } catch { songLog = null; }
           const songStdio = songLog !== null ? ['ignore', songLog, songLog] : 'ignore';
           try {
             const songArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', songScript, '-NameFile', nameFile, '-Seconds', String(seconds), '-Target', key];
@@ -5628,7 +5706,7 @@ async function main() {
             if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           }
           if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const sayScript = 'D:\\QQBot\\launcher\\speak.ps1';
+          const sayScript = process.env.QQBOT_SAY_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'speak.ps1');
           if (!fs.existsSync(sayScript)) { sendJson({ ok: false, error: '说话脚本不存在' }, 500); return; }
           const textFile = path.join(os.tmpdir(), `qq-say-${Date.now()}.txt`);
           try { fs.writeFileSync(textFile, text, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写文本文件失败：${error?.message ?? error}` }, 500); return; }
@@ -5661,7 +5739,7 @@ async function main() {
             if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           }
           if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const singScript = 'D:\\QQBot\\launcher\\sing.ps1';
+          const singScript = process.env.QQBOT_SING_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'sing.ps1');
           if (!fs.existsSync(singScript)) { sendJson({ ok: false, error: '唱歌脚本不存在' }, 500); return; }
           const argFile = path.join(os.tmpdir(), `qq-sing-${Date.now()}.txt`);
           try { fs.writeFileSync(argFile, songName || lyric, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写临时文件失败：${error?.message ?? error}` }, 500); return; }
@@ -7781,7 +7859,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
 
 
   // ═══════ 本地攻略：主题别名 + 模板直出 ═══════
-  const GUIDES_DIR = 'D:\\QQBot\\data\\guides';
+  const GUIDES_DIR = path.join(ensureDirSafe(resolveRuntimeDir('QQBOT_DATA', 'data', '')), 'guides');
 
   const GUIDE_TOPIC_ALIASES = {
     '养成': ['养成', '成长', '练级', '练度', '面板', '提升', '新手', '开局', 'build'],
@@ -9361,6 +9439,25 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
     return lines.join('\n');
   }
 
+  /**
+   * 记忆容量自适应：聊天越热闹，单条记忆允许越长（200 → 300 → 400 → 500 字）。
+   * 冷场时收紧，避免把宝贵上下文塞满旧的长记忆。
+   */
+  function memoryCapFor(st) {
+    try {
+      const recent = Array.isArray(st?.recentMessages) ? st.recentMessages.length : 0;
+      const unread = Array.isArray(st?.unread) ? st.unread.length : 0;
+      const topics = Array.isArray(st?.activeTopics) ? st.activeTopics.length : 0;
+      const activity = recent + unread + topics;
+      if (activity >= 60) return 500;
+      if (activity >= 30) return 400;
+      if (activity >= 12) return 300;
+      return 200;
+    } catch {
+      return 200;
+    }
+  }
+
   function appendMemoryV2(st, category, content, extra = {}) {
     if (!st) return;
     const text = redactKnownTokensOnly(String(content ?? '')).trim();
@@ -9381,13 +9478,13 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           const set = new Set([...(existing.participants || []), ...extra.participants.map((p) => redactKnownTokensOnly(String(p)))]);
           existing.participants = [...set].slice(0, 10);
         }
-        if (extra.pendingQuestion) existing.pendingQuestion = truncateText(redactKnownTokensOnly(String(extra.pendingQuestion)), 200);
+        if (extra.pendingQuestion) existing.pendingQuestion = truncateText(redactKnownTokensOnly(String(extra.pendingQuestion)), memoryCapFor(st));
       } else {
         st.activeTopics.push({
-          text: truncateText(text, 200),
+          text: truncateText(text, memoryCapFor(st)),
           lastMentionAt: Date.now(),
           participants: Array.isArray(extra.participants) ? extra.participants.map((p) => redactKnownTokensOnly(String(p))).slice(0, 10) : [],
-          pendingQuestion: redactKnownTokensOnly(String(extra.pendingQuestion || '')).slice(0, 200)
+          pendingQuestion: redactKnownTokensOnly(String(extra.pendingQuestion || '')).slice(0, memoryCapFor(st))
         });
       }
       if (st.activeTopics.length > 20) st.activeTopics.splice(0, st.activeTopics.length - 20);
@@ -9400,7 +9497,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         if (extra.motivation) existing.motivation = redactKnownTokensOnly(String(extra.motivation)).slice(0, 50);
       } else {
         st.pendingThoughts.push({
-          text: text.slice(0, 200),
+          text: text.slice(0, memoryCapFor(st)),
           createdAt: Date.now(),
           expiresAt: Date.now() + (Number(extra.expiresAtMs) || 2 * 60 * 60 * 1000),
           motivation: redactKnownTokensOnly(String(extra.motivation || 'curiosity')).slice(0, 50)
@@ -11548,7 +11645,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         if (!songTitle) { await sendToQQ(key, '格式：/song 歌名 [|母带] [|整首]'); return; }
         const cmdFile = path.join(os.tmpdir(), `qq-song-cmd-${Date.now()}.txt`);
         try { fs.writeFileSync(cmdFile, songTitle, 'utf8'); } catch { }
-        const cmdArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'D:\\QQBot\\launcher\\song.ps1', '-NameFile', cmdFile, '-Target', key];
+        const cmdArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (process.env.QQBOT_SONG_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1')), '-NameFile', cmdFile, '-Target', key];
         if (wantFull) cmdArgs.push('-Full'); else cmdArgs.push('-Seconds', '40');
         if (qualityArg) cmdArgs.push('-Quality', qualityArg);
         await sendToQQ(key, `去翻 ${songTitle}${qualityArg ? '（' + qualityArg + '）' : ''}${wantFull ? '整首' : '40 秒'}，等我`);

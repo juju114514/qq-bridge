@@ -80,3 +80,20 @@ python scripts/asr_server.py 3111 small
 ```
 
 桥接会自动优先走 `http://127.0.0.1:3111/transcribe`（模型常驻，1~5 秒）；服务没起就走 `[语音]` 兜底，不会报错。
+
+## 目录与环境变量（可选）
+
+默认所有数据都在项目目录下，不用配任何东西：
+
+| 用途 | 默认位置 | 环境变量覆盖 |
+| --- | --- | --- |
+| 攻略缓存 | `<项目>/data/guides` | `QQBOT_DATA` |
+| 日志 | `<项目>/logs` | `QQBOT_LOGS` |
+| 外部工具脚本 | `<项目>/tools` | `QQBOT_TOOLS` |
+| 点歌 / 说话 / 唱歌脚本 | `tools/song.ps1`・`tools/speak.ps1`・`tools/sing.ps1` | `QQBOT_SONG_SCRIPT`・`QQBOT_SAY_SCRIPT`・`QQBOT_SING_SCRIPT` |
+| 语音转写脚本 | `tools/voice_asr.py` | `ASR_SCRIPT` |
+| Python 解释器 | `python`（PATH 里） | `ASR_PYTHON` |
+| ASR 服务端口 | `3111` | `ASR_PORT` |
+
+**这些外部脚本都不是必须的**：缺了对应功能只会回一句「脚本不存在」，聊天不受影响。
+想用点歌/唱歌，需要自己准备 `song.ps1` / `sing.ps1` / `speak.ps1`（本项目不附带：它们依赖个人环境的网易云登录与 TTS）。
