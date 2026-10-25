@@ -69,3 +69,14 @@ A：可以，但需要自己写一层适配（`src/dsh-client.js` 是唯一跟 D
 
 **Q：QQ 那边要准备什么？**
 A：一个能登录的 QQ 小号（建议小号，别用大号）。SnowLuma 扫码登录后，机器人就以这个号的身份说话。
+
+## 可选：让机器人听得懂语音
+
+默认收到语音只显示 `[语音]`。想让它听懂，起一个本地转写服务：
+
+```bash
+pip install faster-whisper pilk      # 另需 ffmpeg 在 PATH 里
+python scripts/asr_server.py 3111 small
+```
+
+桥接会自动优先走 `http://127.0.0.1:3111/transcribe`（模型常驻，1~5 秒）；服务没起就走 `[语音]` 兜底，不会报错。
