@@ -5759,6 +5759,77 @@ async function main() {
           return;
         }
 
+        // ── QQ 空间：好友动态列表（只读） ────────────────────────────
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone-feeds') {
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const pos = Math.max(0, Number(body.pos) || 0);
+          const num = Math.max(1, Math.min(20, Number(body.num) || 5));
+          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
+          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          try {
+            const res = await onebotHttpAction('get_qzone_feeds', { pos, num }, { timeoutMs: 25000 });
+            const feeds = (res?.data?.feeds ?? []).map((f) => {
+              // html 里扒一段可读正文，够模型判断值不值得评论
+              const html = String(f.html || '');
+              const plain = html
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/\s+/g, ' ')
+                .trim();
+              return {
+                uin: f.uin,
+                nickname: String(f.nickname || ''),
+                tid: String(f.key || ''),
+                appid: f.appid,
+                time: f.time,
+                liked: !!f.liked,
+                preview: plain.slice(0, 160),
+              };
+            }).filter((f) => f.tid && !/^advertisement/.test(f.tid));
+            sendJson({ ok: true, count: feeds.length, hasMore: !!res?.data?.hasMore, feeds });
+          } catch (error) { sendJson({ ok: false, error: `读取失败：${error?.message ?? error}` }, 502); }
+          return;
+        }
+
+        // ── QQ 空间：评论一条说说 ───────────────────────────────────
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone-comment') {
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const tid = String(body.tid ?? body.key2 ?? '').trim();
+          const targetUin = String(body.targetUin ?? body.uin ?? '').trim();
+          const content = String(body.content ?? '').trim();
+          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
+          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
+          if (!tid) { sendJson({ ok: false, error: 'tid 不能为空（来自 qzone-feeds 的 tid）' }, 400); return; }
+          if (!content) { sendJson({ ok: false, error: 'content 不能为空（评论内容）' }, 400); return; }
+          if (content.length > 120) { sendJson({ ok: false, error: 'content 太长（上限 120 字）' }, 400); return; }
+          if (req.headers['x-agent-token']) {
+            if (!agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          }
+          // 每天最多 20 条评论，避免被当成刷屏
+          const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+          if (!global.__qzoneCommentDaily || global.__qzoneCommentDaily.date !== today) global.__qzoneCommentDaily = { date: today, count: 0 };
+          if (global.__qzoneCommentDaily.count >= 20) { sendJson({ ok: false, error: '今天评论够 20 条了，明天再说' }, 429); return; }
+          try {
+            const payload = { tid, content };
+            if (targetUin && /^\d+$/.test(targetUin)) payload.target_uin = Number(targetUin);
+            const res = await onebotHttpAction('comment_qzone', payload, { timeoutMs: 25000 });
+            if (res && (res.status === 'failed' || (res.retcode && res.retcode !== 0))) {
+              sendJson({ ok: false, error: String(res.wording || res.message || '评论失败') }, 502);
+              return;
+            }
+            global.__qzoneCommentDaily.count += 1;
+            log(`[qzone] 已评论 tid=${tid} uin=${targetUin || '-'}：${content.slice(0, 40)}（今日第 ${global.__qzoneCommentDaily.count} 条）`);
+            appendActivity(`${key} 空间评论：${content.slice(0, 40)}`);
+            sendJson({ ok: true, tid, targetUin: targetUin || null, content, todayCount: global.__qzoneCommentDaily.count, note: `已在空间回复：${content.slice(0, 30)}` });
+          } catch (error) { sendJson({ ok: false, error: `评论失败：${error?.message ?? error}` }, 502); }
+          return;
+        }
+
 if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();

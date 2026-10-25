@@ -1210,35 +1210,59 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker
     }
   );
   server.tool(
-    'qq_qzone',
-    '发 QQ 空间动态（说说），仅管理员私聊可用。被要求「发个动态/发条说说/发空间」时用它：content 是你自己写的口语（1~3 行、100 字以内，可以带情绪或梗，别写成作文）；想配图可传 images（本地绝对路径或 http 图片地址，最多 9 张）。action="list" 可查看最近发过什么。一天最多 5 条，别刷。',
-    {
-      key: z.string().describe('会话 key（发动态必须是 private:管理员QQ）'),
-      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-      action: z.enum(['publish', 'list']).optional().describe('publish=发一条（默认），list=看最近的动态'),
-      content: z.string().optional().describe('说说正文，action=publish 时必填，≤300 字'),
-      images: z.array(z.string()).optional().describe('配图：本地绝对路径或 http 地址，最多 9 张')
-    },
-    async ({ key, token, action, content, images }) => {
-      try {
-        const data = await agentApi('/api/socialV2/qzone', {
+  'qq_qzone',
+  'QQ 空间：发说说 / 看动态 / 评论好友动态。\n'
+    + '- action=publish：发一条说说（content 自己写，1~3 行 ≤100 字，可带图 ≤9 张），一天最多 5 条；\n'
+    + '- action=list：看自己最近发过什么；\n'
+    + '- action=feeds：看好友动态列表（返回 uin/nickname/tid/preview），想评论前先看这个；\n'
+    + '- action=comment：评论一条说说，需要 tid（来自 feeds）+ content（口语短句，≤120 字，别刷屏）。\n'
+    + '评论只在被明确要求时做（「去评论一下」「给他回一句」），不要主动挨个评论好友。',
+  {
+    key: z.string().describe('会话 key（发说说必须是 private:管理员QQ；看动态/评论用当前会话 key）'),
+    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+    action: z.enum(['publish', 'list', 'feeds', 'comment']).optional().describe('publish=发说说（默认）；list=自己最近动态；feeds=好友动态列表；comment=评论一条说说'),
+    content: z.string().optional().describe('action=publish 时是说说正文（≤300 字）；action=comment 时是评论内容（≤120 字）'),
+    images: z.array(z.string()).optional().describe('配图（仅 publish）：本地绝对路径或 http 地址，最多 9 张'),
+    tid: z.string().optional().describe('要评论的说说 tid（action=comment 必填，来自 action=feeds 返回的 tid）'),
+    targetUin: z.union([z.string(), z.number()]).optional().describe('说说所属 QQ 号（评论好友动态时传，省略则为自己）'),
+    pos: z.number().optional().describe('feeds 起始偏移，默认 0'),
+    num: z.number().optional().describe('feeds 拉几条，默认 5，最多 20'),
+  },
+  async ({ key, token, action, content, images, tid, targetUin, pos, num }) => {
+    const act = action || 'publish';
+    try {
+      if (act === 'feeds' || act === 'comment') {
+        const path = act === 'feeds' ? '/api/socialV2/qzone-feeds' : '/api/socialV2/qzone-comment';
+        const payload = act === 'feeds'
+          ? { key, pos: pos ?? 0, num: num ?? 5 }
+          : { key, tid, targetUin, content };
+        const data = await agentApi(path, {
           method: 'POST',
-          body: JSON.stringify({
-            key,
-            token,
-            action: action || 'publish',
-            content: content ? String(content) : '',
-            images: Array.isArray(images) ? images : []
-          }),
+          body: JSON.stringify(payload),
           headers: { 'x-agent-token': token },
-          timeoutMs: 40000
+          timeoutMs: 40000,
         });
         return { content: [{ type: 'text', text: serializeModelData(data) }] };
-      } catch (error) {
-        return { content: [{ type: 'text', text: `发动态失败：${error?.message ?? error}` }], isError: true };
       }
+      const data = await agentApi('/api/socialV2/qzone', {
+        method: 'POST',
+        body: JSON.stringify({
+          key,
+          token,
+          action: act,
+          content: content ? String(content) : '',
+          images: Array.isArray(images) ? images : [],
+        }),
+        headers: { 'x-agent-token': token },
+        timeoutMs: 40000,
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      const verb = act === 'comment' ? '评论' : act === 'feeds' ? '读动态' : '发动态';
+      return { content: [{ type: 'text', text: `${verb}失败：${error?.message ?? error}` }], isError: true };
     }
-  );
+  }
+);
   server.tool(
     'qq_pick_sticker',
     '斗图助手：按情绪/场景挑 1~3 张合适的收藏表情，返回候选（id + 画面说明）。用法：先调它拿候选，挑一张最贴的，再用 qq_send_sticker 发出去。mood 传一个情绪词：怼人/嘲讽/无语/懵逼/开心/笑死/撒娇/害羞/生气/委屈/震惊/搞怪/摸鱼/治愈/晚安/打招呼/加油/赞同/拒绝。觉得不贴就换个词再挑，别硬发。比 qq_list_stickers 更快更准。',
