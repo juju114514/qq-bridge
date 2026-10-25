@@ -2,6 +2,14 @@
 > 改动清单见 [FORK.md](FORK.md)；上游版权归 Derpyu520 与各位贡献者，本分支同样 MIT。
 > 本仓库不含任何真实账号、群号、令牌或 Cookie。
 
+## 三步上手（换成你自己的 DeepSeek）
+
+1. **装 DeepSeek Harness（DSH）**，用自己的 DeepSeek 账号登录 —— 密钥只存在 DSH 里，本项目不存
+2. **装 SnowLuma**，扫码登录你的 QQ 小号，复制 access token
+3. 在项目目录跑 `powershell -ExecutionPolicy Bypass -File .\setup.ps1`，按提示回答，生成 `config.json`，然后 `npm start`
+
+详细步骤和常见问题见 **[SETUP.md](SETUP.md)**。
+
 # QQ ↔ DeepSeek Harness 桥接
 
 **English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
