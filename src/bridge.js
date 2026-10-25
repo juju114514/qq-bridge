@@ -8630,6 +8630,81 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
     return out;
   }
 
+  // ── 识图：私聊自动识别；群聊只在被 @ / 点名 / 引用时自动，其余交给工具 ──
+  const visionCache = new Map();
+
+  function visionApiKey() {
+    if (process.env.QQBOT_VISION_KEY) return process.env.QQBOT_VISION_KEY;
+    const paths = [process.env.QQBOT_IMAGE_API, 'D:\\QQBot\\config\\image-api.json'].filter(Boolean);
+    for (const p of paths) {
+      try {
+        const raw = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
+        const j = JSON.parse(raw);
+        const k = j?.zhipu?.apiKey || j?.zhipu?.key || j?.apiKey || '';
+        if (k) return String(k);
+      } catch { /* 试下一个 */ }
+    }
+    return '';
+  }
+
+  async function describeImageBuffer(buf) {
+    const apiKey = visionApiKey();
+    if (!apiKey) return '';
+    const body = {
+      model: process.env.QQBOT_VISION_MODEL || 'glm-4v-flash',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}` } },
+          { type: 'text', text: '用一两句话客观描述这张图：画面主体、场景、图里的文字（如果有）。不要评价，不要编造看不到的细节。' },
+        ],
+      }],
+      temperature: 0.2,
+      max_tokens: 200,
+    };
+    const res = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = await res.json().catch(() => null);
+    const txt = j?.choices?.[0]?.message?.content;
+    return typeof txt === 'string' ? txt.trim().replace(/\s+/g, ' ').slice(0, 300) : '';
+  }
+
+  /**
+   * 私聊：任何图片都自动识别。
+   * 群聊：只有 direct（被 @ / 点名 / 引用机器人）才自动识别，否则只给一句提示让模型自己决定要不要调工具。
+   */
+  async function autoDescribeMedia(key, kind, messageRef, mediaList, direct) {
+    const list = Array.isArray(mediaList) ? mediaList : [];
+    if (!list.length || !messageRef) return '';
+    if (!(kind === 'private' || direct)) return '';
+    const cacheKey = String(messageRef);
+    const hit = visionCache.get(cacheKey);
+    if (hit) return hit;
+    try {
+      const images = await fetchMediaData(list.slice(0, 2));
+      const parts = [];
+      for (const img of images) {
+        if (!img?.data) continue;
+        const desc = await describeImageBuffer(Buffer.from(img.data, 'base64'));
+        if (desc) parts.push(desc);
+      }
+      if (!parts.length) return '';
+      const text = `\n【图片内容】${parts.join(' ／ ')}`;
+      visionCache.set(cacheKey, text);
+      if (visionCache.size > 300) visionCache.delete(visionCache.keys().next().value);
+      log(`[vision] ${key} 自动识别 ${parts.length} 张图（${parts.join(' ／ ').slice(0, 40)}）`);
+      return text;
+    } catch (error) {
+      log(`[vision] 识别失败：${error?.message ?? error}`);
+      return '';
+    }
+  }
+
   function mediaHintFor(key, messageRef, mediaList) {
     if (!Array.isArray(mediaList) || mediaList.length === 0 || !messageRef) return '';
     if (currentMode === 'reserved2') {
@@ -11962,7 +12037,8 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
       const replyInstruction = direct
         ? `请回复消息。\n${directionHint}${SPACE_SPLIT_HINT}`
         : `请根据情况决定是否回复。如果不需要回应、想潜水/不接话，请只输出 ${SILENT_MARKER}；否则正常回复。\n${directionHint}${SPACE_SPLIT_HINT}`;
-      const promptText = `${roleHint ? roleHint + '\n\n' : ''}【群聊上下文】\n${buildContextBlock(key)}\n【当前消息】${currentLine}${mediaHintFor(key, messageRef, mediaList)}\n\n${replyInstruction}`;
+      const visionText = await autoDescribeMedia(key, kind, messageRef, mediaList, direct);
+      const promptText = `${roleHint ? roleHint + '\n\n' : ''}【群聊上下文】\n${buildContextBlock(key)}\n【当前消息】${currentLine}${visionText || mediaHintFor(key, messageRef, mediaList)}\n\n${replyInstruction}`;
       if (isOwner && kind === 'private') {
         log(`社交模式：管理员私聊触发，立即投递 ${key}`);
         await deliverPrompt(key, promptText, { media: mediaList });
