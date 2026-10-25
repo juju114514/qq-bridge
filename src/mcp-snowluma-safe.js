@@ -1215,12 +1215,13 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker
     + '- action=publish：发一条说说（content 自己写，1~3 行 ≤100 字，可带图 ≤9 张），一天最多 5 条；\n'
     + '- action=list：看自己最近发过什么；\n'
     + '- action=feeds：看好友动态列表（返回 uin/nickname/tid/preview），想评论前先看这个；\n'
-    + '- action=comment：评论一条说说，需要 tid（来自 feeds）+ content（口语短句，≤120 字，别刷屏）。\n'
+    + '- action=comment：评论一条说说，需要 tid（来自 feeds）+ content（口语短句，≤120 字，别刷屏）；\n'
+    + '- action=like / unlike：给一条说说点赞或取消赞，需要 tid（来自 feeds）。\n'
     + '评论只在被明确要求时做（「去评论一下」「给他回一句」），不要主动挨个评论好友。',
   {
     key: z.string().describe('会话 key（发说说必须是 private:管理员QQ；看动态/评论用当前会话 key）'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    action: z.enum(['publish', 'list', 'feeds', 'comment']).optional().describe('publish=发说说（默认）；list=自己最近动态；feeds=好友动态列表；comment=评论一条说说'),
+    action: z.enum(['publish', 'list', 'feeds', 'comment', 'like', 'unlike']).optional().describe('publish=发说说（默认）；list=自己最近动态；feeds=好友动态列表；comment=评论；like=给说说点赞；unlike=取消赞'),
     content: z.string().optional().describe('action=publish 时是说说正文（≤300 字）；action=comment 时是评论内容（≤120 字）'),
     images: z.array(z.string()).optional().describe('配图（仅 publish）：本地绝对路径或 http 地址，最多 9 张'),
     tid: z.string().optional().describe('要评论的说说 tid（action=comment 必填，来自 action=feeds 返回的 tid）'),
@@ -1231,11 +1232,15 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker
   async ({ key, token, action, content, images, tid, targetUin, pos, num }) => {
     const act = action || 'publish';
     try {
-      if (act === 'feeds' || act === 'comment') {
-        const path = act === 'feeds' ? '/api/socialV2/qzone-feeds' : '/api/socialV2/qzone-comment';
+      if (act === 'feeds' || act === 'comment' || act === 'like' || act === 'unlike') {
+        const path = act === 'feeds' ? '/api/socialV2/qzone-feeds'
+          : (act === 'like' || act === 'unlike') ? '/api/socialV2/qzone-like'
+          : '/api/socialV2/qzone-comment';
         const payload = act === 'feeds'
           ? { key, pos: pos ?? 0, num: num ?? 5 }
-          : { key, tid, targetUin, content };
+          : (act === 'like' || act === 'unlike')
+            ? { key, tid, targetUin, unlike: act === 'unlike' }
+            : { key, tid, targetUin, content };
         const data = await agentApi(path, {
           method: 'POST',
           body: JSON.stringify(payload),
@@ -1258,7 +1263,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker
       });
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
-      const verb = act === 'comment' ? '评论' : act === 'feeds' ? '读动态' : '发动态';
+      const verb = act === 'comment' ? '评论' : act === 'feeds' ? '读动态' : act === 'like' ? '点赞' : act === 'unlike' ? '取消赞' : '发动态';
       return { content: [{ type: 'text', text: `${verb}失败：${error?.message ?? error}` }], isError: true };
     }
   }

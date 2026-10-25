@@ -5794,6 +5794,41 @@ async function main() {
           return;
         }
 
+        // ── QQ 空间：给一条说说点赞 / 取消赞 ─────────────────────────
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone-like') {
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const tid = String(body.tid ?? '').trim();
+          const targetUin = String(body.targetUin ?? body.uin ?? '').trim();
+          const abstime = Math.max(0, Number(body.abstime) || 0);
+          const unlike = body.unlike === true || String(body.action || '') === 'unlike';
+          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
+          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
+          if (!tid) { sendJson({ ok: false, error: 'tid 不能为空（来自 qzone-feeds 的 tid）' }, 400); return; }
+          if (req.headers['x-agent-token']) {
+            if (!agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          }
+          const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+          if (!global.__qzoneLikeDaily || global.__qzoneLikeDaily.date !== today) global.__qzoneLikeDaily = { date: today, count: 0 };
+          if (!unlike && global.__qzoneLikeDaily.count >= 50) { sendJson({ ok: false, error: '今天空间点赞够 50 条了' }, 429); return; }
+          try {
+            const payload = { tid };
+            if (targetUin && /^\d+$/.test(targetUin)) payload.target_uin = Number(targetUin);
+            if (abstime) payload.abstime = abstime;
+            const res = await onebotHttpAction(unlike ? 'unlike_qzone' : 'like_qzone', payload, { timeoutMs: 25000 });
+            if (res && (res.status === 'failed' || (res.retcode && res.retcode !== 0))) {
+              sendJson({ ok: false, error: String(res.wording || res.message || '点赞失败') }, 502);
+              return;
+            }
+            if (!unlike) global.__qzoneLikeDaily.count += 1;
+            log(`[qzone] ${unlike ? '取消赞' : '点赞'} tid=${tid} uin=${targetUin || '-'}${unlike ? '' : `（今日第 ${global.__qzoneLikeDaily.count} 条）`}`);
+            appendActivity(`${key} 空间${unlike ? '取消赞' : '点赞'}：${tid.slice(0, 16)}`);
+            sendJson({ ok: true, tid, targetUin: targetUin || null, unlike, todayCount: global.__qzoneLikeDaily.count, note: unlike ? '已取消点赞' : '已点赞' });
+          } catch (error) { sendJson({ ok: false, error: `点赞失败：${error?.message ?? error}` }, 502); }
+          return;
+        }
+
         // ── QQ 空间：评论一条说说 ───────────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone-comment') {
           const body = await readBody();
