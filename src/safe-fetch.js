@@ -79,7 +79,11 @@ export function isPrivateIp(ip) {
     if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
     if (parts[0] === 192 && parts[1] === 168) return true;
     if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
-    if (parts[0] === 198 && parts[1] >= 18 && parts[1] <= 19) return true;
+    // 198.18.0.0/15 是 RFC 2544 基准测试段，Clash/mihomo 的 fake-ip 默认就用它。
+    // 把它当“内网”拦掉会让所有走 TUN 的图片下载直接失败（QQ 收图/表情全挂）。
+    // fake-ip 只能经隧道回到域名，本身不是可达的内网地址，因此放行；
+    // 需要恢复旧行为时设 QQBOT_BLOCK_FAKEIP=1。
+    if (process.env.QQBOT_BLOCK_FAKEIP === '1' && parts[0] === 198 && parts[1] >= 18 && parts[1] <= 19) return true;
     if (parts[0] === 192 && parts[1] === 0 && parts[2] === 0) return true;
     if (parts[0] >= 224) return true;
     return false;

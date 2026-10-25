@@ -1303,6 +1303,23 @@ function ensureDirSafe(dir) {
   return dir;
 }
 
+  /**
+   * 洗群名片：SnowLuma 偶尔会把原始 protobuf 字节塞进 sender.card/nickname
+   *（实测出现过 "\n\t\n\x07$ǿĀ...\n\x12\t茉莉雨"），直接进提示词会污染上下文。
+   */
+  function cleanSenderName(raw, fallback) {
+    let s = String(raw ?? '').replace(/[\u0000-\u001F\u007F-\u009F]+/g, ' ').trim();
+    if (s) {
+      const ok = [...s].filter((ch) => /[\u4e00-\u9fa5A-Za-z0-9_\-·\s]/.test(ch)).length;
+      if (ok / s.length < 0.6) {
+        const m = s.match(/[\u4e00-\u9fa5A-Za-z0-9_]{2,20}/);
+        s = m ? m[0] : '';
+      }
+    }
+    if (!s || s.length > 40) s = fallback ? String(fallback) : '\u7fa4\u53cb';
+    return s;
+  }
+
 async function segmentsToText(segments, options = {}) {
   const { resolveAtName, resolveReply, includeReply = true } = options ?? {};
   // 有些 OneBot 实现直接把纯文本消息放在 message 字段里（string）
@@ -9916,6 +9933,34 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
   }
 
   // 实际的 DSH prompt 投递（不再直接对外暴露，统一走 promptQueues 串行队列）。
+  /**
+   * wake 通道专用：把未读消息里的图片先识别成文字，拼进提示词。
+   * 私聊一律识别；群聊只在「被 @ / 点名 / 引用」这类唤醒原因下识别。
+   */
+  async function appendVisionForWake(key, promptText, wakeReason) {
+    try {
+      const st = getSocialV2State(key);
+      const unread = Array.isArray(st?.unread) ? st.unread : [];
+      const withMedia = unread.filter((m) => Array.isArray(m?.media) && m.media.length > 0).slice(-3);
+      if (!withMedia.length) return promptText;
+      const isPrivate = key.startsWith('private:');
+      const directed = /atMention|at:|name|keyword|question|quote|poke|private/i.test(String(wakeReason || ''));
+      if (!isPrivate && !directed) return promptText;
+      const parts = [];
+      for (const m of withMedia) {
+        const ref = String(m.messageId ?? m.seq ?? '');
+        if (!ref) continue;
+        const text = await autoDescribeMedia(key, isPrivate ? 'private' : 'group', ref, m.media, true);
+        if (text) parts.push(text.replace(/^\n【图片内容】/, ''));
+      }
+      if (!parts.length) return promptText;
+      return `${promptText}\n【图片内容】${parts.join(' ／ ')}\n（以上是图片内容的自动识别结果，不必再调 qq_get_message_images）`;
+    } catch (error) {
+      log(`[vision] wake 识图失败：${error?.message ?? error}`);
+      return promptText;
+    }
+  }
+
   async function deliverPromptNow(key, promptText, opts = {}) {
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
@@ -9957,6 +10002,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
       wakeState = getSocialV2State(key);
       wakeToken = wakeState.agentToken;
       promptText = buildWakePromptV2(key, opts.wakeReason);
+      promptText = await appendVisionForWake(key, promptText, opts.wakeReason);
       wakeSnapshot = buildWakeSnapshotV2(key);
       if (wakeSnapshot) {
         promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n以上消息已提供，无需重复查询；partial=true 时用 qq_get_unread_messages(afterSeq=readThroughSeq) 继续读取。先处理当前消息；回复前如需确认后续补充，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回，不要先长等。收尾只确认你已处理的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；新到消息留待处理。`;
@@ -10267,10 +10313,34 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
   // 按仿真模式取用：先用标题里的 〔一代〕/〔二代〕 标记筛掉另一模式的专属小节，
   // **再**按上限截断——这样另一模式的内容不会白白占掉本次的注入预算。
   function roleHintForMode(mode) {
-    const selected = selectRoleText(roleRawContent(), mode);
+    const selected = selectRoleText(roleRawContent(), mode, [...roleActiveNeedTags]);
     if (!selected) return '';
     return selected.length > roleInjectMaxChars ? truncateText(selected, roleInjectMaxChars) : selected;
   }
+  /**
+   * 「按需」小节的开关：人格卡里标了 〔按需：唱歌,说话〕 的大段内容，
+   * 只有上下文真的聊到这些话题时才注入，平时不占字符预算。
+   */
+  let roleActiveNeedTags = new Set();
+  let roleNeedTagTimer = null;
+  const NEED_TAG_RULES = [
+    { tags: ['唱歌', '说话', '语音', '点歌', '来首', '唱一', '唱首', '声音', '喊一句', '念一', '读一'], re: /唱|歌|语音|来首|点歌|声音|说一句|喊|念一段|读一下|母带|无损|整首/ },
+    { tags: ['攻略', '副本', '兑换码'], re: /攻略|副本|团本|终焉|绝境|兑换码|怎么打|配队|养成/ },
+    { tags: ['空间', '点赞', '评论'], re: /空间|说说|动态|点赞|赞一下|评论/ },
+  ];
+  function setRoleNeedTagsFromText(text) {
+    const s = String(text ?? '');
+    if (!s) return;
+    for (const rule of NEED_TAG_RULES) {
+      if (rule.re.test(s)) {
+        for (const t of rule.tags) roleActiveNeedTags.add(t);
+      }
+    }
+  }
+  function clearRoleNeedTags() {
+    roleActiveNeedTags = new Set();
+  }
+
   function currentRoleHint() {
     return roleHintForMode('v1');
   }
@@ -10529,7 +10599,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return null;
         }
       }
-      const sender = raw.sender?.card || raw.sender?.nickname || String(raw.sender?.user_id ?? raw.user_id ?? '未知');
+      const sender = cleanSenderName(raw.sender?.card || raw.sender?.nickname, raw.sender?.user_id ?? raw.user_id ?? '未知');
       const text = await segmentsToText(raw.message ?? [], {
         resolveAtName: kind === 'group' ? (qq) => resolveGroupMemberName(convId, qq) : null,
         includeReply: false
@@ -11934,7 +12004,12 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
 
     // 二代仿真模式（reserved2）：唤醒调度
     if (currentMode === 'reserved2') {
-      const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊';
+      setRoleNeedTagsFromText(`${textContent ?? ''}\n${plainContent ?? ''}`);
+      // 话题标签只在这轮用：2 分钟后自动清掉，避免一次聊到唱歌就永久多注入 3000 字
+      clearTimeout(roleNeedTagTimer);
+      roleNeedTagTimer = setTimeout(() => clearRoleNeedTags(), 120000);
+      roleNeedTagTimer.unref?.();
+      const sender = kind === 'group' ? cleanSenderName(event.sender?.card || event.sender?.nickname, event.user_id) : '私聊';
       appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, event.message_id ?? event.msg_id ?? null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []));
       // 二代同样收集群聊黑话学习素材（AI 自主提交之外，桥接仍自动提取高频陌生词）
       if (kind === 'group') feedSlangWindow(key, sender, plainContent);
@@ -11978,7 +12053,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
 
     // 仿真群友模式：reserved 走状态机（观望/活跃/试探/退场）
     if (isSocialEnabled()) {
-      const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊';
+      const sender = kind === 'group' ? cleanSenderName(event.sender?.card || event.sender?.nickname, event.user_id) : '私聊';
       appendRecentMessage(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, mediaList, messageRef); // AI 始终感知
       const st = socialState(key);
 

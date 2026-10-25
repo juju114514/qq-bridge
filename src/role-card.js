@@ -27,6 +27,27 @@ function detectMode(heading) {
   return 'all';
 }
 
+const NEED_TAG_RE = /〔按需[:：]([^〕]+)〕/g;
+
+/** 从标题里抽出「按需」标签：只有当上下文命中这些词时才注入该小节。 */
+function detectNeeds(heading) {
+  const out = [];
+  const src = String(heading ?? '');
+  NEED_TAG_RE.lastIndex = 0;
+  let m;
+  while ((m = NEED_TAG_RE.exec(src)) !== null) {
+    for (const tag of String(m[1]).split(/[,，、\s]+/)) {
+      const t = tag.trim();
+      if (t && !out.includes(t)) out.push(t);
+    }
+  }
+  return out;
+}
+
+function stripNeedTags(heading) {
+  return String(heading ?? '').replace(/〔按需[:：][^〕]+〕/g, '').trim();
+}
+
 function stripModeTags(heading) {
   let out = String(heading);
   for (const tag of MODE_TAGS) {
@@ -53,8 +74,8 @@ export function parseRoleSections(text) {
       current.lines.push(line);
       continue;
     }
-    const title = stripModeTags(heading[2]);
-    current = { mode: detectMode(heading[2]), heading: title, lines: [`${heading[1]} ${title}`] };
+    const title = stripNeedTags(stripModeTags(heading[2]));
+    current = { mode: detectMode(heading[2]), needs: detectNeeds(heading[2]), heading: title, lines: [`${heading[1]} ${title}`] };
     sections.push(current);
   }
   return sections;
@@ -64,10 +85,19 @@ export function parseRoleSections(text) {
  * 取出某次仿真真正要注入的人格文本（已去掉模式标记）。
  * @param {'v1'|'v2'} mode
  */
-export function selectRoleText(text, mode) {
+function needActive(section, active) {
+  const needs = Array.isArray(section.needs) ? section.needs : [];
+  if (!needs.length) return true;
+  if (!active || !active.length) return false;
+  const list = [...active].map((x) => String(x));
+  return needs.some((n) => list.some((a) => a.includes(n) || n.includes(a)));
+}
+
+export function selectRoleText(text, mode, activeNeeds = []) {
   const want = mode === 'v1' ? 'v1' : 'v2';
   return parseRoleSections(text)
     .filter((section) => section.mode === 'all' || section.mode === want)
+    .filter((section) => needActive(section, activeNeeds))
     .map((section) => section.lines.join('\n'))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -83,7 +113,8 @@ export function roleSectionReport(text, mode) {
   return parseRoleSections(text).map((section) => ({
     heading: section.heading ?? '(开头部分)',
     mode: section.mode,
-    injected: section.mode === 'all' || section.mode === want,
+    injected: (section.mode === 'all' || section.mode === want) && (!section.needs || !section.needs.length),
+    needs: section.needs || [],
     chars: section.lines.join('\n').trim().length,
   }));
 }
