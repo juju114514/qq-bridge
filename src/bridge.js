@@ -5786,7 +5786,10 @@ async function main() {
           if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           try {
             const res = await onebotHttpAction('get_qzone_feeds', { pos, num }, { timeoutMs: 25000 });
-            const feeds = (res?.data?.feeds ?? []).map((f) => {
+            const describe = body.describe === true;
+            const feedsRaw = res?.data?.feeds ?? [];
+            const feeds = [];
+            for (const f of feedsRaw) {
               // html 里扒一段可读正文，够模型判断值不值得评论
               const html = String(f.html || '');
               const plain = html
@@ -5796,7 +5799,15 @@ async function main() {
                 .replace(/&amp;/g, '&')
                 .replace(/\s+/g, ' ')
                 .trim();
-              return {
+              const imgs = [];
+              for (const m of html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
+                let u = m[1];
+                if (u.startsWith('//')) u = 'https:' + u;
+                if (!/^https?:/i.test(u)) continue;
+                if (/emoji|qzone\.qq\.com\/qzone\/emotion|gif\.qpic\.cn/i.test(u)) continue;
+                if (!imgs.includes(u)) imgs.push(u);
+              }
+              const item = {
                 uin: f.uin,
                 nickname: String(f.nickname || ''),
                 tid: String(f.key || ''),
@@ -5804,10 +5815,73 @@ async function main() {
                 time: f.time,
                 liked: !!f.liked,
                 preview: plain.slice(0, 160),
+                images: imgs.slice(0, 3),
               };
-            }).filter((f) => f.tid && !/^advertisement/.test(f.tid));
-            sendJson({ ok: true, count: feeds.length, hasMore: !!res?.data?.hasMore, feeds });
+              if (describe && item.images.length) {
+                const descs = [];
+                for (const u of item.images.slice(0, 2)) {
+                  try {
+                    const img = await safeFetchBuffer(u, 8 * 1024 * 1024);
+                    if (img?.buffer) {
+                      const d = await describeImageBuffer(img.buffer);
+                      if (d) descs.push(d);
+                    }
+                  } catch { /* 单张失败无所谓 */ }
+                }
+                if (descs.length) item.imageDesc = descs.join(' ／ ');
+              }
+              if (item.tid && !/^advertisement/.test(item.tid)) feeds.push(item);
+            }
+            sendJson({ ok: true, count: feeds.length, hasMore: !!res?.data?.hasMore, described: describe, feeds });
           } catch (error) { sendJson({ ok: false, error: `读取失败：${error?.message ?? error}` }, 502); }
+          return;
+        }
+
+        // ── QQ 空间：看某个人的说说（含识图） ───────────────────────
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone-user-posts') {
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const targetUin = String(body.targetUin ?? body.uin ?? '').trim();
+          const num = Math.max(1, Math.min(20, Number(body.num) || 5));
+          const pos = Math.max(0, Number(body.pos) || 0);
+          const describe = body.describe !== false;
+          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
+          if (!/^[1-9]\d{4,11}$/.test(targetUin)) { sendJson({ ok: false, error: 'targetUin 必须是 QQ 号' }, 400); return; }
+          if (req.headers['x-agent-token']) {
+            if (!agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          }
+          try {
+            const res = await onebotHttpAction('get_qzone_msg_list', { target_uin: Number(targetUin), pos, num }, { timeoutMs: 25000 });
+            const raw = res?.data?.msglist ?? [];
+            const posts = [];
+            for (const m of raw) {
+              const tid = String(m.tid || '');
+              if (!tid) continue;
+              const text = String(m.content || '').replace(/\[em\][^[]*\[\/em\]/g, '').replace(/\s+/g, ' ').trim();
+              const imgs = (Array.isArray(m.images) ? m.images : [])
+                .map((x) => (typeof x === 'string' ? x : (x?.url || x?.picurl || '')))
+                .filter((u) => /^https?:/i.test(u));
+              const item = { tid, content: text.slice(0, 200), time: m.time, images: imgs.slice(0, 3) };
+              if (describe && imgs.length) {
+                const descs = [];
+                for (const u of imgs.slice(0, 2)) {
+                  try {
+                    const buf = await safeFetchBuffer(u, 8 * 1024 * 1024);
+                    if (buf?.buffer) {
+                      const d = await describeImageBuffer(buf.buffer);
+                      if (d) descs.push(d);
+                    }
+                  } catch { /* 单张失败忽略 */ }
+                }
+                if (descs.length) item.imageDesc = descs.join(' ／ ');
+              }
+              posts.push(item);
+            }
+            sendJson({ ok: true, targetUin, total: res?.data?.total ?? posts.length, count: posts.length, posts });
+          } catch (error) {
+            sendJson({ ok: false, error: `读取失败：${error?.message ?? error}` }, 502);
+          }
           return;
         }
 
@@ -8652,7 +8726,10 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
 
   function visionApiKey() {
     if (process.env.QQBOT_VISION_KEY) return process.env.QQBOT_VISION_KEY;
-    const paths = [process.env.QQBOT_IMAGE_API, 'D:\\QQBot\\config\\image-api.json'].filter(Boolean);
+    const paths = [
+      process.env.QQBOT_IMAGE_API,
+      path.join(QQBOT_ROOT, 'config', 'image-api.json'),
+    ].filter(Boolean);
     for (const p of paths) {
       try {
         const raw = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
@@ -11385,7 +11462,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         saveSocialV2State();
         setupSleepTimerV2(key);
       }
-      log(`[reserved2] 唤醒投递失败 ${key}: ${error?.message ?? error}`);
+      log(`[reserved2] 唤醒投递失败 ${key}: ${error?.message ?? error} | cause=${error?.cause?.code || error?.cause?.message || '-'} | stack=${String(error?.stack || '').split('\n')[1] || '-'}`);
     }
   }
 
@@ -11905,6 +11982,76 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           child.on('exit', (code) => log(`[song-cmd] ${key} 结束 code=${code}（${songTitle}）`));
           log(`[song-cmd] ${key} 点歌（${songTitle}｜${qualityArg || '普通'}${wantFull ? '｜整首' : '｜40s'}）`);
         } catch (error) { await sendToQQ(key, `点歌失败：${error?.message ?? error}`); }
+        return;
+      }
+
+      // /给我qq空间评论 [QQ号] —— 翻好友动态（带识图）；没有别人的就翻指定/管理员的说说
+      const qzoneCommentCmd = /^\/?(?:给我qq空间评论|空间评论|去空间评论)(?:\s+(\d{5,12}))?$/i.exec(cmdText);
+      if (qzoneCommentCmd) {
+        const targetUin = qzoneCommentCmd[1] ? String(qzoneCommentCmd[1]) : '';
+        await sendToQQ(key, targetUin ? `去翻一下 ${targetUin} 的动态，看有没有能接一句的` : '去翻一下好友动态，看有没有能接一句的');
+        try {
+          const res = await onebotHttpAction('get_qzone_feeds', { pos: 0, num: 6 }, { timeoutMs: 25000 });
+          const feeds = [];
+          for (const f of (res?.data?.feeds ?? [])) {
+            const tid = String(f.key || '');
+            if (!tid || /^advertisement/.test(tid)) continue;
+            const html = String(f.html || '');
+            const plain = html.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ')
+              .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+            const imgs = [];
+            for (const m of html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
+              let u = m[1];
+              if (u.startsWith('//')) u = 'https:' + u;
+              if (!/^https?:/i.test(u)) continue;
+              if (/emoji|emotion|gif\.qpic\.cn/i.test(u)) continue;
+              if (!imgs.includes(u)) imgs.push(u);
+            }
+            let desc = '';
+            for (const u of imgs.slice(0, 2)) {
+              try {
+                const img = await safeFetchBuffer(u, 8 * 1024 * 1024);
+                if (img?.buffer) desc = await describeImageBuffer(img.buffer);
+                if (desc) break;
+              } catch { /* 忽略单张失败 */ }
+            }
+            feeds.push({ tid, uin: f.uin, nick: String(f.nickname || ''), plain: plain.slice(0, 120), desc });
+          }
+          // 好友动态里没有别人的 → 退回去翻「指定 QQ / 管理员」最近发的说说
+          if (!feeds.length) {
+            const who = targetUin || String(cfg.ownerQQ ?? '');
+            if (who && /^\d+$/.test(who) && who !== String(botSelfUin || '')) {
+              try {
+                const listRes = await onebotHttpAction('get_qzone_msg_list', { target_uin: Number(who), pos: 0, num: 5 }, { timeoutMs: 25000 });
+                const msgs = listRes?.data?.msglist ?? [];
+                for (const m of msgs) {
+                  const tid = String(m.tid || '');
+                  if (!tid) continue;
+                  const text = String(m.content || '').replace(/\s+/g, ' ').trim();
+                  let desc = '';
+                  for (const img of (Array.isArray(m.images) ? m.images : []).slice(0, 2)) {
+                    const u = typeof img === 'string' ? img : (img?.url || img?.picurl || '');
+                    if (!u) continue;
+                    try {
+                      const buf = await safeFetchBuffer(u, 8 * 1024 * 1024);
+                      if (buf?.buffer) desc = await describeImageBuffer(buf.buffer);
+                      if (desc) break;
+                    } catch { /* 忽略单张失败 */ }
+                  }
+                  feeds.push({ tid, uin: who, nick: who === String(cfg.ownerQQ ?? '') ? '老板' : who, plain: text.slice(0, 120), desc });
+                }
+                if (feeds.length) log(`[qzone-comment] 好友动态为空，回退到 ${who} 的说说（${feeds.length} 条）`);
+              } catch (error) { log(`[qzone-comment] 回退取说说失败：${error?.message ?? error}`); }
+            }
+          }
+          if (!feeds.length) { await sendToQQ(key, '空间里只有我自己的动态，也没翻到你的说说，先别评了'); return; }
+          const lines = feeds.map((f, i) => `${i + 1}. ${f.nick}：${f.plain}${f.desc ? `（配图：${f.desc}）` : ''}［tid=${f.tid} uin=${f.uin}］`).join('\n');
+          const prompt = `【任务：给 QQ 空间好友动态评论】\n下面是我刚翻到的**好友**动态（都是别人发的，不是你自己）：\n${lines}\n\n从里面挑 1~2 条你真有话可说的，用 qq_qzone action=comment 去评论（tid 和 targetUin 用中括号里的值）。\n要求：口语、5~25 字、像朋友随口接一句；不要每条都评、不要写作文、不要用 Markdown。完成后简短说一句你评了谁。`;
+          await deliverPrompt(key, prompt);
+          log(`[qzone-comment] ${key} 已发起空间评论任务（${feeds.length} 条候选）`);
+        } catch (error) {
+          await sendToQQ(key, `翻空间失败：${error?.message ?? error}`);
+        }
         return;
       }
     }
