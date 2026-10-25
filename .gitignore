@@ -1,0 +1,12 @@
+node_modules/
+config.json
+config.json.bak*
+state/
+logs/
+*.log
+audio/
+assets/
+public/
+_snowluma-catalog.json
+.DS_Store
+.env
