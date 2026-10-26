@@ -11992,10 +11992,11 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
       ];
       {
         const roleList = listRoles();
-        const curRole = readRoleState().role;
+        const curRole = readRoleStateForKey(key).role;
         if (roleList.length) {
           helpLines.push(
-            `· 人设 —— 现在用的是「${curRole || '默认'}」；/role 看全部、/role 名字 切换`,
+            `· 人设 —— 当前会话用的是「${curRole || '默认'}」；/role 看全部、/role 名字 切换（管理员）`,
+            '  私聊和群聊的人设互相独立，各自锁定',
             `  现有：${roleList.join('、')}`,
           );
         }
@@ -12284,22 +12285,23 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         return;
       }
       if (plainContent === '/role' || plainContent.startsWith('/role ')) {
-        if (kind !== 'private') {
-          await sendToQQ(key, '人设只能在私聊里切换（群聊和私聊的人设是分开的）。');
-          return;
-        }
         const rawName = plainContent.slice(5).trim();
         const name = sanitizeRoleName(rawName);
+        const where = kind === 'group' ? '本群' : '本私聊';
         if (!rawName || name === 'off' || name === 'clear') {
           writeRoleStateForKey(key, null, roleState.mode);
-          await sendToQQ(key, '已清除本私聊的角色，恢复正常人格。');
+          await sendToQQ(key, kind === 'group'
+            ? `已解除${where}的人设锁定，回落到默认设置。`
+            : `已清除${where}的角色，恢复正常人格。`);
         } else {
           const resolved = resolveRoleName(rawName) || resolveRoleName(name);
           if (!resolved) {
             await sendToQQ(key, `角色「${rawName}」不存在。现有：${listRoles().join('、') || '（无）'}`);
           } else {
             writeRoleStateForKey(key, resolved, roleState.mode);
-            await sendToQQ(key, `已切换本私聊的角色：${resolved}。（群聊不受影响）`);
+            await sendToQQ(key, kind === 'group'
+              ? `${where}的人设已锁定为：${resolved}。（只有管理员能改，其他会话不受影响）`
+              : `已切换${where}的角色：${resolved}。（其他会话不受影响）`);
           }
         }
         return;
