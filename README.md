@@ -4,7 +4,7 @@
 
 > 常用命令速查：[COMMANDS.md](COMMANDS.md)
 >
-> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（57 条）
+> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（78 条）
 
 ## 三步上手（换成你自己的 DeepSeek）
 
@@ -110,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
 ### 出问题先看排错手册
 
 **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** —— 按「卡在哪一步」索引，覆盖安装/启动/DSH/SnowLuma/不回话/人设/媒体/控制台/兼容性/性能，
-共 57 条具体错误，每条都是「现象 → 原因 → 排查 → 解决」。
+共 78 条具体错误，每条都是「现象 → 原因 → 排查 → 解决」。
 
 ### 装完/出问题时体检
 
