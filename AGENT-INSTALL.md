@@ -154,6 +154,10 @@ curl -H "X-Console-Token: $tok" http://127.0.0.1:3100/api/status
 
 ## 7. 出问题时的排查顺序
 
+> 完整错误清单见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（57 条，按阶段索引）。
+
+## 7. 出问题时的排查顺序
+
 ```
 1. curl /api/status        → 桥接活着吗
 2. dshReady 字段           → DSH 连上了吗

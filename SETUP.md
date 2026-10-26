@@ -105,3 +105,7 @@ python scripts/asr_server.py 3111 small
 
 **这些外部脚本都不是必须的**：缺了对应功能只会回一句「脚本不存在」，聊天不受影响。
 想用点歌/唱歌，需要自己准备 `song.ps1` / `sing.ps1` / `speak.ps1`（本项目不附带：它们依赖个人环境的网易云登录与 TTS）。
+
+---
+
+遇到问题先跑 `verify.ps1`，再查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
