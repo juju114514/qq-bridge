@@ -38,12 +38,12 @@ function run(bin, args, timeoutMs = 60000) {
 const FF_FALLBACKS = [
   path.join(ROOT, 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
   path.join(ROOT, '..', 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
-  process.platform === 'win32' ? 'D:\\QQBot\\ffmpeg\\ffmpeg.exe' : '/usr/bin/ffmpeg',
+  process.platform === 'win32' ? 'ffmpeg.exe' : '/usr/bin/ffmpeg',
 ];
 const FP_FALLBACKS = [
   path.join(ROOT, 'ffmpeg', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'),
   path.join(ROOT, '..', 'ffmpeg', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'),
-  process.platform === 'win32' ? 'D:\\QQBot\\ffmpeg\\ffprobe.exe' : '/usr/bin/ffprobe',
+  process.platform === 'win32' ? 'ffprobe.exe' : '/usr/bin/ffprobe',
 ];
 
 async function locate(envKey, fallbacks, probeArgs) {
