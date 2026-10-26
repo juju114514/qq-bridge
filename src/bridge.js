@@ -29,6 +29,7 @@ import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { createSlangHandler } from './api/slang.js';
+import { createStickersHandler } from './api/stickers.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
@@ -6310,53 +6311,22 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         // 管理端表情库接口（控制台）
-        if (req.method === 'GET' && url.pathname === '/api/stickers') {
-          const query = String(url.searchParams.get('query') ?? '').trim();
-          const maxCount = Math.max(1, Number(cfg.socialV2?.sticker?.maxListCount) || 100);
-          const count = Math.min(500, Math.max(1, Math.min(Number(url.searchParams.get('count')) || 48, maxCount)));
-          // GET 不再触发强制同步（写副作用不能挂在读接口上）：请用 POST /api/stickers/sync。
-          try {
-            const synced = await syncStickerLibrary(false);
-            const list = formatStickerList(synced?.entries ?? stickerEntries, query, count);
-            sendJson({ ok: true, ...list, syncedAt: synced?.syncedAt ?? stickerSyncedAt, fromCache: synced?.fromCache ?? false, writable: stickerStoreWritable });
-          } catch (error) {
-            sendJson({ ok: false, error: `获取表情失败：${error?.message ?? error}` }, 500);
-          }
-          return;
+        // ── 表情库（已迁出到 src/api/stickers.js）────────────────────────────────
+        if (url.pathname === '/api/stickers' || url.pathname.startsWith('/api/stickers/')) {
+          const handleStickers = createStickersHandler({
+            sendJson, readBody,
+            getCfg: () => cfg,
+            syncStickerLibrary,
+            formatStickerList,
+            getStickerEntries: () => stickerEntries,
+            getStickerSyncedAt: () => stickerSyncedAt,
+            isWritable: () => stickerStoreWritable,
+            applyStickerNoteV2,
+            setStickerRemarkV2,
+          });
+          if (await handleStickers(req, url)) return;
         }
-        if (req.method === 'POST' && url.pathname === '/api/stickers/sync') {
-          try {
-            const synced = await syncStickerLibrary(true);
-            sendJson({ ok: true, total: synced?.entries?.length ?? stickerEntries.length, syncedAt: synced?.syncedAt ?? stickerSyncedAt });
-          } catch (error) {
-            sendJson({ ok: false, error: `同步表情失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/stickers/note') {
-          const body = await readBody();
-          const stickerId = String(body.stickerId ?? '').trim();
-          const note = body.note !== undefined && body.note !== null ? String(body.note).trim().slice(0, 200) : undefined;
-          const tags = body.tags !== undefined && body.tags !== null ? (Array.isArray(body.tags) ? body.tags.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 20) : []) : undefined;
-          const usage = body.usage !== undefined && body.usage !== null ? String(body.usage).trim().slice(0, 200) : undefined;
-          if (!stickerId) { sendJson({ ok: false, error: 'stickerId 不能为空' }, 400); return; }
-          const entry = applyStickerNoteV2(stickerId, note, tags, usage);
-          if (!entry) { sendJson({ ok: false, error: `找不到表情 ${stickerId}` }, 404); return; }
-          sendJson({ ok: true, sticker: entry });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/stickers/remark') {
-          const body = await readBody();
-          const stickerId = String(body.stickerId ?? '').trim();
-          if (!stickerId) { sendJson({ ok: false, error: 'stickerId 不能为空' }, 400); return; }
-          try {
-            const entry = await setStickerRemarkV2(stickerId, String(body.remark ?? ''));
-            sendJson({ ok: true, sticker: entry });
-          } catch (error) {
-            sendJson({ ok: false, error: `修改备注失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
+
         if (req.method === 'POST' && url.pathname === '/api/socialV2/wait') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();

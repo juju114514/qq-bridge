@@ -250,7 +250,7 @@ node scripts/test-audit.mjs
 | images | 3 | ✅ 已迁出 | `src/api/images.js` |
 | roles | 9 | ✅ 已迁出 | `src/api/roles.js` |
 | slang | 14 | ✅ 已迁出 | `src/api/slang.js` |
-| stickers | 8 | ⬜ 待迁 | — |
+| stickers | 8 | ✅ 已迁出 | `src/api/stickers.js` |
 | send | 6 | ⬜ 待迁 | — |
 | sessions/tokens | 8 | ⬜ 待迁 | — |
 | social(v1) | 4 | ⬜ 待迁 | — |
