@@ -254,7 +254,7 @@ node scripts/test-audit.mjs
 | send | 6 | ✅ 已迁出 | `src/api/send.js` |
 | sessions/tokens | 8 | ✅ 已迁出（8/8，含高危 reset） | `src/api/sessions.js`、`src/api/tokens.js`；reset 有回归测试 `test-session-reset.mjs`（10 项） |
 | social(v1) | 4 | ✅ 已迁出 | `src/api/social.js` |
-| socialV2 | 68 | ✅ 68/68 全部迁出（A+B 27 + C1 2 + C2 5 + C3a 6 + C3b 3 + C4 send-poke/send-burst/send-message 3 + D wait 1） | `src/api/socialV2-read.js`（config/activity/tool-log/feedback/states/my-recent/memory/slang-query）；**B/C 进行中，D（wait 长轮询租约）留给 pro** |
+| socialV2 | 68 | ✅ 68/68 全部迁出 | `socialV2-read.js`、`socialV2-write.js`、`socialV2-send.js`、`socialV2-qzone.js`、`socialV2-wait.js` |
 
 每迁一组必须满足：
 
@@ -263,3 +263,62 @@ node scripts/test-audit.mjs            → 35/35
 node scripts/route-inventory.mjs --stats → uniquePaths 不减少（115）
 node scripts/test-router.mjs           → 11/11
 ```
+
+---
+
+## 九、迁移完成报告（阶段 3 收官）
+
+> **结论**：147 条路由（115 唯一路径）全部按域迁出 `main()`，`bridge.js` 从 13,431 行降到 **10,938 行（-18.5%）**，行为逐行等价，审计 35/35、token-economy 36/36、CI 全绿。
+
+### 9.1 产出文件（`src/api/`）
+
+| 文件 | 域 | 路由 |
+| --- | --- | ---: |
+| `status.js` | 状态 | 5 |
+| `images.js` | 图片 | 3 |
+| `roles.js` | 人设 | 9 |
+| `slang.js` | 黑话 | 14 |
+| `stickers.js` | 表情库（控制台） | 8 |
+| `send.js` | 统一发送（group/private/reply） | 6 |
+| `sessions.js` / `tokens.js` | 会话/用量 | 8 |
+| `social.js` | 一代仿真 | 4 |
+| `socialV2-read.js` | socialV2 只读 | 13 |
+| `socialV2-write.js` | socialV2 配置/记忆/唤醒 | 14 |
+| `socialV2-send.js` | socialV2 语音/表情/发送 | 11 |
+| `socialV2-qzone.js` | socialV2 空间/攻略 | 6 |
+| `socialV2-wait.js` | socialV2 长轮询 | 1 |
+
+### 9.2 新增回归测试
+
+| 测试 | 守护对象 |
+| --- | --- |
+| `scripts/test-session-reset.mjs`（10 项） | 高危 `POST /api/session/reset`：清 30+ Map、retire DSH、幂等 404 |
+| `scripts/test-wait-lease.mjs`（4 项） | 高危 `POST /api/socialV2/wait`：并发租约 429、入参校验 |
+
+### 9.3 迁移中修掉的真实 bug
+
+| # | bug | 影响 |
+| --- | --- | --- |
+| 1 | `resolveRuntimeDir` 读不到 `cfg`（在模块顶层却引用 `main()` 里的局部变量） | `config.paths` 段从未生效，`say`/`sing` 恒报「脚本不存在」 |
+| 2 | `loadConfig()` 从不合并 `config.json` 的 `paths` 段 | 同上（根因之一） |
+
+### 9.4 迁移中踩的坑（给后续 agent 的教训）
+
+1. **批量替换必须检查返回值**：`str.replace` 锚点不存在时静默 no-op，看起来「成功」比报错更危险。
+2. **模块顶层 import 会被审计 VM 剥掉**：需要 `node:child_process` / `node:os` 时，在 api 模块里 `import`，别从 bridge 传裸 `spawn`（harness 里 undefined）。
+3. **依赖注入要「新函数名」**：`sessionEpoch++` 没有函数形式，传内联 `() => { sessionEpoch++; }`，别假设有 `bumpSessionEpoch`。
+4. **位置敏感的测试**：`test-voice` / `test-voice-system` 多次因 handler 搬家变红，统一改成「扫 bridge + src/api/*.js 合并源」。
+5. **无缩进的遗留 if 行**：`send-poke` 分支顶格写（历史遗留），按「8 空格缩进」匹配会 miss，要按实际行文本定位。
+
+### 9.5 回滚方式
+
+- **代码**：每次迁移独立 commit + tag（`refactor-socialV2-*`、`refactor-socialV2-done`）；`git revert <sha>` 或 `git checkout <tag>`。
+- **运行态**：`maintain.ps1 -Apply -Backup` 的 DPAPI 快照（`qq-bridge-backups/`），解密见 `OPERATIONS.md#如何恢复加密备份`。
+
+### 9.6 尚未做（后续阶段）
+
+- 阶段 1：把 `src/http/router.js` 真正接入 bridge（当前仍 flat if 链，只是 handler 移走了）。
+- 阶段 2：中间件化（loopback/token/CSRF/agent 白名单/只读降级）。
+- 阶段 4/5：`services/`、`store/` 与 `main()` 拆分。
+
+> 已实现的是**阶段 3（按域搬 handler）的全部**；阶段 1/2/4/5 仍是待办。
