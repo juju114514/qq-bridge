@@ -1285,7 +1285,8 @@ async function transcribeVoiceLocal(url, timeoutMs = 25000) {
 }
 
 // ── 运行路径解析：环境变量 → config.paths → 旧版默认（存在才用）→ 项目相对目录 ──
-const QQBOT_ROOT = process.env.QQBOT_ROOT || process.cwd();
+const QQBOT_ROOT = process.env.QQBOT_ROOT
+  || (typeof process.cwd === 'function' ? process.cwd() : '.');
 function resolveRuntimeDir(envKey, cfgKey, legacy) {
   const fromEnv = process.env[envKey];
   if (fromEnv) return fromEnv;

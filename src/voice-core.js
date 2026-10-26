@@ -71,7 +71,10 @@ export function listAudioFiles(dir, { maxDepth = 4 } = {}) {
  * 顺序：绝对路径/file:// → 相对 cwd → 语音库同名路径 → 补扩展名 → 语音库 basename 模糊匹配。
  * 返回 { path, via, candidates }（找不到时 path=null，candidates 是模糊候选）。
  */
-export function resolveAudioSource(input, { voiceDir = null, cwd = process.cwd() } = {}) {
+export function resolveAudioSource(input, {
+  voiceDir = null,
+  cwd = typeof process.cwd === 'function' ? process.cwd() : '.',
+} = {}) {
   const raw = String(input ?? '').trim();
   if (!raw) return { path: null, via: 'empty', candidates: [] };
   const stat = (p) => { try { return fs.statSync(p); } catch { return null; } };

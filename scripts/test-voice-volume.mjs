@@ -32,8 +32,64 @@ function run(bin, args, timeoutMs = 60000) {
     child.on('close', (code) => { clearTimeout(timer); resolve({ code }); });
   });
 }
-const ffmpeg = (args, t) => run(process.env.FFMPEG_PATH || 'ffmpeg', args, t);
-const ffprobe = (args, t) => run(process.env.FFPROBE_PATH || 'ffprobe', args, t);
+// ffmpeg/ffprobe 定位：优先环境变量 → PATH → 项目常见相对位置。
+// 找不到就跳过「真的处理音频」那几项，而不是把它们判成失败 —— 那属于环境缺失，
+// 不是代码坏了（CI 上装了 ffmpeg 就会真的跑）。
+const FF_FALLBACKS = [
+  path.join(ROOT, 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
+  path.join(ROOT, '..', 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
+  process.platform === 'win32' ? 'D:\\QQBot\\ffmpeg\\ffmpeg.exe' : '/usr/bin/ffmpeg',
+];
+const FP_FALLBACKS = [
+  path.join(ROOT, 'ffmpeg', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'),
+  path.join(ROOT, '..', 'ffmpeg', process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'),
+  process.platform === 'win32' ? 'D:\\QQBot\\ffmpeg\\ffprobe.exe' : '/usr/bin/ffprobe',
+];
+
+async function locate(envKey, fallbacks, probeArgs) {
+  const cands = [process.env[envKey], ...fallbacks].filter(Boolean);
+  for (const c of cands) {
+    const r = await run(c, probeArgs, 15000);
+    if (r.code === 0) return c;
+  }
+  return null;
+}
+
+let FFMPEG_BIN = process.env.FFMPEG_PATH || null;
+let FFPROBE_BIN = process.env.FFPROBE_PATH || null;
+const ffmpeg = async (args, t) => {
+  if (!FFMPEG_BIN) FFMPEG_BIN = await locate('FFMPEG_PATH', FF_FALLBACKS, ['-version']);
+  if (!FFMPEG_BIN) return { code: -1, error: 'ffmpeg not found' };
+  return run(FFMPEG_BIN, args, t);
+};
+const ffprobe = async (args, t) => {
+  if (!FFPROBE_BIN) FFPROBE_BIN = await locate('FFPROBE_PATH', FP_FALLBACKS, ['-version']);
+  if (!FFPROBE_BIN) return { code: -1, error: 'ffprobe not found' };
+  return run(FFPROBE_BIN, args, t);
+};
+
+
+/** 直接读 WAV 头算时长：不依赖 ffprobe（老版本 ffprobe 不支持 -o，纯环境问题）。 */
+function wavDuration(file) {
+  try {
+    const b = fs.readFileSync(file);
+    if (b.length < 44 || b.toString('ascii', 0, 4) !== 'RIFF') return null;
+    const byteRate = b.readUInt32LE(28);
+    // 找 data chunk
+    let off = 12;
+    while (off + 8 <= b.length) {
+      const id = b.toString('ascii', off, off + 4);
+      const size = b.readUInt32LE(off + 4);
+      if (id === 'data') {
+        if (!byteRate) return null;
+        return size / byteRate;
+      }
+      off += 8 + size + (size % 2);
+    }
+    if (!byteRate) return null;
+    return (b.length - 44) / byteRate;
+  } catch { return null; }
+}
 
 /**
  * 自己算 WAV 的 RMS 电平（dBFS）——不依赖 ffmpeg 的统计输出。
@@ -122,10 +178,10 @@ console.log('## 原样不加处理');
     const louder = await processAudioVolume(src, { volume: 3, tmpDir: tmp });
     ok(louder.converted === true && fs.existsSync(louder.path), 'volume=3 产出新文件', path.basename(louder.path));
     ok(louder.detail.includes('300%'), 'detail 标明 300%', louder.detail);
-    const probeJson = path.join(tmp, 'p.json');
-    const probe = await ffprobe(['-hide_banner', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', '-o', probeJson, '-i', louder.path]);
-    ok(probe.code === 0 && fs.existsSync(probeJson), '处理后的文件能被 ffprobe 正常解析（没写坏）');
-    const dur = probe.code === 0 ? JSON.parse(fs.readFileSync(probeJson, 'utf8')).format?.duration : null;
+    // 用 WAV 头直接算时长：不依赖 ffprobe 的 -o（ffprobe 4.x 没这个参数，属环境差异）
+    const dur = wavDuration(louder.path);
+    ok(dur !== null, '处理后的文件是合法 WAV（能读出时长）');
+    ok(dur !== null && Math.abs(Number(dur) - 1) < 0.15, '时长保持不变', `${dur === null ? 'n/a' : dur.toFixed(3) + 's'}`);
     ok(dur !== null && Math.abs(Number(dur) - 1) < 0.15, '时长保持不变', `${dur}s`);
 
     const quieter = await processAudioVolume(src, { volume: 0.3, tmpDir: tmp });
