@@ -49,7 +49,8 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 | 文件 | 什么时候读 |
 | --- | --- |
 | [AGENT-INSTALL.md](AGENT-INSTALL.md) | **安装时必读**：步骤 + 期望输出 + 失败分支 + 验收标准 |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | **出任何错先查这里**（78 条，按阶段索引） |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | **出任何错先查这里**（96 条，按阶段索引） |
+| `scripts/check-versions.ps1` | 环境版本与 compat.json 不一致时先跑它 |
 | [SETUP.md](SETUP.md) | 手动安装流程（install.ps1 失败时的手工替代） |
 | [COMMANDS.md](COMMANDS.md) | 用户会问"机器人能干什么"时的指令清单 |
 | [FORK.md](FORK.md) | 想知道本 fork 相比上游多了什么 |

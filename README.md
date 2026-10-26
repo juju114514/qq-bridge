@@ -4,7 +4,7 @@
 
 > 常用命令速查：[COMMANDS.md](COMMANDS.md)
 >
-> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（78 条）
+> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（96 条）
 
 ## 三步上手（换成你自己的 DeepSeek）
 
@@ -119,7 +119,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\maintain.ps1 -Apply   # 加�
 ### 出问题先看排错手册
 
 **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** —— 按「卡在哪一步」索引，覆盖安装/启动/DSH/SnowLuma/不回话/人设/媒体/控制台/兼容性/性能，
-共 78 条具体错误，每条都是「现象 → 原因 → 排查 → 解决」。
+共 96 条具体错误，每条都是「现象 → 原因 → 排查 → 解决」。
+
+### 版本对了才能跑
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-versions.ps1
+```
+
+比对 `compat.json`（被验证过的 DSH / SnowLuma / @snowluma/sdk / Node 组合）与你的实际环境。
+别人能用你不能、或你 clone 的版本较旧时，先跑这个。
 
 ### 装完/出问题时体检
 
@@ -310,7 +319,7 @@ npm start          # 或双击 start.bat（守护模式：崩溃自动重启，�
 - **桥接只能运行一个实例**（有单实例锁，重复启动会被拒绝并提示"已有实例在运行"）
 - **用 start.bat 启动**（守护模式），窗口别关——桥接崩溃会在 5 秒后自动拉起
 - 桥接异常/消息无反应时：双击 `restart.bat`（自动杀旧实例 → 清理锁 → 重新启动守护）
-- **重启 DSH 通常不需要动桥接**：每 5 秒探活，DSH 不可用期间收到的 QQ 消息在桥接进程内排队（最多 50 条/会话，满后丢最旧项），恢复后尝试补投。桥接进程退出会丢失内存队列；断线期间已经结束的回复暂不保证补发。
+- **重启 DSH 通常不需要动桥接**：每 5 秒探活，DSH 不可用期间收到的 QQ 消息在桥接进程内排队（最多 96 条/会话，满后丢最旧项），恢复后尝试补投。桥接进程退出会丢失内存队列；断线期间已经结束的回复暂不保证补发。
 - 修改 `config.json` / `roles/` / `state/current-role.json` 后重启桥接生效；修改 `dsh/agent-presets/`（改完要跑 `node scripts/build-agent-preset-patches.mjs` 重新生成 bundle patch）或 MCP 配置后重启 DSH 生效
 
 日志示例：

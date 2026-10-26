@@ -551,6 +551,27 @@ git pull
 
 ## J. 升级 / 版本兼容
 
+### J0. 你的仓库版本和别人（上游/朋友）不一样
+
+**现象**：同一份配置，别人能用你不能；或者你 clone 的版本比仓库说明的旧/新。
+
+**为什么要专门查**：本项目依赖三个外部版本（DSH、SnowLuma、@snowluma/sdk），
+任意一个差得远都可能报错；而 `compat.json` 记录的是**被验证过**的组合。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\check-versions.ps1
+```
+
+输出会逐项标 OK / WARN / FAIL：
+
+| 结果 | 含义 | 处理 |
+| --- | --- | --- |
+| 全 OK | 与验证点一致 | 继续排查别的原因 |
+| WARN | 能用但未验证（例如 DSH 小版本不同） | 留意 inbox 投影、提示词变量等变化 |
+| FAIL | 不满足最低要求 | **先对齐版本**，否则别的排查都是白费 |
+
+对齐方式：`git checkout <tag>` + `npm install`（会跑 postinstall 补 sdk）+ 按 SETUP.md 重装 DSH preset。
+
 ### J1. DSH 升级后突然全不回
 
 **原因**：DSH 的协议/提示词变量变了（我们踩过两次：`{{cwd}}` 被移除、inbox 位置从 `values.projections[id].values.inbox` 调整）。

@@ -220,6 +220,16 @@ try {
   Line WARN '日志目录' '不可写（检查权限/磁盘）'
 }
 
+# ── 8. 版本兼容（调用 check-versions.ps1，失败不致命）────────────────────
+$cv = Join-Path $Root 'scripts\check-versions.ps1'
+if (Test-Path $cv) {
+  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $cv 2>&1
+  $code2 = $LASTEXITCODE
+  if ($code2 -eq 0) { Line OK '版本兼容' '与验证点一致' }
+  elseif ($code2 -eq 1) { Line WARN '版本兼容' '与验证点不同（跑 scripts\check-versions.ps1 看明细）' }
+  else { Line FAIL '版本兼容' '不满足最低要求（跑 scripts\check-versions.ps1 看明细）' }
+}
+
 # ── 汇总 ───────────────────────────────────────────────────────────────────
 Write-Host ""
 if ($fails -eq 0 -and $warns -eq 0) { Write-Host "全部通过。" -ForegroundColor Green; exit 0 }

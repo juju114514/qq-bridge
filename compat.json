@@ -1,0 +1,24 @@
+{
+  "$comment": "本文件记录「这套代码在什么环境下验证过」。scripts/check-versions.ps1 会拿它和真实环境比对，不一致就告警。",
+  "bridge": "0.2.1-r1",
+  "testedWith": {
+    "node": "24.21.0",
+    "dsh": "0.2.1-rc.2",
+    "snowluma": "2.1.1",
+    "snowlumaSdk": "1.14.22",
+    "schemastery": "3.18.5",
+    "dshHostApiproxy": "0.1.1-rc.2"
+  },
+  "requires": {
+    "node": ">=22.13.0",
+    "dsh": ">=0.2.0",
+    "snowluma": ">=1.14.0",
+    "snowlumaSdk": ">=1.14.20"
+  },
+  "notes": [
+    "DSH 0.2.0 起 inbox 投影路径变过一次；0.2.1 起 system prompt 只注册 provider/model 两个变量（{{cwd}} 会 fail loud）。",
+    "SnowLuma 的 HTTP(3000) 与 WS(3001) 使用两个不同 accessToken。",
+    "@snowluma/sdk 需要仓库 postinstall 打补丁（patch-snowluma-sdk.mjs），版本不一致时先 npm install。",
+    "上游 fork 与本仓库的 preset 结构不同时，DSH 端需要重新安装 preset（见 SETUP.md）。"
+  ]
+}
