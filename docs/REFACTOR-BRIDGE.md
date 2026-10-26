@@ -254,7 +254,7 @@ node scripts/test-audit.mjs
 | send | 6 | ✅ 已迁出 | `src/api/send.js` |
 | sessions/tokens | 8 | ✅ 已迁出（8/8，含高危 reset） | `src/api/sessions.js`、`src/api/tokens.js`；reset 有回归测试 `test-session-reset.mjs`（10 项） |
 | social(v1) | 4 | ✅ 已迁出 | `src/api/social.js` |
-| socialV2 | 68 | 🟡 34/68 已迁（A+B 批 27 + C1 say/sing + C2 sticker-pick/like/sticker-note/sticker-remark/collect-sticker；剩发送/媒体/空间与 D 批 wait） | `src/api/socialV2-read.js`（config/activity/tool-log/feedback/states/my-recent/memory/slang-query）；**B/C 进行中，D（wait 长轮询租约）留给 pro** |
+| socialV2 | 68 | 🟡 40/68 已迁（A+B 批 27 + C1 2 + C2 5 + C3a 空间/攻略 6；剩媒体 3 与发送 3，以及 D 批 wait） | `src/api/socialV2-read.js`（config/activity/tool-log/feedback/states/my-recent/memory/slang-query）；**B/C 进行中，D（wait 长轮询租约）留给 pro** |
 
 每迁一组必须满足：
 
