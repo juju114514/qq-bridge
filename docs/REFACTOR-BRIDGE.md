@@ -252,7 +252,7 @@ node scripts/test-audit.mjs
 | slang | 14 | ✅ 已迁出 | `src/api/slang.js` |
 | stickers | 8 | ✅ 已迁出 | `src/api/stickers.js` |
 | send | 6 | ✅ 已迁出 | `src/api/send.js` |
-| sessions/tokens | 8 | ⬜ 待迁 | — |
+| sessions/tokens | 8 | 🟡 部分迁出（6/8） | `src/api/sessions.js`、`src/api/tokens.js`；**`POST /api/session/reset` 属高危，待单独评审** |
 | social(v1) | 4 | ⬜ 待迁 | — |
 | socialV2 | 68 | ⬜ 待迁 | — |
 
