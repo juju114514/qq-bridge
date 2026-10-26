@@ -71,6 +71,13 @@ const tests = [
   //   unit 必须带 DSH_HOME，npm 必须用 `sudo -H -u`（否则缓存写 /root → EACCES）。
   //   这类问题只在服务器上暴露，所以放进 CI 而不是留给用户踩。
   'test-deploy-scripts.mjs',
+  // 打包形态（外部 review 提的两条，实测都成立，且都属「不会让代码测试变红、
+  // 但直接影响别人敢不敢用」的那类）：
+  //   · 锁文件只能有一个 —— 同时留 package-lock.json 与 pnpm-lock.yaml，
+  //     用不同包管理器的人会各自改各自的，依赖树迟早漂移；
+  //   · LICENSE 只放协议正文 —— 附录（第三方组件/数据出机清单）塞在同一文件里会让
+  //     GitHub 的 licensee 匹配失败，仓库页面显示 Other/NOASSERTION。附录现在在 NOTICE.md。
+  'test-packaging.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

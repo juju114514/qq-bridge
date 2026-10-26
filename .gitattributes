@@ -30,5 +30,5 @@
 *.pt binary
 
 # 依赖锁文件不要被换行改写
-pnpm-lock.yaml text eol=lf -diff
 package-lock.json text eol=lf -diff
+# GitHub 许可证识别：LICENSE 必须只有标准协议正文（附录在 NOTICE.md），别把两者合并回去
