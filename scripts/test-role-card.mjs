@@ -93,7 +93,12 @@ test('统计与小节报告可用于控制台预览', () => {
 });
 
 test('真实人格卡可用，且筛选不丢公共内容', () => {
-  const file = new URL('../roles/小鲸鱼.md', import.meta.url);
+  // 角色卡带测试状态标注（如「小鲸鱼（已测试）.md」），按前缀找，避免改名就红
+  const rolesDir = new URL('../roles/', import.meta.url);
+  const candidates = fs.readdirSync(rolesDir)
+    .filter((f) => f.startsWith('小鲸鱼') && f.endsWith('.md'));
+  assert.ok(candidates.length > 0, '找不到「小鲸鱼」角色卡（roles/ 下按前缀匹配）');
+  const file = new URL('../roles/' + candidates[0], import.meta.url);
   const raw = fs.readFileSync(file, 'utf8');
   const v2 = selectRoleText(raw, 'v2');
   const v1 = selectRoleText(raw, 'v1');
