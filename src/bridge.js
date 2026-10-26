@@ -3863,14 +3863,32 @@ async function main() {
         // ── 会话查看 ──────────────────────────────────────────────────────────
         // ── 会话列表（已迁出到 src/api/sessions.js；只读）──────────────────────
         // 注意：POST /api/session/reset（重置会话）仍是高危，暂不迁出。
-        if (req.method === 'GET' && url.pathname === '/api/sessions') {
+        // ── 会话（列表 + 重置，已迁出到 src/api/sessions.js）────────────────────
+        // reset 是高危路径：清 ~30 个 Map 后**最后**才停/归档 DSH 会话。
+        // 回归测试：scripts/test-session-reset.mjs（10 项）
+        if (url.pathname === '/api/sessions' || url.pathname === '/api/session/reset') {
           const handleSessions = createSessionsHandler({
-            sendJson,
+            sendJson, readBody, log,
             getState: () => state,
             getCfg: () => cfg,
+            bumpSessionEpoch: () => { sessionEpoch++; },
+            maps: {
+              modelAppliedSessions, reverse, collectors,
+              sendToolSucceededSessions, pendingSendToolCalls,
+              v2TurnStartAt, turnLeaseNoted, toolCallNames,
+            },
+            pending, queued, queuedHintAt, sessionPromises,
+            cancelPendingEntry, drainPromptQueue,
+            social, messageMediaStore,
+            slangWindows, slangExtractionCooldowns, slangSubmitTimes,
+            cancelSocialTimers, clearSocialV2Timers,
+            pendingWakeKeys, wakeConfigUpdatedKeys, markReadCalledKeys, wakeConfigMissCount,
+            forgetAgentToken,
+            socialV2, seenForwardIds,
+            saveSocialV2State, saveState,
+            api, withTimeout, DSH_CONTROL_TIMEOUT_MS,
           });
-          await handleSessions(req, url);
-          return;
+          if (await handleSessions(req, url)) return;
         }
         // ── 挂起审批 / 提问 ───────────────────────────────────────────────────
         if (req.method === 'GET' && url.pathname === '/api/pending') {
@@ -7206,62 +7224,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         }
 
         // ── 清除上下文 / 清空工作区 ──────────────────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/session/reset') {
-          const body = await readBody();
-          const key = String(body.key ?? '');
-          if (!key || !state.sessions[key]) { sendJson({ ok: false, error: '会话不存在' }, 404); return; }
-          sessionEpoch++;
-          const oldSessionId = state.sessions[key];
-          delete state.sessions[key];
-          modelAppliedSessions.delete(oldSessionId);
-          // 权限元数据必须与映射一起删除，否则会永久残留在 sessions.json 里。
-          delete state.sessionPolicies[key];
-          reverse.delete(oldSessionId);
-          collectors.delete(oldSessionId);
-          sendToolSucceededSessions.delete(oldSessionId);
-          pendingSendToolCalls.delete(oldSessionId);
-          v2TurnStartAt.delete(oldSessionId);
-          turnLeaseNoted.delete(oldSessionId);
-          toolCallNames.delete(oldSessionId);
-          const pe = pending.get(key);
-          if (pe) {
-            clearTimeout(pe.timer);
-            cancelPendingEntry(pe).catch(() => {});
-          }
-          pending.delete(key);
-          queued.delete(key);
-          queuedHintAt.delete(key);
-          sessionPromises.delete(key);
-          drainPromptQueue(key, '会话已重置');
-          social.recentMessages.delete(key);
-          messageMediaStore.delete(key);
-          social.pendingSummaries.delete(key);
-          social.states.delete(key);
-          social.silentContext.delete(key);
-          social.silentTurns.delete(oldSessionId);
-          social.exitingSessions.delete(oldSessionId);
-          slangWindows.delete(key);
-          slangExtractionCooldowns.delete(key);
-          slangSubmitTimes.delete(key);
-          cancelSocialTimers(key);
-          clearSocialV2Timers(key);
-          pendingWakeKeys.delete(key);
-          wakeConfigUpdatedKeys.delete(key);
-          markReadCalledKeys.delete(key);
-          wakeConfigMissCount.delete(key);
-          forgetAgentToken(key);
-          socialV2.conversations.delete(key);
-          seenForwardIds.delete(key);
-          saveSocialV2State();
-          saveState();
-          // 归档只隐藏会话，不终止 DSH 侧排队的工作；先清队列并取消当前回合。
-          try { await withTimeout(api.stopSessionWork(oldSessionId), DSH_CONTROL_TIMEOUT_MS, 'stopSessionWork'); }
-          catch (error) { log(`⚠️ 停止旧会话失败 ${key}：${error?.message ?? error}；请在 DSH 检查旧任务`); }
-          try { await withTimeout(api.workspace.archiveSession({ sessionId: oldSessionId }), DSH_CONTROL_TIMEOUT_MS, 'archiveSession'); } catch {}
-          log(`控制台：已清除会话上下文 ${key}（旧会话 ${oldSessionId} 已停止并归档）`);
-          sendJson({ ok: true, key, archived: oldSessionId });
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/workspace/reset') {
           sessionEpoch++;
           let archivedCount = 0;
