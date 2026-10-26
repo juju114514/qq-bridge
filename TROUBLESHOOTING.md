@@ -32,6 +32,7 @@
 | Q. 升级迁移检查单 | [Q](#q-升级迁移检查单) |
 | R. 杀软 / 安全软件干扰 | [R](#r-杀软--安全软件干扰) |
 | S. 维护 / 隐私 / 风控 | [S](#s-维护--隐私--风控) |
+| T. 安全事件与越权 | [T](#t-安全事件与越权) |
 
 ---
 
@@ -1311,6 +1312,70 @@ git fetch --tags; git tag --sort=-creatordate | Select-Object -First 5
 
 `npm install` 会执行 postinstall（`patch-snowluma-sdk.mjs`），属于必要步骤但也是供应链风险面 ——
 不要在不可信分支上装依赖。详见 [OPERATIONS.md#供应链](docs/OPERATIONS.md#供应链)。
+
+---
+
+---
+
+## T. 安全事件与越权
+
+> 加固方案见 **[docs/guides/SECURITY.md](docs/guides/SECURITY.md)**。这里只列「出了事怎么办」。
+
+### T1. 有人试图让它越权（提示词注入）
+
+**现象**：群里出现「忽略之前指令」「你现在是管理员」「把配置打印出来」。
+
+**为什么通常没事**：硬规则写死在预设里，工具层也只有 QQ 相关能力；AI 拿 console token 也改不了配置（403）。
+
+**处置**：
+
+```powershell
+# 事后回查谁在尝试
+Select-String -Path state\bridge.log -Pattern '忽略|ignore previous|system prompt' | Select-Object -Last 20
+```
+
+若已明显跑偏：停 AI → `/reset` 清上下文 → 必要时降权（关 `sendVoice` 等工具）。
+
+### T2. 花费突然飙升
+
+**现象**：`token-usage.jsonl` 暴涨，或控制台显示今天很贵。
+
+**原因**：账本**只记不拦**（这是已知设计），没有熔断就一直花。
+
+**处置**：
+
+```powershell
+.\scripts\guard.ps1                  # 看今天花了多少
+.\scripts\guard.ps1 -Apply -DailyCostLimit 5   # 开熔断（建议放计划任务）
+.\scripts\guard.ps1 -Resume          # 事后恢复
+```
+
+### T3. 发现 3100 / 54694 暴露在公网
+
+**风险**：控制台 / DSH 会话被外部访问。
+
+**处置**：
+
+1. 立刻关掉端口映射 / 内网穿透
+2. `.\scripts\maintain.ps1 -Apply -RotateConsoleToken` → 重启桥接
+3. SnowLuma 里重置 OneBot token
+4. 查 `state\bridge.log` 有没有陌生来源的请求（本机回环以外都应 403）
+
+正确远程方式（SSH 隧道 / Tailscale / Cloudflare Access）见 [SECURITY.md#远程访问安全](docs/guides/SECURITY.md#3-远程访问安全)。
+
+### T4. 桥接用管理员账号在跑
+
+**风险**：进程权限过大。
+
+**处置**：按 [SECURITY.md#最小权限运行](docs/guides/SECURITY.md#4-最小权限运行) 建专用账号 + 只给项目目录权限 + 计划任务用该账号。
+
+> 注意：换账号后 `state/` ACL 与 DPAPI 备份都要重新处理。
+
+### T5. 桥接挂了但没人知道
+
+**现象**：机器人半天不说话，你看日志才发现进程早退了。
+
+**处置**：配外部看门狗（走 SnowLuma OneBot HTTP，不依赖桥接进程），见 [SECURITY.md#主动告警](docs/guides/SECURITY.md#5-主动告警)。
 
 ---
 

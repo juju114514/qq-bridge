@@ -135,6 +135,15 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 
 手装流程见 [SETUP.md](SETUP.md)。
 
+## 安全
+
+| 面 | 文档 |
+| --- | --- |
+| 提示词注入 / 花费熔断 / 远程暴露 / 最小权限 / 告警 | **[docs/guides/SECURITY.md](docs/guides/SECURITY.md)** |
+| 花费熔断脚本 | `scripts/guard.ps1`（超限自动停 AI + 私聊告警） |
+| 备份 / 隐私 / 账号风控 | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** |
+| 杀软干扰 | **[docs/guides/KASPERSKY.md](docs/guides/KASPERSKY.md)** |
+
 ## 项目展示
 
 📽️ [AI 仿真群友 - 项目介绍视频](https://github.com/Derpyu520/qq-bridge/releases/download/v0.1.5/project-intro.mp4)（约 11 MB）

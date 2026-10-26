@@ -283,5 +283,8 @@
     "maxTokens": 4096,
     "maxResults": 8,
     "timeoutMs": 35000
+  },
+  "guard": {
+    "dailyCostLimitCNY": 5
   }
 }
