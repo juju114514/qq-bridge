@@ -59,6 +59,36 @@ else
   warn "DSH" "config 里没有 dsh.baseUrl"
 fi
 
+# ── DSH 凭据（降权用户必须能读，否则铸造 cookie 失败 ⇒ 全站 401）────────────
+# 判据不是「文件存在」，而是「以服务用户身份真能读」——父目录 700 时文件存在也没用。
+SVC_USER="$(systemctl show -p User --value qq-bridge 2>/dev/null || true)"
+SVC_USER="${SVC_USER:-qqbridge}"
+UNIT_DSH_HOME="$(systemctl show -p Environment --value qq-bridge 2>/dev/null | tr ' ' '\n' | sed -n 's/^DSH_HOME=//p' | head -n1)"
+CRED_CANDIDATES=()
+[[ -n "$UNIT_DSH_HOME" ]] && CRED_CANDIDATES+=("$UNIT_DSH_HOME")
+[[ -n "${DSH_HOME:-}" ]] && CRED_CANDIDATES+=("$DSH_HOME")
+CRED_CANDIDATES+=("$HOME/.dsh" "/root/.dsh" "/home/$SVC_USER/.dsh")
+
+as_user_readable() { # path
+  if command -v runuser >/dev/null 2>&1; then runuser -u "$SVC_USER" -- test -r "$1" 2>/dev/null
+  elif command -v sudo >/dev/null 2>&1; then sudo -n -u "$SVC_USER" test -r "$1" 2>/dev/null
+  else [[ -r "$1" ]]  # 退化为当前用户视角，仅作参考
+  fi
+}
+
+CRED_FOUND=""
+for c in "${CRED_CANDIDATES[@]}"; do
+  [[ -n "$c" && -f "$c/.credentials.yaml" ]] && { CRED_FOUND="$c/.credentials.yaml"; break; }
+done
+
+if [[ -z "$CRED_FOUND" ]]; then
+  warn "DSH 凭据" "没找到 .credentials.yaml（探测过 unit DSH_HOME / \$DSH_HOME / \$HOME / /root）"
+elif as_user_readable "$CRED_FOUND"; then
+  ok "DSH 凭据" "$SVC_USER 可读 $(basename "$(dirname "$CRED_FOUND")")/.credentials.yaml"
+else
+  bad "DSH 凭据" "$SVC_USER 读不到 $CRED_FOUND（铸造 cookie 会 401；见 SERVER.md 凭据一节）"
+fi
+
 # ── systemd ───────────────────────────────────────────────────────────────
 if command -v systemctl >/dev/null; then
   if systemctl is-active --quiet qq-bridge; then ok "systemd" "qq-bridge 运行中"; else bad "systemd" "qq-bridge 未运行"; fi

@@ -66,6 +66,11 @@ const tests = [
   //   · 静默检测不得冒充 hook 检测（心跳是 SnowLuma 本地定时器无条件发的）；
   //   · 客户端库版本不得低于 bot_status 出现的版本。
   'test-snowluma-upstream-health.mjs',
+  // Linux 部署脚本（deploy/*.sh）：这里钉的不是语法，而是**装完能不能跑**——
+  //   降权到 qqbridge 之后仍必须能读 DSH 的本机签名密钥（$DSH_HOME/.credentials.yaml），
+  //   unit 必须带 DSH_HOME，npm 必须用 `sudo -H -u`（否则缓存写 /root → EACCES）。
+  //   这类问题只在服务器上暴露，所以放进 CI 而不是留给用户踩。
+  'test-deploy-scripts.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

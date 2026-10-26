@@ -202,6 +202,69 @@ sudo iptables -A OUTPUT -m owner --uid-owner qqbridge -j DROP
 
 > 注意：上面这条会让联网搜索/点歌这类功能失效，只在完全内网场景用。
 
+### 降权之后必须补的那份访问：DSH 凭据
+
+这条最容易漏，症状也最容易误诊，所以单独说。
+
+桥接默认**不**在 `config.json` 里存 DSH 的 token，而是用 DSH 的**本机签名密钥**离线铸造 cookie：
+
+```
+$DSH_HOME/.credentials.yaml      # DSH_HOME 默认 = ~/.dsh
+```
+
+`install-server.sh` 把桥接降权成 `qqbridge` 之后会出现两个连带问题：
+
+| 问题 | 后果 |
+| --- | --- |
+| 服务进程的 `HOME` 变成 `/home/qqbridge` | 去 `/home/qqbridge/.dsh` 找凭据 → 不存在 |
+| `.credentials.yaml` 通常是 `600 root:root`，`/root` 是 `700` | 即便路径指对了也读不到 |
+
+表现是：**`curl` 打 DSH 是通的，但桥接报 DSH 401 / 「铸造 cookie 失败」**。因为 curl 用的是你自己的身份，桥接用的是 `qqbridge`。
+
+`install-server.sh` 现在会自动做这四件事：
+
+1. 探测真正的 DSH_HOME（`--dsh-home` > `$DSH_HOME` > `$SUDO_USER` 的 `~/.dsh` > `/root/.dsh`）
+2. 把探测结果写进 unit：`Environment=DSH_HOME=/root/.dsh`
+3. 用 ACL 只授予**穿越目录(x) + 读该文件(r)** 这一份最小权限（不给目录列表权限）：
+
+   ```bash
+   setfacl -m u:qqbridge:--x /root /root/.dsh     # 能穿过，但不能 ls
+   setfacl -m u:qqbridge:r-- /root/.dsh/.credentials.yaml
+   ```
+
+   没有 `setfacl` 时退回「专用组 + 640 + usermod -aG」。
+4. **以 `qqbridge` 身份实测读一次**（`sudo -u qqbridge test -r ...`）——只检查 `mode` 位是不够的，父目录 `700` 一样读不到。
+
+装完可以单独复查：
+
+```bash
+sudo ./deploy/verify-server.sh | grep 'DSH 凭据'
+# [OK] DSH 凭据   qqbridge 可读 .dsh/.credentials.yaml
+```
+
+手工补救（脚本提示哪一级不通就补哪一级）：
+
+```bash
+# 1) 看是哪一级挡住了（x 缺失时连 test -r 都会失败）
+sudo -u qqbridge test -r /root/.dsh/.credentials.yaml; echo $?
+
+# 2) 补穿越 + 读
+sudo setfacl -m u:qqbridge:--x /root
+sudo setfacl -m u:qqbridge:--x /root/.dsh
+sudo setfacl -m u:qqbridge:r-- /root/.dsh/.credentials.yaml
+
+# 3) 确认 unit 里 DSH_HOME 指向同一个目录
+systemctl show -p Environment --value qq-bridge | tr ' ' '\n' | grep DSH_HOME
+sudo systemctl restart qq-bridge
+```
+
+两个边界情况：
+
+- **DSH 在另一台机器上**（`dsh.baseUrl` 不是回环地址）：本机密钥铸造**本来就不成立**，别折腾权限了，改为把 `dsh.authToken` 填成那台 DSH 的启动凭据。安装脚本检测到非回环地址会直接跳过授权并提示这一点。
+- **换了 DSH 登录账号 / 迁移了 `.dsh` 目录**：ACL 绑定的是路径，重跑 `install-server.sh`（或按上面三步手工修）即可，不用改 `config.json`。
+
+> 为什么不做「把 `.credentials.yaml` 复制一份给 qqbridge」：签名密钥一旦有两份就会漂移，DSH 那边轮换后桥接静默失效，比权限问题更难查。宁可要一次 ACL。
+
 ## 八、远程访问
 
 **不要把 3100 / 3000 / 3001 / DSH 端口直接暴露到公网。**

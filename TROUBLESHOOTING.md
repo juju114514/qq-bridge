@@ -1398,6 +1398,49 @@ Select-String -Path state\bridge.log -Pattern '忽略|ignore previous|system pro
 
 **处置**：配外部看门狗（走 SnowLuma OneBot HTTP，不依赖桥接进程），见 [SECURITY.md#主动告警](docs/guides/SECURITY.md#5-主动告警)。
 
+### T6. Linux 上装完就 DSH 401（curl 打 DSH 却是通的）
+
+**现象**：`systemctl status qq-bridge` 正常、`curl http://127.0.0.1:3080` 也通，但桥接日志里是 DSH 鉴权失败 / 「铸造 cookie 失败」/ 会话起不来。
+
+**根因**：桥接默认用 DSH 的**本机签名密钥**离线铸造 cookie：
+
+```
+$DSH_HOME/.credentials.yaml        # DSH_HOME 默认 = ~/.dsh
+```
+
+`install-server.sh` 把服务降权成 `qqbridge` 后：
+
+| 连带问题 | 后果 |
+| --- | --- |
+| 服务进程 `HOME=/home/qqbridge` | 去 `/home/qqbridge/.dsh` 找凭据，不存在 |
+| `.credentials.yaml` 是 `600 root:root`、`/root` 是 `700` | 路径指对了也读不到 |
+
+所以「**curl 通、桥接 401**」是典型指纹：curl 用你的身份，桥接用 `qqbridge`。
+
+**先确认**：
+
+```bash
+sudo ./deploy/verify-server.sh | grep 'DSH 凭据'
+# 好的：[OK]   DSH 凭据   qqbridge 可读 .dsh/.credentials.yaml
+# 坏的：[FAIL] DSH 凭据   qqbridge 读不到 /root/.dsh/.credentials.yaml（…）
+```
+
+**处置**（最小授权，别整目录 777）：
+
+```bash
+sudo setfacl -m u:qqbridge:--x /root            # 只给穿越，不给 ls
+sudo setfacl -m u:qqbridge:--x /root/.dsh
+sudo setfacl -m u:qqbridge:r-- /root/.dsh/.credentials.yaml
+systemctl show -p Environment --value qq-bridge | tr ' ' '\n' | grep DSH_HOME   # 应为 /root/.dsh
+sudo systemctl restart qq-bridge
+```
+
+或直接重跑 `sudo ./deploy/install-server.sh --owner-qq <号> --dsh-home /root/.dsh`（脚本会探测、授权、并**以 qqbridge 身份实测**）。
+
+**例外**：DSH 不在本机（`dsh.baseUrl` 非回环）时，本机密钥铸造本来就不成立 —— 别改权限，改填 `dsh.authToken`。
+
+详见 [SERVER.md#降权之后必须补的那份访问dsh-凭据](docs/guides/SERVER.md)。
+
 ---
 
 ## 附：三条最快的定位路径

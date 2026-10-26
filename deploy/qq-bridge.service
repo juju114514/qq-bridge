@@ -20,6 +20,11 @@ StartLimitBurst=6
 # 环境：Node 需要能找到 PATH 里的 ffmpeg 等
 Environment=NODE_ENV=production
 Environment=HOME=__HOME__
+# DSH 的凭据目录（含 .credentials.yaml）。桥接默认用它离线铸造 DSH cookie：
+#   · 不写这行 → 服务进程去 /home/<服务用户>/.dsh 找，通常不存在 ⇒ DSH 401
+#   · install-server.sh 会探测并填成真实路径（如 /root/.dsh 或 /home/alice/.dsh）
+#   · 留空时桥接回落到 homedir()/.dsh（把空串当 falsy），行为与旧版一致
+Environment=DSH_HOME=__DSH_HOME__
 # 需要代理时取消注释：
 # Environment=HTTPS_PROXY=http://127.0.0.1:7890
 # Environment=NO_PROXY=127.0.0.1,localhost,::1
