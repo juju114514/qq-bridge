@@ -40,6 +40,23 @@ jobs:
       - name: 校验 package.json
         run: node -e "const p=require('./package.json'); if(!p.name||!p.version) process.exit(1); console.log(p.name, p.version)"
 
+  deploy-scripts:
+    name: 部署脚本（deploy/*.sh，真 bash）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      # 为什么单独一个 job、而且是真 Linux：
+      # deploy/*.sh 的问题从来不是 node 语法，而是「装完跑不通」——
+      # 降权到 qqbridge 后读不到 $DSH_HOME/.credentials.yaml、npm 丢 HOME 写 /root 之类。
+      # 这些只有在有 bash 的环境里才验得动，所以在这里跑 bash -n + 纯逻辑自测。
+      - name: 部署脚本回归（语法 + 凭据/权限/占位逻辑）
+        run: node scripts/test-deploy-scripts.mjs
+
   secrets:
     name: 敏感信息扫描
     runs-on: ubuntu-latest
