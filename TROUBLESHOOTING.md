@@ -30,6 +30,7 @@
 | O. 外部组件故障 | [O](#o-外部组件故障) |
 | P. 运维与安全 | [P](#p-运维与安全) |
 | Q. 升级迁移检查单 | [Q](#q-升级迁移检查单) |
+| R. 杀软 / 安全软件干扰 | [R](#r-杀软--安全软件干扰) |
 
 ---
 
@@ -1141,6 +1142,84 @@ npm audit fix          # 小心：可能升级大版本
 | 安全事件处置 | P5 |
 | npm audit | P6 |
 | 升级检查单 | Q |
+
+---
+
+---
+
+## R. 杀软 / 安全软件干扰
+
+> **典型症状：关掉卡巴斯基（或 360/火绒）就正常，开着就不正常。**
+> 目标不是关杀软，而是**给本项目加排除项**。
+> 完整图形界面步骤见 **[docs/guides/KASPERSKY.md](docs/guides/KASPERSKY.md)**。
+
+### R1. 自动诊断（先跑这个）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\kaspersky-diagnose.ps1
+```
+
+它会打印：杀软是否在跑、各端口是否可达、外网 HTTPS 延迟，以及**该加进排除项的具体路径**（自动探测的）。
+退出码：`0` 正常、`2` 需要补排除项、`1` 有失败项。
+
+### R2. 该排除哪些
+
+| 路径 | 原因 |
+| --- | --- |
+| DSH 安装目录（如 `D:\DEEPSEEK`） | 实时扫描拖慢启动与资源加载 |
+| `C:\Users\<你>\.dsh` | 会话/附件高频读写 |
+| 项目目录（桥接） | 日志与状态文件高频写 |
+| 所有 `node.exe` | DSH 运行时、系统 Node、SnowLuma |
+| `ffmpeg.exe` / `ffprobe.exe` | 常被启发式误判 |
+| SnowLuma 目录、`QQ.exe` | QQ 协议端 |
+
+**比排除项更有效的是「受信任应用程序」**：给这些 exe 勾上
+「不扫描所有流量 / 不监控应用程序活动 / 允许所有网络活动」。
+
+### R3. 症状 → 大概率原因
+
+| 症状 | 原因 | 处理 |
+| --- | --- | --- |
+| DSH 启动慢、界面卡 | 实时扫描安装目录 | 排除 DSH 目录 |
+| DSH 页面能开但 AI 不回 | localhost 流量被扫 / 防火墙拦 | 受信任应用 + 放行 node.exe 网络 |
+| `dshReady=false` 但 DSH 明明开着 | 同上 | 同上 |
+| 偶发证书错误（`self signed certificate`） | 「加密连接扫描」解密 | 受信任地址加 `127.0.0.1`，或关掉该功能 |
+| 语音/视频处理被拦或极慢 | ffmpeg 被误判 | 排除 ffmpeg/ffprobe |
+| 弹「程序行为可疑」 | 系统监视器/入侵防御 | 把 node.exe 加受信任 |
+| **卡巴免费版根本找不到排除项** | 免费版不提供该功能 | 见 [docs/guides/KASPERSKY.md](docs/guides/KASPERSKY.md#️-重要前提kaspersky-免费版没有排除项)：升级 / 换 Defender / 取消自动删除 |
+
+### R4. 命令行能做什么、不能做什么
+
+`avp.com`（Kaspersky 21）**不支持命令行加排除项**：
+
+```
+HELP SCAN UPDATE ROLLBACK RENEW FEATUREFLAGS START STOP
+STATUS STATISTICS EXPORT IMPORT AcceptEULA REPORT FASTFAIL SHOWTM PROXYAUTH EXIT TRACES
+```
+
+所以排除项必须**图形界面加一次**。脚本能做的是诊断 + 冒烟测试 + 打印路径。
+
+### R5. 验证「不关杀软也能跑」
+
+```powershell
+# 1) 确认杀软在跑
+Get-Service AVP21.25
+
+# 2) 诊断（期望退出码 0）
+powershell -ExecutionPolicy Bypass -File .\scripts\kaspersky-diagnose.ps1
+
+# 3) 真实聊天：管理员私聊机器人发「你好」，应能回复
+```
+
+通过标准：杀软 Running + `dshReady=true` + `snowluma.good=true` + 外网 HTTPS < 3s + 发消息有回复。
+
+### R6. 排不掉怎么办
+
+1. 卡巴托盘 → **暂停保护 15 分钟**做对照：
+   - 暂停后正常 → 100% 是杀软，回到 R2 补路径
+   - 暂停后仍异常 → 不是杀软，去看 [C](#c-连-dsh) / [E](#e-能连上但不回话)
+2. 卡巴 → 报告 → 找被拦条目，看它拦的是哪个 exe / 路径 / 端口
+3. 把三样贴出来：诊断输出 + 拦截报告 + `logs/` 最近 50 行
 
 ---
 

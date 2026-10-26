@@ -197,6 +197,17 @@ try {
   }
 }
 
+# ── 6.5 杀软（只在检测到时装，不阻断）────────────────────────────────────
+$avSvc = @('AVP21.25','HipsDaemon','360rp') | ForEach-Object { Get-Service -Name $_ -ErrorAction SilentlyContinue } | Where-Object { $_ }
+$avRunning = $avSvc | Where-Object { $_.Status -eq 'Running' }
+$avStopped = $avSvc | Where-Object { $_.Status -ne 'Running' }
+if ($avRunning) {
+  Line OK '杀软' ("运行中：" + (($avRunning | ForEach-Object { $_.Name }) -join '、') + "（若 DSH 异常，见 docs/guides/KASPERSKY.md）")
+} elseif ($avStopped) {
+  Line WARN '杀软' ("已安装但已停止：" + (($avStopped | ForEach-Object { $_.Name }) -join '、') + "（为了跑 DSH 才关的？建议配排除项后开回来）")
+  Write-Host "        诊断：powershell -ExecutionPolicy Bypass -File .\scripts\kaspersky-diagnose.ps1" -ForegroundColor DarkGray
+}
+
 # ── 7. 日志可写 ────────────────────────────────────────────────────────────
 $logsDir = Join-Path $Root 'logs'
 try {
