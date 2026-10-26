@@ -1,0 +1,34 @@
+# 统一换行，避免 CI / 不同系统上出现 CRLF 抖动
+# 文本文件默认 LF；Windows 批处理必须是 CRLF，否则 cmd 解析会出问题
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制文件：不要做任何换行/文本转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.silk binary
+*.zip binary
+*.7z binary
+*.pth binary
+*.index binary
+*.onnx binary
+*.npy binary
+*.pt binary
+
+# 依赖锁文件不要被换行改写
+pnpm-lock.yaml text eol=lf -diff
+package-lock.json text eol=lf -diff
