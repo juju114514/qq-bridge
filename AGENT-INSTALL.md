@@ -102,6 +102,17 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ <管理员的QQ�
 
 ## 4. 验收（必须真的验，不要只看日志）
 
+最快的方式：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\verify.ps1
+```
+
+退出码 `0` = 全通过；`2` = 有警告但可用；`1` = 有致命问题（看它标 `[FAIL]` 的那几行）。
+
+手工方式：
+
+
 ```powershell
 # 1) 控制台活着
 curl http://127.0.0.1:3100/api/status

@@ -105,6 +105,18 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
 **让 AI 帮你装**：把仓库交给任意能执行命令的 AI agent，让它按 [`AGENT-INSTALL.md`](AGENT-INSTALL.md)
 一步步做——里面有期望输出、失败分支、必须停下来问人的点（登录 DSH、扫码 QQ）和验收标准。
 
+### 装完/出问题时体检
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\verify.ps1
+```
+
+会逐项检查 Node、依赖、config、DSH 端口、SnowLuma 端口与 token、白名单、角色卡、
+桥接进程、`/api/status`（dshReady / QQ 在线 / AI 是否被暂停）、日志目录是否可写。
+
+退出码：`0` 全通过、`2` 有警告仍可用、`1` 有致命问题。
+`-Restart` 可在桥接没跑时顺手把它拉起来。
+
 手装流程见 [SETUP.md](SETUP.md)。
 
 ## 项目展示
