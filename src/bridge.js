@@ -34,6 +34,7 @@ import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
 import { createSocialHandler } from './api/social.js';
+import { createSocialV2ReadHandler } from './api/socialV2-read.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
@@ -4194,10 +4195,28 @@ async function main() {
           return;
         }
         // ── 二代仿真模式（reserved2）内部 Agent API ─────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/config') {
-          sendJson({ ok: true, config: cfg.socialV2 ?? {} });
-          return;
+        // ── socialV2 只读端点（A 批，已迁出到 src/api/socialV2-read.js）──────────
+        // config / activity / tool-log / feedback / states / my-recent / memory / slang-query
+        if (req.method === 'GET') {
+          const handleV2Read = createSocialV2ReadHandler({
+            sendJson,
+            getCfg: () => cfg,
+            getSocialV2: () => socialV2,
+            readToolLog,
+            readFeedbackEntries,
+            getSocialV2State,
+            agentTokenOk,
+            v2SessionAllowed,
+            v2ToolEnabled,
+            readThroughSeqV2,
+            formatMemoryV2,
+            confirmedSlangListV2,
+            buildSlangContext,
+            getSlangEntries: () => slangEntries,
+          });
+          if (await handleV2Read(req, url)) return;
         }
+
         if (req.method === 'POST' && url.pathname === '/api/socialV2/config') {
           const body = await readBody();
           const configFile = path.join(ROOT, 'config.json');
@@ -4362,10 +4381,6 @@ async function main() {
           if (wakeDefaultChanged) refreshAllDefaultWakeConfigsV2();
           log('控制台：二代仿真配置已更新');
           sendJson({ ok: true, config: cfg.socialV2 });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/activity') {
-          sendJson({ ok: true, paused: socialV2.paused });
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/activity') {
@@ -4767,22 +4782,6 @@ async function main() {
           setupSleepTimerV2(key);
           log(`[reserved2] 更新唤醒配置 ${key}: mode=${next.mode} infinite=${next.infinite} sleepUntil=${next.sleepUntil ?? 'null'}`);
           sendJson({ ok: true, key, markedCount, unreadCount: st.unread.length, readThroughSeq: readThroughSeqV2(st), wakeConfig: next, wakeSafety: computeWakeSafetyV2(next) });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/states') {
-          const list = [];
-          for (const [key, st] of socialV2.conversations) {
-            list.push({
-              key,
-              wakeConfig: st.wakeConfig,
-              unreadCount: st.unread.length,
-              recentCount: st.recentMessages.length,
-              lastWakeReason: st.lastWakeReason,
-              lastAiReplyAt: st.lastAiReplyAt,
-              noActionCount: st.wakeConfig.noActionCount || 0
-            });
-          }
-          sendJson({ ok: true, conversations: list });
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/wake') {
@@ -6554,11 +6553,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         // ── 工具调用日志 ─────────────────────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/tool-log') {
-          const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 200));
-          sendJson({ ok: true, entries: readToolLog(limit) });
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/tool-log/clear') {
           if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅控制台可用' }, 403); return; }
           try { fs.writeFileSync(TOOL_LOG_FILE, '', 'utf8'); } catch {}
@@ -6567,10 +6561,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         // ── 反馈 / 自己消息 / 消息详情 / 活跃成员 ────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/feedback') {
-          sendJson({ ok: true, entries: readFeedbackEntries() });
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/feedback-clear') {
           if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅控制台可用' }, 403); return; }
           atomicWriteJson(FEEDBACK_FILE, []);
@@ -6607,18 +6597,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
             log(`[reserved2] 错误级反馈，可通知 owner ${cfg.ownerQQ}（当前仅记录日志）`);
           }
           sendJson({ ok: true, key, level, message });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/my-recent') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 10));
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('getMyRecent')) { sendJson({ ok: false, error: '工具未启用：qq_get_my_recent_messages' }, 403); return; }
-          const st = getSocialV2State(key);
-          const mine = st.recentMessages.filter((m) => m.isSelf).slice(-limit);
-          sendJson({ ok: true, key, messages: mine, readThroughSeq: readThroughSeqV2(st) });
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/record-sent') {
@@ -6945,32 +6923,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           sendJson({ ok: true, key, category, memory: formatMemoryV2(st) });
           return;
         }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/memory') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const category = String(url.searchParams.get('category') ?? '').trim();
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('memory')) { sendJson({ ok: false, error: '工具未启用：qq_memory_query' }, 403); return; }
-          const st = getSocialV2State(key);
-          const raw = {
-            activeTopics: Array.isArray(st.activeTopics) ? st.activeTopics.slice(-20) : [],
-            pendingThoughts: Array.isArray(st.pendingThoughts) ? st.pendingThoughts.filter((t) => !t.expiresAt || Date.now() < t.expiresAt).slice(-20) : [],
-            memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {}
-          };
-          if (category === 'activeTopic') {
-            raw.pendingThoughts = [];
-            raw.memberImpressions = {};
-          } else if (category === 'pendingThought') {
-            raw.activeTopics = [];
-            raw.memberImpressions = {};
-          } else if (category === 'memberImpression') {
-            raw.activeTopics = [];
-            raw.pendingThoughts = [];
-          }
-          sendJson({ ok: true, key, category, formatted: formatMemoryV2({ ...st, ...raw }), raw });
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/memory-remove') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
@@ -7015,29 +6967,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         // ── 二代黑话学习（reserved2）：AI 查询/提交黑话候选 ─────────────────
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/slang/query') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const q = String(url.searchParams.get('q') ?? '').trim().toLowerCase();
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('slangQuery')) { sendJson({ ok: false, error: '工具未启用：qq_slang_query' }, 403); return; }
-          const list = confirmedSlangListV2().filter((e) => {
-            if (!q) return true;
-            return e.content.toLowerCase().includes(q)
-              || e.meaning.toLowerCase().includes(q)
-              || e.usage.toLowerCase().includes(q)
-              || e.example.toLowerCase().includes(q);
-          });
-          sendJson({
-            ok: true,
-            key,
-            total: list.length,
-            entries: list,
-            block: buildSlangContext(slangEntries, cfg.slang?.injectMax ?? 8)
-          });
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/slang/submit') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
