@@ -646,6 +646,47 @@ function readRoleState() {
 function writeRoleState(role, mode) {
   atomicWriteJson(ROLE_STATE_FILE, { role: role ?? null, mode: mode ?? 'active' });
 }
+// ── 按会话隔离的人设（私聊 / 群聊互不影响）─────────────────────────────
+// 设计：
+//   · 每个会话（private:xxx / group:yyy）在 roles-by-key.json 里有自己的一条
+//   · 群聊默认**不注入人设**（role.groupEnabled=false），
+//     要让群聊也带人设，把 groupEnabled 设 true 并给 groupDefaultName
+//   · 私聊写角色时同步一份到 current-role.json，保持控制台 / 旧接口兼容
+const ROLES_BY_KEY_FILE = path.join(STATE_DIR, 'roles-by-key.json');
+
+function readRolesByKey() {
+  const raw = readJsonSafe(ROLES_BY_KEY_FILE, {});
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+function readRoleStateForKey(key) {
+  const k = String(key ?? '').trim();
+  if (!k) return readRoleState();
+  const map = readRolesByKey();
+  const rec = map[k];
+  if (rec && typeof rec === 'object') {
+    return { role: rec.role ?? null, mode: rec.mode ?? 'active' };
+  }
+  if (k.startsWith('group:')) {
+    if (cfg.role?.groupEnabled === true) {
+      const def = String(cfg.role?.groupDefaultName ?? '').trim();
+      return { role: def || null, mode: 'active' };
+    }
+    return { role: null, mode: 'active' };   // 群聊默认不注入人设
+  }
+  return readRoleState();                    // 私聊首次：跟随全局
+}
+
+function writeRoleStateForKey(key, role, mode) {
+  const k = String(key ?? '').trim();
+  const entry = { role: role ?? null, mode: mode ?? 'active' };
+  if (!k) { writeRoleState(entry.role, entry.mode); return; }
+  const map = readRolesByKey();
+  map[k] = entry;
+  atomicWriteJson(ROLES_BY_KEY_FILE, map);
+  // 私聊同步到全局（控制台展示 / 旧状态文件兼容）
+  if (!k.startsWith('group:')) writeRoleState(entry.role, entry.mode);
+}
 function sanitizeRoleName(name) {
   return String(name ?? '').replace(/[^\w\u4e00-\u9fff-]/g, '');
 }
@@ -10006,7 +10047,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
     st.activeExitAt = now;
     // 先取消尚未触发的旧回复/补刀定时器，避免退场期间再冒出旧发言
     cancelSocialTimers(key);
-    const roleHint = currentRoleHint();
+    const roleHint = currentRoleHint(key);
     const promptText = buildActiveExitPrompt(key, roleHint);
     scheduleSocialReply(
       key, promptText,
@@ -10216,7 +10257,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
               st.proactiveNextCheckAt = now + randInt(Number(cfg.social?.proactiveCheckMinMs ?? 2700000), Number(cfg.social?.proactiveCheckMaxMs ?? 5400000));
               if (Math.random() < Number(cfg.social?.proactiveProbability ?? 0.2)) {
                 enterActive(key);
-                const roleHint = currentRoleHint();
+                const roleHint = currentRoleHint(key);
                 const promptText = buildProactivePrompt(key, roleHint);
                 scheduleSocialReply(
                   key, promptText,
@@ -10332,7 +10373,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         log(`摘要投喂创建会话失败 (${k}): ${error?.message ?? error}`);
         continue;
       }
-      const roleHint = currentRoleHint();
+      const roleHint = currentRoleHint(key);
       const summaryText = `${roleHint ? roleHint + '\n\n' : ''}【群聊摘要】过去一段时间群里发生了这些（你未逐条参与）：\n${lines}\n\n【最近对话】\n${buildContextBlock(k)}\n\n你不需要回复，只需记住这些内容，后续聊天会更自然。`;
       const silentId = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
       social.silentTurns.set(sessionId, [...(social.silentTurns.get(sessionId) ?? []), { id: silentId, ts: Date.now() }]);
@@ -10375,9 +10416,9 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
   // 缓存 key 为两个文件的 mtime，mtime 未变时直接返回，避免每次同步读文件。
   let roleHintCache = { key: '', raw: '' };
   // 原始人格卡（按 mtime 缓存，不截断）。
-  function roleRawContent() {
+  function roleRawContent(key) {
     try {
-      const rs = readRoleState();
+      const rs = readRoleStateForKey(key);
       if (!rs.role) return '';
       // 读取点也必须校验人格名：写入点（控制台 /role 命令）都过 sanitizeRoleName，
       // 但 state/current-role.json 是**用户可直接编辑**的文件。没有这道校验时，
@@ -10407,8 +10448,8 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
   }
   // 按仿真模式取用：先用标题里的 〔一代〕/〔二代〕 标记筛掉另一模式的专属小节，
   // **再**按上限截断——这样另一模式的内容不会白白占掉本次的注入预算。
-  function roleHintForMode(mode) {
-    const selected = selectRoleText(roleRawContent(), mode, [...roleActiveNeedTags]);
+  function roleHintForMode(mode, key) {
+    const selected = selectRoleText(roleRawContent(key), mode, [...roleActiveNeedTags]);
     if (!selected) return '';
     return selected.length > roleInjectMaxChars ? truncateText(selected, roleInjectMaxChars) : selected;
   }
@@ -10436,8 +10477,8 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
     roleActiveNeedTags = new Set();
   }
 
-  function currentRoleHint() {
-    return roleHintForMode('v1');
+  function currentRoleHint(key) {
+    return roleHintForMode('v1', key);
   }
 
   // 二代仿真模式专用角色提示：去掉一代的 [SILENT] / 空格分句等状态机指令，避免与工具协议冲突。
@@ -10527,9 +10568,9 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
     return `第 ${bad.join('，')} 条之间像是把同一句话拆开了；如果两条拼起来才完整，请合并成一条，或把断点移到完整句子的边界。`;
   }
 
-  function currentRoleHintV2() {
+  function currentRoleHintV2(key) {
     // 先按 〔二代〕/〔一代〕 标记筛小节；下面的逐行过滤只是给「没标记的老卡片」兜底。
-    const raw = roleHintForMode('v2');
+    const raw = roleHintForMode('v2', key);
     if (!raw) return '';
     // 一代仿真模式专用指令整行过滤，避免污染二代工具协议。
     // 用 role-card.js 导出的那份（文件顶部已 import）：这里原先又抄了一份同源正则，
@@ -12039,7 +12080,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         const choice = /^1$|^默认/.test(t) ? '1' : /^2$|^新建/.test(t) ? '2' : /^3$|^不用|^关闭/.test(t) ? '3' : null;
         if (choice === '1') {
           const def = cfg.role?.defaultName || (listRoles().includes('小鲸鱼') ? '小鲸鱼' : listRoles()[0] || null);
-          if (def) writeRoleState(def, 'active'); else writeRoleState(null, 'active');
+          if (def) writeRoleStateForKey(key, def, 'active'); else writeRoleStateForKey(key, null, 'active');
           atomicWriteJson(setupFile, { done: true, pending: null, role: def });
           await sendToQQ(key, `好，用默认人设${def ? `「${def}」` : ''}。随时 /role 换。`);
           return;
@@ -12050,7 +12091,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         if (choice === '3') {
-          writeRoleState(null, 'active');
+          writeRoleStateForKey(key, null, 'active');
           atomicWriteJson(setupFile, { done: true, pending: null, role: null });
           await sendToQQ(key, '好，不用角色卡，我按默认人格说话。以后想加用 /role 新建。');
           return;
@@ -12243,29 +12284,33 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         return;
       }
       if (plainContent === '/role' || plainContent.startsWith('/role ')) {
+        if (kind !== 'private') {
+          await sendToQQ(key, '人设只能在私聊里切换（群聊和私聊的人设是分开的）。');
+          return;
+        }
         const rawName = plainContent.slice(5).trim();
         const name = sanitizeRoleName(rawName);
         if (!rawName || name === 'off' || name === 'clear') {
-          writeRoleState(null, roleState.mode);
-          await sendToQQ(key, '已清除角色，恢复正常人格。');
+          writeRoleStateForKey(key, null, roleState.mode);
+          await sendToQQ(key, '已清除本私聊的角色，恢复正常人格。');
         } else {
           const resolved = resolveRoleName(rawName) || resolveRoleName(name);
           if (!resolved) {
             await sendToQQ(key, `角色「${rawName}」不存在。现有：${listRoles().join('、') || '（无）'}`);
           } else {
-            writeRoleState(resolved, roleState.mode);
-            await sendToQQ(key, `已切换角色：${resolved}。`);
+            writeRoleStateForKey(key, resolved, roleState.mode);
+            await sendToQQ(key, `已切换本私聊的角色：${resolved}。（群聊不受影响）`);
           }
         }
         return;
       }
       if (plainContent === '/silent' || plainContent === '/quiet') {
-        writeRoleState(roleState.role, 'silent');
+        writeRoleStateForKey(key, roleState.role, 'silent');
         await sendToQQ(key, '已进入静默模式：群友消息不再回复，仅管理员可对话。');
         return;
       }
       if (plainContent === '/active' || plainContent === '/speak') {
-        writeRoleState(roleState.role, 'active');
+        writeRoleStateForKey(key, roleState.role, 'active');
         await sendToQQ(key, '已退出静默模式，恢复正常回复。');
         return;
       }
@@ -12308,7 +12353,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
     }
 
     // 角色扮演提示注入（仅注入给 agent，不影响群友之间的正常对话语义）
-    const roleHint = currentRoleHint();
+    const roleHint = currentRoleHint(key);
 
     // 群聊里带发送者信息，私聊不用；角色提示注入到消息开头（agent 可见）；
     // 管理员消息带身份标记（供 agent 识别，但其权限仍受工具面硬限制）
@@ -12376,7 +12421,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
 
       // 触发成功：进入活跃，贴最近上下文 + 当前消息 + 人格（仅此一次），让 AI 回复
       enterActive(key);
-      const roleHint = currentRoleHint();
+      const roleHint = currentRoleHint(key);
       const currentLine = (isOwner && kind === 'private') ? `【管理员】${sender}：${textContent}` : `${sender}：${textContent}`;
       const directionHint = textContent.includes('[引用') ? DIRECTION_HINT + '\n' : '';
       const replyInstruction = direct
