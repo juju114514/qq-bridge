@@ -300,6 +300,23 @@ const WINDOWS_RESERVED_NAMES = new Set([
   ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`),
 ]);
 
+/**
+ * 宽松解析角色名：允许用「小鲸鱼」匹配「小鲸鱼（已测试）」这种带标注的文件名。
+ * 规则：完全一致 → 前缀匹配（唯一）→ 包含匹配（唯一）→ null
+ */
+function resolveRoleName(raw) {
+  const want = String(raw ?? '').trim();
+  if (!want) return null;
+  const roles = listRoles();
+  const exact = roles.find((r) => r === want);
+  if (exact) return exact;
+  const prefixed = roles.filter((r) => r.startsWith(want));
+  if (prefixed.length === 1) return prefixed[0];
+  const contained = roles.filter((r) => r.includes(want));
+  if (contained.length === 1) return contained[0];
+  return null;
+}
+
 function roleFilePath(name) {
   return path.join(ROLES_DIR, name + '.md');
 }
@@ -12216,17 +12233,18 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         return;
       }
       if (plainContent === '/role' || plainContent.startsWith('/role ')) {
-        const name = sanitizeRoleName(plainContent.slice(5).trim());
-        if (!name || name === 'off' || name === 'clear') {
+        const rawName = plainContent.slice(5).trim();
+        const name = sanitizeRoleName(rawName);
+        if (!rawName || name === 'off' || name === 'clear') {
           writeRoleState(null, roleState.mode);
           await sendToQQ(key, '已清除角色，恢复正常人格。');
         } else {
-          const roleFile = path.join(ROOT, 'roles', name + '.md');
-          if (!fs.existsSync(roleFile)) {
-            await sendToQQ(key, `角色「${name}」不存在。角色文件放 qq-bridge/roles/ 目录。`);
+          const resolved = resolveRoleName(rawName) || resolveRoleName(name);
+          if (!resolved) {
+            await sendToQQ(key, `角色「${rawName}」不存在。现有：${listRoles().join('、') || '（无）'}`);
           } else {
-            writeRoleState(name, roleState.mode);
-            await sendToQQ(key, `已切换角色：${name}。`);
+            writeRoleState(resolved, roleState.mode);
+            await sendToQQ(key, `已切换角色：${resolved}。`);
           }
         }
         return;
