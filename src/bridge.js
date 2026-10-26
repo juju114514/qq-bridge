@@ -4313,6 +4313,17 @@ async function main() {
             agentTokenOk, v2ToolEnabled, v2SessionAllowed,
             shouldBlockSilentReply,
             fs, path, resolveRuntimeDir,
+            getCfg: () => cfg,
+            getSocialV2: () => socialV2,
+            getSocialV2State, saveSocialV2State,
+            syncStickerLibrary,
+            getStickerEntries: () => stickerEntries,
+            pickStickersByMood, stickerEnabled,
+            applyStickerNoteV2, setStickerRemarkV2, collectStickerV2,
+            assertGroupMember,
+            getSelfUserId: () => selfUserId,
+            onebotHttpAction,
+            appendActivity,
           });
           if (await handleV2Send(req, url)) return;
         }
@@ -5001,23 +5012,6 @@ async function main() {
         }
 
         // ── 斗图：按情绪挑表情（只读） ────────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/sticker-pick') {
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
-          const mood = String(body.mood ?? '').trim().slice(0, 20);
-          const count = Math.max(1, Math.min(6, Number(body.count) || 3));
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          try {
-            const synced = await syncStickerLibrary(false).catch(() => null);
-            const entries = synced?.entries ?? stickerEntries;
-            const picked = pickStickersByMood(entries, mood, count);
-            sendJson({ ok: true, mood, count: picked.length, stickers: picked, hint: '挑一张用 qq_send_sticker 发出去' });
-          } catch (error) { sendJson({ ok: false, error: `挑选失败：${error?.message ?? error}` }, 500); }
-          return;
-        }
 
         // ── 发 QQ 空间动态（仅管理员私聊） ───────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone') {
@@ -5060,35 +5054,6 @@ async function main() {
         }
 
         // ── 点赞（名片赞） ───────────────────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/like') {
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const targetUserId = String(body.targetUserId ?? body.userId ?? '').trim();
-          const times = Math.max(1, Math.min(10, Number(body.times) || 1));
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!req.headers['x-agent-token']) { sendJson({ ok: false, error: 'reserved2 模式点赞必须携带 agent token' }, 403); return; }
-          if (!agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (socialV2.paused) { sendJson({ ok: false, error: '二代 AI 已暂停，不能点赞' }, 403); return; }
-          if (!/^[1-9]\d*$/.test(targetUserId)) { sendJson({ ok: false, error: 'targetUserId 必须是正整数 QQ 号' }, 400); return; }
-          const km2 = /^(group|private):(\d+)$/.exec(key);
-          if (!km2) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          if (km2[1] === 'group') {
-            const memberError = await assertGroupMember(Number(km2[2]), targetUserId);
-            if (memberError) { sendJson({ ok: false, error: String(memberError).replace('已拒绝拍一拍', '已拒绝点赞') }, 403); return; }
-          }
-          if (selfUserId && String(selfUserId) === targetUserId) { sendJson({ ok: false, error: '不能给自己点赞' }, 400); return; }
-          try {
-            const res = await onebotHttpAction('send_like', { user_id: Number(targetUserId), times }, { timeoutMs: 20000 });
-            const failed = res && (res.status === 'failed' || (res.retcode && res.retcode !== 0));
-            if (failed) { sendJson({ ok: false, error: String(res.wording || res.message || '点赞失败') }, 502); return; }
-            log(`[like] ${key} 给 ${targetUserId} 点了 ${times} 个赞`);
-            appendActivity(`${key} 点赞 ${targetUserId} ×${times}`);
-            sendJson({ ok: true, key, targetUserId, times, note: `已给 ${targetUserId} 点赞 ${times} 次` });
-          } catch (error) { sendJson({ ok: false, error: `点赞失败：${error?.message ?? error}` }, 502); }
-          return;
-        }
 
         // ── 点歌（网易云下载 + 截取 + 语音条） ──────────────────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/song') {
@@ -5460,42 +5425,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           }
           return;
         }
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/sticker-note') {
-          if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return; }
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const stickerId = String(body.stickerId ?? '').trim();
-          if (!key || !stickerId) { sendJson({ ok: false, error: 'key 和 stickerId 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('stickerNote')) { sendJson({ ok: false, error: '工具未启用：qq_sticker_note' }, 403); return; }
-          const note = body.note !== undefined && body.note !== null ? String(body.note).trim().slice(0, 200) : undefined;
-          const tags = body.tags !== undefined && body.tags !== null ? (Array.isArray(body.tags) ? body.tags.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 20) : []) : undefined;
-          const usage = body.usage !== undefined && body.usage !== null ? String(body.usage).trim().slice(0, 200) : undefined;
-          const entry = applyStickerNoteV2(stickerId, note, tags, usage);
-          if (!entry) { sendJson({ ok: false, error: `找不到表情 ${stickerId}` }, 404); return; }
-          log(`[sticker] 更新表情本地认知 ${key}: ${entry.id}`);
-          sendJson({ ok: true, key, sticker: entry });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/sticker-remark') {
-          if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return; }
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const stickerId = String(body.stickerId ?? '').trim();
-          if (!key || !stickerId) { sendJson({ ok: false, error: 'key 和 stickerId 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('setStickerRemark')) { sendJson({ ok: false, error: '工具未启用：qq_set_sticker_remark' }, 403); return; }
-          try {
-            const entry = await setStickerRemarkV2(stickerId, String(body.remark ?? ''));
-            log(`[sticker] 修改 QQ 收藏表情备注 ${key}: ${entry.id} -> ${entry.desc}`);
-            sendJson({ ok: true, key, sticker: entry });
-          } catch (error) {
-            sendJson({ ok: false, error: `修改备注失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
         // ── 语音发送（操作者通道：CLI / 控制台，凭 consoleToken） ──────────────
         //
         // 与 /api/send/* 的 agent 通道分开：操作者可能不在任何 QQ 会话里，
@@ -5781,50 +5710,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
             saveSocialV2State();
             log(`[sticker] 工具发送表情失败 ${key}: ${error?.message ?? error}`);
             sendJson({ ok: false, error: `发送表情失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/collect-sticker') {
-          if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return; }
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const messageRef = String(body.messageId ?? body.seq ?? '').trim();
-          const remark = String(body.remark ?? '').trim();
-          if (!key || !messageRef) { sendJson({ ok: false, error: 'key 和 messageId/seq 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('collectSticker')) { sendJson({ ok: false, error: '工具未启用：qq_collect_sticker' }, 403); return; }
-          const keyMatch = /^(group|private):(\d+)$/.exec(key);
-          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          const st = getSocialV2State(key);
-          const collectCfg = cfg.socialV2?.sticker?.collect ?? {};
-          if (collectCfg.enabled === false) { sendJson({ ok: false, error: 'AI 收藏表情功能已关闭' }, 403); return; }
-          const now = Date.now();
-          const maxPerMinute = Math.max(0, Number(collectCfg.maxPerMinute) || 0);
-          const maxPerHour = Math.max(0, Number(collectCfg.maxPerHour) || 0);
-          const recentMinute = (st.stickerCollectTimes || []).filter((t) => now - t < 60000).length;
-          const recentHour = (st.stickerCollectTimes || []).filter((t) => now - t < 3600000).length;
-          if ((maxPerMinute > 0 && recentMinute + 1 > maxPerMinute) || (maxPerHour > 0 && recentHour + 1 > maxPerHour)) {
-            sendJson({ ok: false, error: '收藏表情太频繁了，请过一会儿再偷图' }, 429);
-            return;
-          }
-          // 先预占收藏次数，避免并发调用绕过限频；失败时回滚。
-          st.stickerCollectTimes = st.stickerCollectTimes || [];
-          st.stickerCollectTimes.push(now);
-          if (st.stickerCollectTimes.length > 500) st.stickerCollectTimes = st.stickerCollectTimes.slice(-500);
-          try {
-            const result = await collectStickerV2(key, messageRef, remark);
-            saveSocialV2State();
-            log(`[sticker] AI 收藏表情 ${key}: ${result.emojiId}${result.remark ? '（备注：' + result.remark + '）' : ''}`);
-            appendActivity(`${key} [sticker] AI 收藏表情：${result.remark || result.emojiId}`);
-            sendJson({ ok: true, key, sticker: result.entry, emojiId: result.emojiId, remark: result.remark });
-          } catch (error) {
-            const idx = st.stickerCollectTimes.indexOf(now);
-            if (idx >= 0) st.stickerCollectTimes.splice(idx, 1);
-            if (st.stickerCollectTimes.length > 500) st.stickerCollectTimes = st.stickerCollectTimes.slice(-500);
-            saveSocialV2State();
-            log(`[sticker] AI 收藏表情失败 ${key}: ${error?.message ?? error}`);
-            sendJson({ ok: false, error: `收藏表情失败：${error?.message ?? error}` }, 500);
           }
           return;
         }
