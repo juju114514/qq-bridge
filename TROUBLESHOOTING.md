@@ -31,6 +31,7 @@
 | P. 运维与安全 | [P](#p-运维与安全) |
 | Q. 升级迁移检查单 | [Q](#q-升级迁移检查单) |
 | R. 杀软 / 安全软件干扰 | [R](#r-杀软--安全软件干扰) |
+| S. 维护 / 隐私 / 风控 | [S](#s-维护--隐私--风控) |
 
 ---
 
@@ -1220,6 +1221,96 @@ powershell -ExecutionPolicy Bypass -File .\scripts\kaspersky-diagnose.ps1
    - 暂停后仍异常 → 不是杀软，去看 [C](#c-连-dsh) / [E](#e-能连上但不回话)
 2. 卡巴 → 报告 → 找被拦条目，看它拦的是哪个 exe / 路径 / 端口
 3. 把三样贴出来：诊断输出 + 拦截报告 + `logs/` 最近 50 行
+
+---
+
+---
+
+## S. 维护 / 隐私 / 风控
+
+> 完整运维手册见 **[docs/OPERATIONS.md](docs/OPERATIONS.md)**。这里只列会「突然出问题」的几条。
+
+### S1. 备份里有明文令牌
+
+**现象**：你把 `state/` 或整目录压缩发给了别人 / 传上网盘。
+
+**风险**：`state/console-token`、`config.json` 的 `snowluma.accessToken` 都是明文，等于把控制台和 QQ 网关交出去。
+
+**正确做法**：
+
+```powershell
+.\scripts\maintain.ps1 -Apply -Backup    # DPAPI 加密备份，只有本机+当前用户能解密
+```
+
+跨机灾备（DPAPI 解不开）见 [OPERATIONS.md#跨机器灾备](docs/OPERATIONS.md#跨机器灾备换电脑--重装系统)。
+
+**已经泄露了怎么办**：立刻 `.\scripts\maintain.ps1 -Apply -RotateConsoleToken` → 在 SnowLuma 重置 OneBot token → 重启。
+
+### S2. 日志里有群友聊天内容
+
+**现象**：想发日志求助，但里面全是群友原话和 QQ 号。
+
+**解决**（脱敏后再发）：
+
+```powershell
+$log = Get-Content state\bridge.log -Raw
+$log = $log -replace '\b\d{6,12}\b', '<QQ>' -replace '你的管理员号', '<OWNER>'
+$log | Set-Content state\bridge.redacted.log -Encoding UTF8
+```
+
+**保留期**：建议 7 天，用 `.\scripts\maintain.ps1 -Apply -TrimLogs -KeepLogDays 7`。
+
+### S3. 机器人号被风控 / 封禁
+
+| 现象 | 性质 | 处理 |
+| --- | --- | --- |
+| 频繁掉线、`snowluma.good=false` 反复出现 | 会话失效或轻度风控 | 重新扫码；把 `send.maxSendPerMinute` 降到 2~3 |
+| 登录要验证码/滑块 | 风控 | 人工过验证，24 小时内别高频 |
+| 明确提示账号被限制 | 平台处罚 | **只能申诉**，代码层面无解 |
+
+**立刻要做**：停桥接（别一直重试登录）→ 查 `state/qq-activity.log` 看被封前发了什么 → 降频后再试。
+
+详见 [OPERATIONS.md#账号封号--风控](docs/OPERATIONS.md#账号封号--风控)。
+
+### S4. 唤醒变慢 / token 消耗变大（孤儿会话）
+
+**现象**：换了群或重装 DSH 后，回复变慢，日志里出现不认识的 session id。
+
+**原因**：`state/sessions.json` 只增不减，死会话仍会触发整份历史快照。
+
+**处理**：
+
+```powershell
+.\scripts\maintain.ps1          # 报告里看「会话映射 N 条」
+```
+
+条数明显大于「实际在用的私聊+群聊数」就是有孤儿 → 按 [OPERATIONS.md#孤儿会话](docs/OPERATIONS.md#孤儿会话) 清理（先备份）。
+
+### S5. 本机其他用户能读令牌 / 聊天记录
+
+**检查**：
+
+```powershell
+icacls state
+# 出现 BUILTIN\Users 或 Everyone → 有问题
+```
+
+**硬化**：
+
+```powershell
+.\scripts\maintain.ps1 -Apply -HardenAcl
+```
+
+### S6. 装了 tag 之外的 main 分支，出问题难回滚
+
+**建议**：部署用 tag（`git checkout <tag>`），不要把 `main` 直接当生产。
+
+```powershell
+git fetch --tags; git tag --sort=-creatordate | Select-Object -First 5
+```
+
+`npm install` 会执行 postinstall（`patch-snowluma-sdk.mjs`），属于必要步骤但也是供应链风险面 ——
+不要在不可信分支上装依赖。详见 [OPERATIONS.md#供应链](docs/OPERATIONS.md#供应链)。
 
 ---
 

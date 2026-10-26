@@ -107,6 +107,15 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
 **让 AI 帮你装**：把仓库交给任意能执行命令的 AI agent，让它按 [`AGENT-INSTALL.md`](AGENT-INSTALL.md)
 一步步做——里面有期望输出、失败分支、必须停下来问人的点（登录 DSH、扫码 QQ）和验收标准。
 
+### 日常维护
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\maintain.ps1          # 只报告
+powershell -ExecutionPolicy Bypass -File .\scripts\maintain.ps1 -Apply   # 加密备份 + 裁日志 + 清用量
+```
+
+备份/隐私/凭据轮换/账号风控/孤儿会话/跨机灾备/非 Windows —— 见 **[docs/OPERATIONS.md](docs/OPERATIONS.md)**。
+
 ### 出问题先看排错手册
 
 **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** —— 按「卡在哪一步」索引，覆盖安装/启动/DSH/SnowLuma/不回话/人设/媒体/控制台/兼容性/性能，
