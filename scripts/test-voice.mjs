@@ -168,11 +168,17 @@ console.log('## MCP 工具与 bridge 路由');
 
 console.log('## 安全边界（AI 通道来源限制）');
 {
-  const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
+  // handler 可能已按域拆到 src/api/*.js —— 断言要在「bridge + api」合并源里查
+  const _apiDir = path.join(ROOT, 'src', 'api');
+  const _apiSrc = fs.existsSync(_apiDir)
+    ? fs.readdirSync(_apiDir).filter((f) => f.endsWith('.js')).sort().map((f) => fs.readFileSync(path.join(_apiDir, f), 'utf8')).join('\n')
+    : '';
+  const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8') + '\n' + _apiSrc;
   const fn = bridge.slice(bridge.indexOf('function resolveVoicePathForV2'), bridge.indexOf('function resolveVoicePathForOperator'));
   ok(/base64:|data:|https\?:/.test(fn), 'AI 通道拒绝 base64/data/http 来源');
   ok(/allowAbsolutePath/.test(fn), 'AI 通道检查 allowAbsolutePath');
-  const sendRoute = bridge.slice(bridge.indexOf("url.pathname === '/api/socialV2/send-voice'"), bridge.indexOf("url.pathname === '/api/socialV2/send-sticker'"));
+  const _sv = bridge.indexOf("'/api/socialV2/send-voice'");
+  const sendRoute = _sv < 0 ? '' : bridge.slice(_sv, _sv + 3000);
   ok(sendRoute.includes('v2SessionAllowed(key)'), '语音发送校验会话白名单');
   ok(sendRoute.includes('agentTokenOk(key, token)'), '语音发送校验 agent token');
   ok(sendRoute.includes('shouldBlockSilentReply(key)'), '语音发送尊重静默模式');

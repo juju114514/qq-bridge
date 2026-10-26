@@ -4307,7 +4307,7 @@ async function main() {
         }
         // ── socialV2 语音合成（C 批安全子集，已迁出到 src/api/socialV2-send.js）──────
         // say / sing：spawn 外部 PowerShell 脚本，不经过 sendMessagesV2
-        if (req.method === 'POST') {
+        if (req.method === 'POST' || url.pathname === '/api/socialV2/sticker-image') {
           const handleV2Send = createSocialV2SendHandler({
             sendJson, readBody, log,
             getMode: () => currentMode,
@@ -4325,6 +4325,14 @@ async function main() {
             getSelfUserId: () => selfUserId,
             onebotHttpAction,
             appendActivity,
+            getStickerImageData, safeFetchBuffer,
+            MAX_MEDIA_BYTES, MAX_MEDIA_PIXELS, getImageDimensions,
+            mimeFromBuffer, mimeFromUrl, toModelMedia,
+            voiceCfg, modeAllowed,
+            resolveVoicePathForV2, voiceBudgetCheck,
+            inspectAudio, describeAudio, sendVoiceForV2,
+            resolveReplyTargetV2, sendStickerV2,
+            truncateText, scheduleReplyCheckV2,
           });
           if (await handleV2Send(req, url)) return;
         }
@@ -5082,47 +5090,6 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         // ── 表情包体系（reserved2） ──────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/sticker-image') {
-          if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return; }
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const stickerId = String(url.searchParams.get('stickerId') ?? '').trim();
-          if (!key || !stickerId) { sendJson({ ok: false, error: 'key 和 stickerId 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('getStickerImage')) { sendJson({ ok: false, error: '工具未启用：qq_get_sticker_image' }, 403); return; }
-          try {
-            const entry = await getStickerImageData(stickerId);
-            const fetched = await safeFetchBuffer(entry.url, MAX_MEDIA_BYTES);
-            const dims = getImageDimensions(fetched.buffer);
-            if (dims && dims.width * dims.height > MAX_MEDIA_PIXELS) {
-              sendJson({ ok: false, error: `表情图片像素超限（${dims.width}x${dims.height}），已拒绝` }, 400);
-              return;
-            }
-            const mimeType = mimeFromBuffer(fetched.buffer) || mimeFromUrl(entry.url);
-            const prep = await toModelMedia(fetched.buffer, mimeType, `收藏表情 ${entry.id}`);
-            if (!prep.ok) {
-              sendJson({ ok: false, error: `表情图片无法提供给模型：${prep.error}` }, 413);
-              return;
-            }
-            sendJson({
-              ok: true,
-              key,
-              sticker: {
-                id: entry.id,
-                desc: entry.desc || '',
-                localNote: entry.localNote || '',
-                tags: entry.tags || [],
-                url: entry.url,
-                md5: entry.md5
-              },
-              image: { mimeType: prep.mimeType, data: prep.buffer.toString('base64') },
-              ...(prep.note ? { note: prep.note } : {})
-            });
-          } catch (error) {
-            sendJson({ ok: false, error: `获取表情图片失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
         // ── 语音发送（操作者通道：CLI / 控制台，凭 consoleToken） ──────────────
         //
         // 与 /api/send/* 的 agent 通道分开：操作者可能不在任何 QQ 会话里，
@@ -5240,177 +5207,7 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         }
 
         // ── 语音发送（AI 通道：reserved2 + agent token，只能发自己那个会话） ────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/send-voice') {
-          const body = await readBody();
-          const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
-          const key = String(body.key ?? body.target ?? '').trim();
-          const voice = voiceCfg();
-          if (!voice.enabled) { sendJson({ ok: false, error: '语音功能已关闭' }, 403); return; }
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空（格式 group:群号 或 private:QQ号）' }, 400); return; }
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!token) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
-          if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (!v2ToolEnabled('sendVoice')) { sendJson({ ok: false, error: '工具未启用：qq_send_voice' }, 403); return; }
-          if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const keyMatch = /^(group|private):(\d+)$/.exec(key);
-          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          const kind = keyMatch[1];
-          const id = Number(keyMatch[2]);
-          if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
-            sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
-            return;
-          }
-          // 只要名字（解析）不要内容（预览）：dry-run 也必须经过与真发相同的解析与校验。
-          let resolved;
-          try {
-            resolved = resolveVoicePathForV2(body.voice ?? body.file ?? '');
-          } catch (error) {
-            sendJson({ ok: false, error: error?.message ?? String(error) }, 400);
-            return;
-          }
-          try {
-            voiceBudgetCheck(key, voice);
-            if (body.dryRun === true) {
-              const probe = await inspectAudio(resolved.path, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds });
-              if (!probe.ok) { sendJson({ ok: false, error: probe.error }, 400); return; }
-              sendJson({ ok: true, dryRun: true, key, file: resolved.path, detail: describeAudio(probe) });
-              return;
-            }
-            const sent = await sendVoiceForV2(key, body.voice ?? body.file, {
-              label: body.label ? String(body.label).slice(0, 100) : '',
-              verify: body.verify,
-              readback: body.readback === true,
-              // AI 也可以调音量（默认走 config 的 defaultVolume）
-              audio: (body.volume !== undefined || body.normalize === true || body.loudness !== undefined)
-                ? { volume: body.volume, normalize: body.normalize === true, loudness: body.loudness }
-                : null
-            });
-            sendJson({
-              ok: true,
-              key,
-              messageId: sent.messageId,
-              file: path.basename(sent.file),
-              detail: sent.detail,
-              audioProcessing: sent.audioProcessing,
-              // verified=true 表示已用 get_msg 回读到这条消息的 record 段（"真的发出去了"的硬证据）
-              verified: sent.verification?.confirmed === true,
-              readback: sent.readback,
-              warnings: sent.warnings
-            });
-          } catch (error) {
-            // 额度只在真正发出后才记账（voiceBudgetCommit），所以失败路径无需回滚。
-            sendJson({ ok: false, error: error?.message ?? String(error) }, 500);
-          }
-          return;
-        }
 
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/send-sticker') {
-          if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return; }
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const stickerId = String(body.stickerId ?? '').trim();
-          const caption = String(body.message ?? body.caption ?? '').trim();
-          const replyToMessageId = body.replyToMessageId;
-          const atUserId = body.atUserId ?? null;
-          if (!key || !stickerId) { sendJson({ ok: false, error: 'key 和 stickerId 不能为空' }, 400); return; }
-          // 仿真常识：表情消息只能是一张表情，不能在同一气泡里附带文字说明。
-          if (caption) {
-            sendJson({ ok: false, error: '表情消息不能附带文字；请先用 qq_send_message / qq_reply 把想说的话作为单独气泡发送，再单独 qq_send_sticker 发表情' }, 400);
-            return;
-          }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('sendSticker')) { sendJson({ ok: false, error: '工具未启用：qq_send_sticker' }, 403); return; }
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!req.headers['x-agent-token']) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
-          const keyMatch = /^(group|private):(\d+)$/.exec(key);
-          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          const kind = keyMatch[1];
-          const id = Number(keyMatch[2]);
-          if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
-            sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
-            return;
-          }
-          if (kind === 'private' && atUserId) { sendJson({ ok: false, error: '私聊不需要 @' }, 400); return; }
-          if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '' && !/^-?[1-9]\d*$/.test(String(replyToMessageId).trim())) {
-            sendJson({ ok: false, error: 'replyToMessageId 必须是非零整数（消息 id 可能为负数）' }, 400);
-            return;
-          }
-          let quotedInfo = null;
-          let actualReplyToMessageId = replyToMessageId;
-          if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '') {
-            const stForReply = getSocialV2State(key);
-            const resolved = await resolveReplyTargetV2(stForReply, kind, id, String(replyToMessageId).trim());
-            if (!resolved) {
-              sendJson({ ok: false, error: '无法解析被引用消息，请确认 message id 正确且属于当前会话（可用 qq_get_message_detail 查看）' }, 400);
-              return;
-            }
-            quotedInfo = resolved.info;
-            actualReplyToMessageId = resolved.messageId;
-          }
-          const sendCfg = cfg.socialV2?.send ?? {};
-          const now = Date.now();
-          try {
-            const st = getSocialV2State(key);
-            const maxPerMinute = Number(sendCfg.maxSendPerMinute) || 0;
-            const maxPerHour = Number(sendCfg.maxSendPerHour) || 0;
-            const recentMinute = (st.sendTimes || []).filter((t) => now - t < 60000).length;
-            const recentHour = (st.sendTimes || []).filter((t) => now - t < 3600000).length;
-            if ((maxPerMinute > 0 && recentMinute + 1 > maxPerMinute) || (maxPerHour > 0 && recentHour + 1 > maxPerHour)) {
-              sendJson({ ok: false, error: '发送频率超限，请稍后再试' }, 429);
-              return;
-            }
-            st.sendTimes.push(now);
-            if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
-            const sent = await sendStickerV2(key, stickerId, {
-              replyToMessageId: actualReplyToMessageId,
-              atUserId
-            });
-            // 记录到二代会话的 recentMessages，让 AI 知道自己发过这个表情
-            const label = sent.entry?.desc || sent.entry?.localNote || '表情包';
-            const text = `[表情包:${label}]`;
-            st.recentMessages.push({
-              messageId: sent.messageId ? String(sent.messageId) : null,
-              sender: '我',
-              text: truncateText(text, 200),
-              plain: truncateText(text, 200),
-              quoteTargetIsSelf: false,
-              isOwner: true,
-              ownerLabel: '我',
-              isSelf: true,
-              media: [],
-              hasMedia: false,
-              forwardIds: [],
-              hasForward: false,
-              sticker: { id: sent.entry?.id || stickerId, desc: sent.entry?.desc || '', localNote: sent.entry?.localNote || '' },
-              time: Date.now()
-            });
-            const recentLimit = Number(cfg.socialV2?.context?.recentLimit) || 100;
-            if (st.recentMessages.length > recentLimit) st.recentMessages.splice(0, st.recentMessages.length - recentLimit);
-            st.lastAiReplyAt = now;
-            st.lastActionAt = now;
-            st.wakeConfig.noActionCount = 0;
-            st.preSleepWaitSatisfiedAt = 0;
-            st.preSleepWaitObservedAt = 0;
-            st.preSleepWaitAccumMs = 0;
-            saveSocialV2State();
-            scheduleReplyCheckV2(key);
-            log(`[sticker] 工具发送表情 ${key}: ${sent.entry?.id || stickerId}`);
-            appendActivity(`${key} [sticker] 工具发送表情：${label}`);
-            sendJson({ ok: true, key, sticker: sent.entry, sent: 1, failed: 0, quoted: quotedInfo });
-          } catch (error) {
-            const st = getSocialV2State(key);
-            const idx = st.sendTimes.indexOf(now);
-            if (idx >= 0) st.sendTimes.splice(idx, 1);
-            if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
-            saveSocialV2State();
-            log(`[sticker] 工具发送表情失败 ${key}: ${error?.message ?? error}`);
-            sendJson({ ok: false, error: `发送表情失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
         // 语音库列表。两条通道共用：
         //   - 带 agent token（AI 的 qq_list_voices）→ 必须带 key，校验会话白名单/工具开关；
         //   - 不带 agent token（控制台调试面板 / CLI）→ 只需控制台令牌，不需要 key。

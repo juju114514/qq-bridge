@@ -135,7 +135,11 @@ console.log('## qq-bridge 语音系统：路由与开关');
   // 操作者通道不应被 AI 开关挡住（否则默认关闭时你自己也发不了）
   const opSection = bridge.slice(bridge.indexOf("url.pathname === '/api/voice/send' || url.pathname === '/api/send/voice'"), bridge.indexOf("'/api/socialV2/send-voice'"));
   ok(!/if \(!voice\.enabled\)/.test(opSection), '操作者通道不被 voice.enabled 挡住（默认关闭时仍可手动试发）');
-  const agentSection = bridge.slice(bridge.indexOf("url.pathname === '/api/socialV2/send-voice'"), bridge.indexOf("'/api/socialV2/send-sticker'"));
+  // 优先定位「路由判定」那一处（bridge 里其它地方也可能出现同一路径字面量）
+  // 在**合并源**里找路由判定那一处（handler 可能已在 src/api/*.js）
+  let _as = bridgeAll.indexOf("pathname === '/api/socialV2/send-voice'");
+  if (_as < 0) _as = bridgeAll.indexOf("'/api/socialV2/send-voice'");
+  const agentSection = _as < 0 ? '' : bridgeAll.slice(_as, _as + 3000);
   ok(/if \(!voice\.enabled\)/.test(agentSection), 'AI 通道受 voice.enabled 挡住');
 }
 
