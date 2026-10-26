@@ -242,14 +242,14 @@ node scripts/test-audit.mjs
 
 > 安全网已就绪：`scripts/test-audit.mjs`（35/35）+ `scripts/test-router.mjs`（11）+ `scripts/test-api-module-loader.mjs`（17）。
 > 守恒校验：`node scripts/route-inventory.mjs --stats`（会同时扫 `src/bridge.js` 与 `src/api/*.js`）。
-> 基线：`routeHits=147`、`uniquePaths=115`（迁移后每多一个「分派前缀」会 +1 命中，属预期）。
+> 基线：`uniquePaths=115`（迁移后每多一个「分派前缀」`routeHits` 会 +1，属预期）。
 
 | 分组 | 路由数 | 状态 | 产出 |
 | --- | ---: | --- | --- |
 | status | 5 | ✅ 已迁出 | `src/api/status.js` |
 | images | 3 | ✅ 已迁出 | `src/api/images.js` |
 | roles | 9 | ✅ 已迁出 | `src/api/roles.js` |
-| slang | 14 | ⬜ 待迁 | — |
+| slang | 14 | ✅ 已迁出 | `src/api/slang.js` |
 | stickers | 8 | ⬜ 待迁 | — |
 | send | 6 | ⬜ 待迁 | — |
 | sessions/tokens | 8 | ⬜ 待迁 | — |
