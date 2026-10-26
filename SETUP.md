@@ -1,5 +1,13 @@
 # 三步接上你自己的 DeepSeek
 
+> **懒人版**：装好 DSH 和 SnowLuma 之后，一条命令即可（详见 [README](README.md#一键安装推荐)）：
+>
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
+> ```
+>
+> 它会自动探测端口、读 token、写 config、启动并验收。下面是手动流程，供排错或特殊环境使用。
+
 > 这个机器人**不直接存 DeepSeek 密钥**。它连的是本机的 **DeepSeek Harness（DSH）**，
 > DeepSeek 的登录/密钥放在 DSH 里。所以「换一个人用」= 换他自己登录的 DSH，机器人代码不用改。
 

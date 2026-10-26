@@ -7,10 +7,15 @@
 ## 三步上手（换成你自己的 DeepSeek）
 
 1. **装 DeepSeek Harness（DSH）**，用自己的 DeepSeek 账号登录 —— 密钥只存在 DSH 里，本项目不存
-2. **装 SnowLuma**，扫码登录你的 QQ 小号，复制 access token
-3. 在项目目录跑 `powershell -ExecutionPolicy Bypass -File .\setup.ps1`，按提示回答，生成 `config.json`，然后 `npm start`
+2. **装 SnowLuma**，扫码登录你的 QQ 小号
+3. 在项目目录跑：
 
-详细步骤和常见问题见 **[SETUP.md](SETUP.md)**。
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
+```
+
+它会自动探测 DSH 端口、读 SnowLuma token、写 `config.json`、启动并验收。
+手动流程见 **[SETUP.md](SETUP.md)**；让 AI 代装见 **[AGENT-INSTALL.md](AGENT-INSTALL.md)**。
 
 # QQ ↔ DeepSeek Harness 桥接
 
@@ -64,6 +69,43 @@ QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──�
                                                 ▲                      │
                                                 └── agent 回复/提问/审批 ┘
 ```
+
+## 一键安装（推荐）
+
+前提：**DSH 已安装并登录**、**SnowLuma 已扫码登录 QQ 小号**。这两个是外部程序，仓库里不含。
+
+```powershell
+git clone https://github.com/juju114514/qq-bridge.git
+cd qq-bridge
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
+```
+
+脚本会自动：
+
+| 步骤 | 说明 |
+| --- | --- |
+| 检查 Node | 需要 >= 22.13（找不到就去常见安装路径和 DSH 自带运行时里找） |
+| 探测 DSH | 找 DeepSeek Harness 进程监听的端口，不用手填 |
+| 探测 SnowLuma | 找进程安装目录 → 读 `config/onebot_*.json` → 拿 HTTP/WS token 和端口 |
+| 写配置 | 从 `config.example.json` 生成 `config.json`（已存在则备份后更新） |
+| 装依赖 | `npm install`（失败自动换镜像重试） |
+| 启动 + 验收 | 起桥接，轮询 `/api/status`，打印 `dshReady` / `snowluma.good` |
+
+常用参数：
+
+```powershell
+# 也放行这几个群
+.\install.ps1 -OwnerQQ 123456789 -Groups "111,222"
+# 只写配置，不启动
+.\install.ps1 -OwnerQQ 123456789 -NoStart
+# 自动探测失败时手动指定
+.\install.ps1 -OwnerQQ 123456789 -DshUrl http://127.0.0.1:54694 -SnowlumaHome "D:\SnowLuma"
+```
+
+**让 AI 帮你装**：把仓库交给任意能执行命令的 AI agent，让它按 [`AGENT-INSTALL.md`](AGENT-INSTALL.md)
+一步步做——里面有期望输出、失败分支、必须停下来问人的点（登录 DSH、扫码 QQ）和验收标准。
+
+手装流程见 [SETUP.md](SETUP.md)。
 
 ## 项目展示
 
