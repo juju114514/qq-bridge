@@ -1,0 +1,41 @@
+[Unit]
+Description=qq-bridge (QQ ↔ DeepSeek Harness)
+Documentation=https://github.com/juju114514/qq-bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 专用低权限用户（install-server.sh 会创建）
+User=__USER__
+Group=__USER__
+WorkingDirectory=__DIR__
+ExecStart=__NODE__ __DIR__/src/bridge.js
+Restart=always
+RestartSec=5
+# 崩太多就停，避免无限重启刷日志（systemd 的 StartLimit）
+StartLimitIntervalSec=120
+StartLimitBurst=6
+
+# 环境：Node 需要能找到 PATH 里的 ffmpeg 等
+Environment=NODE_ENV=production
+Environment=HOME=__HOME__
+# 需要代理时取消注释：
+# Environment=HTTPS_PROXY=http://127.0.0.1:7890
+# Environment=NO_PROXY=127.0.0.1,localhost,::1
+
+# 最小权限硬化
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=Full
+ProtectHome=read-only
+# state/ 与 logs/ 必须可写（ProtectHome=read-only 时 home 只读，所以数据放 __DIR__ 下）
+ReadWritePaths=__DIR__/state __DIR__/logs __DIR__/audio __DIR__
+
+# 日志走 journald；桥接自己也会写 state/bridge.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qq-bridge
+
+[Install]
+WantedBy=multi-user.target

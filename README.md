@@ -153,6 +153,16 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 | 备份 / 隐私 / 账号风控 | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** |
 | 杀软干扰 | **[docs/guides/KASPERSKY.md](docs/guides/KASPERSKY.md)** |
 
+## 服务器 / Linux 部署
+
+```bash
+sudo ./deploy/install-server.sh --owner-qq 你的QQ号
+sudo ./deploy/verify-server.sh
+```
+
+systemd 托管、崩了自动重启、日志进 journald；维护与熔断脚本见
+**[docs/guides/SERVER.md](docs/guides/SERVER.md)**（`deploy/maintain-server.sh` / `guard-server.sh`）。
+
 ## 项目展示
 
 📽️ [AI 仿真群友 - 项目介绍视频](https://github.com/Derpyu520/qq-bridge/releases/download/v0.1.5/project-intro.mp4)（约 11 MB）
