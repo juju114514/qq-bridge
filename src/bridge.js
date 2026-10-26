@@ -26,6 +26,8 @@ import { normalizeImageForModel } from './media-normalize.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
+import { createImagesHandler } from './api/images.js';
+import { createRolesHandler } from './api/roles.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
@@ -3679,130 +3681,30 @@ async function main() {
           sendJson({ ok: true, mode: requestedMode, closedAgentPreset: next.closedAgentPreset, dshSynced });
           return;
         }
-        if (req.method === 'POST' && url.pathname === '/api/role') {
-          const body = await readBody();
-          const rs = readRoleState();
-          if (body.role && typeof body.role === 'string') {
-            const name = sanitizeRoleName(body.role);
-            if (!fs.existsSync(path.join(ROOT, 'roles', name + '.md'))) {
-              sendJson({ ok: false, error: `角色「${name}」不存在（roles/${name}.md）` }, 400);
-              return;
-            }
-            writeRoleState(name, rs.mode);
-            log(`控制台：角色已设置为 ${name}`);
-            sendJson({ ok: true, role: name });
-          } else {
-            writeRoleState(null, rs.mode);
-            log('控制台：角色已清除');
-            sendJson({ ok: true, role: null });
-          }
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/role-mode') {
-          const body = await readBody();
-          const rs = readRoleState();
-          const mode = body.mode === 'silent' ? 'silent' : 'active';
-          writeRoleState(rs.role, mode);
-          log(`控制台：静默模式 ${mode === 'silent' ? '开启' : '关闭'}`);
-          sendJson({ ok: true, roleMode: mode });
-          return;
-        }
-        // ── 人格管理 ──────────────────────────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/roles') {
-          const rs = readRoleState();
-          const summaries = roleSummaries();
-          sendJson({
-            // roles 保持「人格名字符串数组」的既有契约（scripts/test-console.mjs 等调用方依赖它）；
-            // 富信息放在 summaries 里，新老调用方互不影响。
-            roles: summaries.map((role) => role.name),
-            summaries,
-            current: rs.role ?? null,
-            limits: { nameMax: ROLE_NAME_MAX, contentMaxBytes: ROLE_CONTENT_MAX_BYTES, injectMaxChars: roleInjectMaxChars },
+        // ── 人格管理（已迁出到 src/api/roles.js）──────────────────────────────
+        // 9 条路由：/api/role, /api/role-mode, /api/roles*, /api/roles/{content,limit,create,update,rename,delete}
+        if (url.pathname === '/api/role' || url.pathname.startsWith('/api/role')) {
+          const handleRoles = createRolesHandler({
+            sendJson, readBody, log, fs, path, ROOT,
+            readRoleState, writeRoleState,
+            roleSummaries, readRoleContent, writeRoleContent,
+            roleWarnings, roleCharStats, roleSectionReport,
+            validateRoleName, validateRoleContent, sanitizeRoleName, roleFilePath,
+            getInjectMaxChars: () => roleInjectMaxChars,
+            setInjectLimit: (raw) => {
+              const next = applyRoleInjectLimit(raw);
+              const configFile = path.join(ROOT, 'config.json');
+              const file = readConfigObject(configFile);
+              file.role = { ...(file.role ?? {}), maxInjectChars: next };
+              atomicWriteJson(configFile, file);
+              cfg.role = { ...(cfg.role ?? {}), maxInjectChars: next };
+              roleInjectMaxChars = next;
+              log(`控制台：人格注入上限已设为 ${next} 字符（下一条消息生效）`);
+              return next;
+            },
+            limits: { ROLE_NAME_MAX, ROLE_CONTENT_MAX_BYTES },
           });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/roles/content') {
-          let name;
-          try { name = validateRoleName(url.searchParams.get('name')); } catch (error) { sendJson({ ok: false, error: error.message }, 400); return; }
-          if (!fs.existsSync(roleFilePath(name))) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return; }
-          const content = readRoleContent(name);
-          sendJson({
-            ok: true,
-            name,
-            content,
-            chars: content.length,
-            bytes: Buffer.byteLength(content, 'utf8'),
-            warnings: roleWarnings(content),
-            limits: { injectMaxChars: roleInjectMaxChars },
-            stats: roleCharStats(content),
-            // 每个小节在各模式下是否会被注入，供控制台预览「这条规则到底生不生效」
-            sections: { v1: roleSectionReport(content, 'v1'), v2: roleSectionReport(content, 'v2') },
-          });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/roles/limit') {
-          const body = await readBody();
-          const next = applyRoleInjectLimit(body.maxInjectChars);
-          const configFile = path.join(ROOT, 'config.json');
-          const file = readConfigObject(configFile);
-          file.role = { ...(file.role ?? {}), maxInjectChars: next };
-          atomicWriteJson(configFile, file);
-          cfg.role = { ...(cfg.role ?? {}), maxInjectChars: next };
-          roleInjectMaxChars = next;
-          log(`控制台：人格注入上限已设为 ${next} 字符（下一条消息生效）`);
-          sendJson({ ok: true, maxInjectChars: next, limits: { injectMaxChars: next } });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/roles/create') {
-          const body = await readBody();
-          let name; let content;
-          try { name = validateRoleName(body.name); content = validateRoleContent(body.content); }
-          catch (error) { sendJson({ ok: false, error: error.message }, 400); return; }
-          if (fs.existsSync(roleFilePath(name))) { sendJson({ ok: false, error: `人格「${name}」已存在` }, 400); return; }
-          writeRoleContent(name, content);
-          log(`控制台：创建人格「${name}」（${content.length} 字符）`);
-          sendJson({ ok: true, role: name, warnings: roleWarnings(content) });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/roles/update') {
-          const body = await readBody();
-          let name; let content;
-          try { name = validateRoleName(body.name); content = validateRoleContent(body.content); }
-          catch (error) { sendJson({ ok: false, error: error.message }, 400); return; }
-          if (!fs.existsSync(roleFilePath(name))) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return; }
-          writeRoleContent(name, content);
-          log(`控制台：更新人格「${name}」（${content.length} 字符）`);
-          sendJson({ ok: true, role: name, chars: content.length, warnings: roleWarnings(content) });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/roles/rename') {
-          const body = await readBody();
-          let from; let to;
-          try { from = validateRoleName(body.from); to = validateRoleName(body.to); }
-          catch (error) { sendJson({ ok: false, error: error.message }, 400); return; }
-          if (from === to) { sendJson({ ok: true, role: to, renamed: false }); return; }
-          if (!fs.existsSync(roleFilePath(from))) { sendJson({ ok: false, error: `人格「${from}」不存在` }, 404); return; }
-          if (fs.existsSync(roleFilePath(to))) { sendJson({ ok: false, error: `人格「${to}」已存在` }, 400); return; }
-          fs.renameSync(roleFilePath(from), roleFilePath(to));
-          const rs = readRoleState();
-          const switched = rs.role === from;
-          if (switched) writeRoleState(to, rs.mode);
-          log(`控制台：人格重命名「${from}」→「${to}」${switched ? '（当前启用中，已跟随切换）' : ''}`);
-          sendJson({ ok: true, role: to, renamed: true, currentFollowed: switched });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/roles/delete') {
-          const body = await readBody();
-          let name;
-          try { name = validateRoleName(body.name); } catch (error) { sendJson({ ok: false, error: error.message }, 400); return; }
-          if (!fs.existsSync(roleFilePath(name))) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return; }
-          fs.rmSync(roleFilePath(name));
-          const rs = readRoleState();
-          const cleared = rs.role === name;
-          if (cleared) writeRoleState(null, rs.mode);
-          log(`控制台：删除人格「${name}」${cleared ? '（该人格正在启用，已同时清除当前人格）' : ''}`);
-          sendJson({ ok: true, deleted: name, clearedCurrent: cleared });
-          return;
+          if (await handleRoles(req, url)) return;
         }
 
         // ── 仿真提示词（一代 / 二代各自的预设内置提示词）──────────────────────
@@ -7533,51 +7435,20 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
           return;
         }
         // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
+        // ── 图片/表情查询端点（已迁出到 src/api/images.js） ──────────────────
         if (req.method === 'GET' && url.pathname === '/api/images/message') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const messageId = String(url.searchParams.get('messageId') ?? '').trim();
-          const agentToken = String(req.headers['x-agent-token'] ?? '').trim();
-          const keyMatch = /^(group|private):(\d+)$/.exec(key);
-          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          if (!messageId) { sendJson({ ok: false, error: 'messageId 不能为空' }, 400); return; }
-          if (currentMode === 'reserved2' && !agentToken) {
-            sendJson({ ok: false, error: 'reserved2 模式读取图片必须携带 agent token' }, 403);
-            return;
-          }
-          if (currentMode === 'chat' || currentMode === 'reserved') {
-            sendJson({ ok: false, error: '一代 chat/reserved 模式图片已自动内联，按需图片工具仅 reserved2 模式可用' }, 403);
-            return;
-          }
-          if (agentToken && !agentTokenOk(key, agentToken)) {
-            sendJson({ ok: false, error: 'agent token 无效' }, 403);
-            return;
-          }
-          const kind = keyMatch[1];
-          const id = Number(keyMatch[2]);
-          if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
-            sendJson({ ok: false, error: '当前模式不允许读取该会话' }, 403);
-            return;
-          }
-          if (agentToken && !v2ToolEnabled('getImages')) {
-            sendJson({ ok: false, error: '工具未启用：qq_get_message_images' }, 403);
-            return;
-          }
-          if (!agentToken && currentMode === 'closed-agent' && !v2ToolEnabled('getImages')) {
-            sendJson({ ok: false, error: '工具未启用：qq_get_message_images' }, 403);
-            return;
-          }
-          const media = findMessageMedia(key, messageId);
-          if (!media.length) {
-            sendJson({ ok: true, messageId, media: [], images: [], note: '该消息没有可读取的图片/表情元数据' });
-            return;
-          }
-          try {
-            const images = await fetchMediaData(media);
-            sendJson({ ok: true, messageId, media, images });
-          } catch (error) {
-            log(`图片查询失败 ${key} ${messageId}: ${error?.message ?? error}`);
-            sendJson({ ok: false, error: `图片查询失败：${error?.message ?? error}` }, 500);
-          }
+          const handleImages = createImagesHandler({
+            sendJson,
+            getMode: () => currentMode,
+            agentTokenOk,
+            modeAllowed,
+            getCfg: () => cfg,
+            v2ToolEnabled,
+            findMessageMedia,
+            fetchMediaData,
+            log,
+          });
+          await handleImages(req, url);
           return;
         }
 

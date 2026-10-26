@@ -95,6 +95,80 @@ sudo crontab -e
 sudo /opt/qq-bridge/deploy/guard-server.sh --resume
 ```
 
+## 服务器用户怎么解决「两个 GUI 硬依赖」
+
+服务器（无桌面）上跑这套系统，必须先解决 DSH 与 QQ 网关的登录界面问题。
+**两条腿都要换**，少一条就跑不起来：
+
+| 依赖 | 桌面版做法 | 服务器上的做法 | 官方/社区支持 |
+| --- | --- | --- | --- |
+| **DSH** | 打开 Electron 窗口登录 | `node .../@deepseek-ai/dsh/lib/bin.js --profile web --port 8080`（无头跑 web profile） | DSK CLI 自带 `--profile` 机制；**需实测** |
+| **QQ 网关** | SnowLuma 扫码 | 换 **NapCatQQ**（Docker）或 **Lagrange.OneBot**：都实现 OneBot v11，桥接不绑死 SnowLuma | 成熟，有 Docker 镜像 |
+
+### 第一步：先证明 DSH 能无头跑
+
+```bash
+chmod +x deploy/probe-dsh-headless.sh
+./deploy/probe-dsh-headless.sh --port 3080
+```
+
+- 退出码 `0` → 打印「DSH 无头【可用】」→ 继续第二步
+- 退出码 `1` → 打印「DSH 无头【不可用】」+ 日志 → **停止**，回拓扑 A（家用机）
+
+> 探测脚本会自己起、自己等端口、自己收尾；`--keep` 可保留进程看细节。
+> 它能免掉你手工找 `bin.js`、拼 profile 参数的麻烦。
+
+### 第二步：装无头 QQ 网关（NapCat 示例）
+
+```bash
+# 1) 拉镜像并起（端口与桥接默认一致：3000 HTTP / 3001 WS）
+docker run -d --name napcat --restart unless-stopped   -p 127.0.0.1:3000:3000 -p 127.0.0.1:3001:3001   -v /opt/napcat:/app/napcat/config   mlikiowa/napcat-docker:latest
+
+# 2) 首次扫码登录（看日志里的二维码 / 或用它的 WebUI）
+docker logs -f napcat
+
+# 3) 在 NapCat 配置里开启 OneBot v11：
+#    HTTP 服务器 127.0.0.1:3000（记下 access token）
+#    WebSocket 服务器 127.0.0.1:3001（记下 access token）
+```
+
+> 只监听 `127.0.0.1`（上面 `-p 127.0.0.1:...` 就是干这个），不要暴露公网。
+
+### 第三步：装桥接
+
+```bash
+sudo ./deploy/install-server.sh --owner-qq <你的QQ号>   --dsh-url http://127.0.0.1:3080   --snowluma-http http://127.0.0.1:3000   --snowluma-ws   ws://127.0.0.1:3001
+sudo ./deploy/verify-server.sh
+```
+
+### 与桌面版的差异（服务器版要知道）
+
+| 项 | 桌面版（SnowLuma + DSH 窗口） | 服务器版（NapCat + DSH 无头） |
+| --- | --- | --- |
+| QQ 登录 | 扫码，随时可看 | 首次扫码一次，之后靠 token；掉线要重新扫码（可看容器日志） |
+| 表情/收藏 | SnowLuma 面板管理 | 靠桥接的 `qq_list_stickers`（OneBot 接口提供） |
+| 语音发送 | 面板可试听 | 直接发文件，无试听 |
+| DSH 更新 | 应用内更新 | 手工替换 runtime 目录或镜像重建 |
+| 排错入口 | 两个窗口的日志 | `journalctl -u qq-bridge` + `docker logs napcat` |
+
+### 常见坑
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `probe-dsh-headless.sh` 报找不到 `bin.js` | 桌面版把它封在 `app.asar` 里 | 用 DSH 的 Linux 解包发行版；否则回拓扑 A |
+| 探测时进程立刻退出 | `web` profile 依赖 Electron API | 换 profile（`--profile host`）试；仍不行则回 A |
+| NapCat 起来但桥接 `snowluma.good=false` | token 填错 / 未扫码 | `docker logs napcat` 看登录状态；核对 config 的 accessToken |
+| QQ 图收不到 | NapCat 未开图片下载/缓存目录只读 | 检查 `-v` 挂载权限（`chown 1000:1000 /opt/napcat`） |
+| 两处 token 不一致 | OneBot HTTP 与 WS 是两个 token | 桥接的 `accessToken` 存 HTTP 那份；WS 由自愈逻辑补 |
+
+### 什么时候干脆别上服务器
+
+- 无法拿到 DSH 的无头运行时（只有桌面安装包）
+- 不想维护容器与扫码重登
+- 家里本来就有一台常开机器
+
+→ 直接用 Windows 的 `install.ps1`（拓扑 A），别绕服务器。
+
 ## 六、与 Windows 版的差异
 
 | 能力 | Windows | Linux（本方案） |

@@ -18,25 +18,34 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const FILE = path.join(ROOT, 'src', 'bridge.js');
+const BRIDGE = path.join(ROOT, 'src', 'bridge.js');
+const API_DIR = path.join(ROOT, 'src', 'api');
+// 路由可能已经被拆到 src/api/*.js —— 清单必须两边都扫，否则迁移后计数会"凭空变少"，
+// 失去「路由守恒」这个重构安全网的作用。
+const FILES = [BRIDGE];
+if (fs.existsSync(API_DIR)) {
+  for (const f of fs.readdirSync(API_DIR).filter((x) => x.endsWith('.js')).sort()) {
+    FILES.push(path.join(API_DIR, f));
+  }
+}
 
 const args = new Set(process.argv.slice(2));
 const asJson = args.has('--json');
 const statsOnly = args.has('--stats');
 
-const src = fs.readFileSync(FILE, 'utf8');
-const lines = src.split('\n');
+const sources = FILES.map((f) => ({ file: path.relative(ROOT, f), src: fs.readFileSync(f, 'utf8') }));
+const src = sources.map((s) => s.src).join('\n');
 
 /** 一条路由：{ method, path, kind, line, guard } */
 const routes = [];
 let currentMethod = null;
 let currentGuard = null;
 
-const RE_EXACT = /url\.pathname\s*===\s*'([^']+)'/;
-const RE_PREFIX = /url\.pathname\.startsWith\('([^']+)'\)/;
+const RE_EXACT = /(?:url\.)?pathname\s*===\s*'([^']+)'/;
+const RE_PREFIX = /(?:url\.)?pathname\.startsWith\('([^']+)'\)/;
 const RE_PATHNAME_VAR = /url\.pathname\s*===?\s*rid/;
-const RE_METHOD_EQ = /req\.method\s*===\s*'([A-Z]+)'/;
-const RE_METHOD_NE = /req\.method\s*!==\s*'([A-Z]+)'/;
+const RE_METHOD_EQ = /(?:req\.method|method)\s*===\s*'([A-Z]+)'/;
+const RE_METHOD_NE = /(?:req\.method|method)\s*!==\s*'([A-Z]+)'/;
 
 // 路由分组：按路径前缀归类，方便按域迁移
 const GROUPS = [
@@ -62,6 +71,8 @@ function groupOf(p) {
   return 'other';
 }
 
+for (const { file, src: fileSrc } of sources) {
+const lines = fileSrc.split('\n');
 for (let i = 0; i < lines.length; i++) {
   const line = lines[i];
   const ln = i + 1;
@@ -83,6 +94,7 @@ for (let i = 0; i < lines.length; i++) {
       method: currentMethod || '?(同链)',
       path: ex[1],
       kind: 'exact',
+      file,
       line: ln,
       guard: currentGuard || '',
       group: groupOf(ex[1]),
@@ -95,6 +107,7 @@ for (let i = 0; i < lines.length; i++) {
       method: currentMethod || '?(同链)',
       path: px[1] + '*',
       kind: 'prefix',
+      file,
       line: ln,
       guard: currentGuard || '',
       group: groupOf(px[1]),
@@ -102,6 +115,7 @@ for (let i = 0; i < lines.length; i++) {
   }
 }
 
+}
 // ── 统计 ────────────────────────────────────────────────────────────────────
 const byGroup = new Map();
 for (const r of routes) {
@@ -113,8 +127,8 @@ for (const r of routes) {
 }
 
 const stats = {
-  file: path.relative(ROOT, FILE),
-  lines: lines.length,
+  files: sources.map((s) => s.file),
+  lines: src.split('\n').length,
   bytes: Buffer.byteLength(src, 'utf8'),
   routeHits: routes.length,
   uniquePaths: new Set(routes.map((r) => r.path)).size,
@@ -137,7 +151,7 @@ if (statsOnly) {
 
 // ── Markdown 输出 ──────────────────────────────────────────────────────────
 console.log(`# 路由清单（自动生成）\n`);
-console.log(`来源：\`${stats.file}\`（${stats.lines} 行 / ${(stats.bytes / 1024).toFixed(0)} KB）\n`);
+console.log(`来源：${stats.files.map((f) => `\`${f}\``).join(' + ')}（共 ${stats.lines} 行 / ${(stats.bytes / 1024).toFixed(0)} KB）\n`);
 console.log(`| 指标 | 数值 |`);
 console.log(`| --- | --- |`);
 console.log(`| 路由命中（含前缀） | ${stats.routeHits} |`);
@@ -155,12 +169,12 @@ for (const g of stats.groups) {
 console.log('');
 
 console.log(`## 全部路由\n`);
-console.log(`| # | 行 | 方法 | 路径 | 类型 | 限制 |`);
-console.log(`| ---: | ---: | --- | --- | --- | --- |`);
+console.log(`| # | 文件 | 行 | 方法 | 路径 | 类型 | 限制 |`);
+console.log(`| ---: | --- | ---: | --- | --- | --- | --- |`);
 routes
   .sort((a, b) => a.line - b.line)
   .forEach((r, i) => {
-    console.log(`| ${i + 1} | ${r.line} | ${r.method} | \`${r.path}\` | ${r.kind} | ${r.guard || '-'} |`);
+    console.log(`| ${i + 1} | ${r.file} | ${r.line} | ${r.method} | \`${r.path}\` | ${r.kind} | ${r.guard || '-'} |`);
   });
 console.log('');
 console.log(`> 迁移时按「分组」逐个搬：每搬完一组，重跑本脚本，对照路由数是否守恒。`);
