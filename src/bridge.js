@@ -4233,12 +4233,14 @@ async function main() {
         }
         // ── socialV2 写入端点（B 批之一，已迁出到 src/api/socialV2-write.js）──────
         // mark-read / check-send / tool-log-clear / feedback-clear / record-sent
-        if (req.method === 'POST') {
+        if (req.method === 'POST' || url.pathname === '/api/socialV2/initial-prompt') {
           const handleV2Write = createSocialV2WriteHandler({
             sendJson, readBody, log,
             fs, TOOL_LOG_FILE, FEEDBACK_FILE, atomicWriteJson,
             getCfg: () => cfg,
+            getMode: () => currentMode,
             agentTokenOk, v2SessionAllowed, v2ToolEnabled,
+            getSocialV2: () => socialV2,
             getSocialV2State,
             requestedReadThroughSeqV2, isSleepingConfigV2, preSleepWaitBlockedV2,
             acknowledgeMessagesV2, ensureWakeableV2,
@@ -4246,6 +4248,31 @@ async function main() {
             readThroughSeqV2, computeWakeSafetyV2,
             feedbackTimes, truncateText, appendFeedbackEntry, appendActivity,
             appendMemoryV2, formatMemoryV2, redactKnownTokensOnly,
+            bumpSessionEpoch: () => { sessionEpoch++; },
+            getState: () => state,
+            sessionPromises,
+            clearAllSocialV2Timers,
+            drainAllPromptQueues,
+            stopRetiredSessionWork,
+            sessionModels,
+            forgetAgentToken,
+            seenForwardIds,
+            saveState,
+            pendingWakeKeys,
+            clearAllPendingWakeLeases,
+            wakeConfigUpdatedKeys,
+            markReadCalledKeys,
+            wakeConfigMissCount,
+            atomicWriteJson,
+            SOCIAL_V2_FILE,
+            api,
+            sendWakePromptV2,
+            modeAllowed,
+            initialPrompts,
+            initialPromptMaxChars,
+            isInitialPromptWritable: () => initialPromptsWritable,
+            canonicalV2Key,
+            setInitialPrompt,
           });
           if (await handleV2Write(req, url)) return;
         }
@@ -4432,48 +4459,6 @@ async function main() {
           }
           saveSocialV2State();
           sendJson({ ok: true, paused: socialV2.paused });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/reset') {
-          sessionEpoch++;
-          sessionPromises.clear();
-          clearAllSocialV2Timers();
-          drainAllPromptQueues('二代状态已重置');
-          for (const key of [...socialV2.conversations.keys()]) {
-            const sid = state.sessions[key];
-            if (sid) {
-              delete state.sessions[key];
-              // 与 retireSession / session-reset / workspace-reset 一致：先让 DSH 停下这个会话的活。
-              // 少了这一步，DSH 会继续跑完在途/排队的 turn（token 照烧、副作用照做），
-              // 而桥接这边已经把所有映射删掉 —— 输出被静默丢弃，agentToken 也已轮换（它的 MCP 发送全部 403）。
-              stopRetiredSessionWork(sid, key);
-              sessionModels.delete(sid);
-              modelAppliedSessions.delete(sid);
-              reverse.delete(sid);
-              collectors.delete(sid);
-              v2TurnStartAt.delete(sid);
-              turnLeaseNoted.delete(sid);
-              toolCallNames.delete(sid);
-              pendingSendToolCalls.delete(sid);
-              sendToolSucceededSessions.delete(sid);
-              // 订阅也要退掉，否则它会在每次重连时被重新 follow 并重发整份快照。
-              api.events.forget?.(sid);
-            }
-            delete state.sessionPolicies[key];
-            forgetAgentToken(key);
-            socialV2.conversations.delete(key);
-            seenForwardIds.delete(key);
-          }
-          saveState();
-          pendingWakeKeys.clear();
-          clearAllPendingWakeLeases();
-          wakeConfigUpdatedKeys.clear();
-          markReadCalledKeys.clear();
-          wakeConfigMissCount.clear();
-          socialV2.paused = false;
-          try { atomicWriteJson(SOCIAL_V2_FILE, { conversations: {} }); } catch (error) { log('重置二代状态：写空状态文件失败:', error?.message ?? error); }
-          log('控制台：二代 AI 状态已重置（会话、定时器、唤醒配置已清空，工具日志保留）');
-          sendJson({ ok: true });
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/socialV2/state') {
@@ -4737,97 +4722,8 @@ async function main() {
           sendJson({ ok: true, key, markedCount, unreadCount: st.unread.length, readThroughSeq: readThroughSeqV2(st), wakeConfig: next, wakeSafety: computeWakeSafetyV2(next) });
           return;
         }
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/wake') {
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const reason = String(body.reason ?? 'admin').trim() || 'admin';
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          const keyMatch = /^(group|private):(\d+)$/.exec(key);
-          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          const kind = keyMatch[1];
-          const id = Number(keyMatch[2]);
-          if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
-            sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
-            return;
-          }
-          const st = getSocialV2State(key);
-          if (st.pendingWakeTimer) {
-            clearTimeout(st.pendingWakeTimer);
-            st.pendingWakeTimer = null;
-          }
-          // 第一次唤醒必须走 bootstrap：那条 prompt 里带着「二代协议说明 + 操作者为这个会话
-          // 预写的初始提示词（群环境/氛围）」。若用手动唤醒的 admin 文案顶掉它，这个会话就
-          // 永远拿不到引导 —— 而 bootstrapSent 一旦置真，后续再也不会补发。
-          const firstWake = !st.bootstrapSent;
-          if (firstWake) st.bootstrapSent = true;
-          const effectiveReason = firstWake ? 'bootstrap' : reason;
-          saveSocialV2State();
-          // 和其它唤醒入口保持一致：sendWakePromptV2 是异步的，这里不 await（不能让 HTTP 回复
-          // 等一个可能卡几十秒的模型回合），但必须挂 catch。裸调用一旦 reject 就是
-          // unhandledRejection：Node 会打警告甚至按配置退出进程，而 HTTP 那边已经回了 {ok:true}，
-          // 表面上"唤醒成功"，实际上谁也不知道它失败了。
-          void sendWakePromptV2(key, effectiveReason).catch((error) => log(`[reserved2] 手动唤醒异常 ${key}:`, error?.message ?? error));
-          log(`控制台：手动唤醒 ${key}（${effectiveReason}${firstWake && reason !== effectiveReason ? `，首次唤醒，请求原因 ${reason} 已升级为 bootstrap` : ''}）`);
-          sendJson({ ok: true, key, reason: effectiveReason, requestedReason: reason, firstWake });
-          return;
-        }
         // 操作者预写的「会话初始提示词」：控制台专用（AI 既读不到也改不了 —— adminOnlyV2Paths）。
         // 内容只在该会话**首次唤醒**（bootstrap）时注入一次，见 buildWakePromptV2。
-        if (url.pathname === '/api/socialV2/initial-prompt' && (req.method === 'GET' || req.method === 'POST')) {
-          if (req.method === 'GET') {
-            const key = String(url.searchParams.get('key') ?? '').trim();
-            if (!key) {
-              const entries = [...initialPrompts.entries()]
-                .map(([entryKey, entry]) => ({
-                  key: entryKey,
-                  chars: entry.text.length,
-                  createdAt: entry.createdAt || 0,
-                  updatedAt: entry.updatedAt || 0,
-                  preview: entry.text.replace(/\s+/g, ' ').slice(0, 80)
-                }))
-                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-              sendJson({ ok: true, entries, maxChars: initialPromptMaxChars(), writable: initialPromptsWritable });
-              return;
-            }
-            const canonical = canonicalV2Key(key);
-            if (!canonical) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-            const entry = initialPrompts.get(canonical) ?? null;
-            sendJson({
-              ok: true,
-              key: canonical,
-              exists: !!entry,
-              text: entry?.text ?? '',
-              createdAt: entry?.createdAt || 0,
-              updatedAt: entry?.updatedAt || 0,
-              maxChars: initialPromptMaxChars(),
-              writable: initialPromptsWritable
-            });
-            return;
-          }
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const explicitDelete = body.delete === true;
-          // 只接受 { key, text: string } 或 { key, delete: true }：
-          // 缺 text 时不当作"清空"（否则一次漏字段的调用就把操作者写的内容删了）。
-          if (!explicitDelete && typeof body.text !== 'string') {
-            sendJson({ ok: false, error: 'text 必须是字符串（留空表示删除），或用 delete:true 显式删除' }, 400);
-            return;
-          }
-          const result = setInitialPrompt(key, explicitDelete ? '' : body.text);
-          if (!result.ok) { sendJson({ ok: false, error: result.error }, result.statusCode ?? 400); return; }
-          log(`控制台：${result.deleted ? '已删除' : '已保存'}会话初始提示词 ${result.key}${result.deleted ? '' : `（${result.chars} 字符，仅首次唤醒注入）`}`);
-          sendJson({
-            ok: true,
-            key: result.key,
-            deleted: result.deleted,
-            chars: result.chars,
-            exists: !!result.entry,
-            updatedAt: result.entry?.updatedAt || 0,
-            maxChars: initialPromptMaxChars()
-          });
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/send-burst') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();

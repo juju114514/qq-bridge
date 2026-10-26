@@ -24,9 +24,11 @@ export function createSocialV2WriteHandler(deps) {
     FEEDBACK_FILE,
     atomicWriteJson,
     getCfg,
+    getMode,
     agentTokenOk,
     v2SessionAllowed,
     v2ToolEnabled,
+    getSocialV2,
     getSocialV2State,
     requestedReadThroughSeqV2,
     isSleepingConfigV2,
@@ -44,10 +46,34 @@ export function createSocialV2WriteHandler(deps) {
     appendMemoryV2,
     formatMemoryV2,
     redactKnownTokensOnly,
+    bumpSessionEpoch,
+    getState,
+    sessionPromises,
+    clearAllSocialV2Timers,
+    drainAllPromptQueues,
+    stopRetiredSessionWork,
+    sessionModels,
+    forgetAgentToken,
+    seenForwardIds,
+    saveState,
+    pendingWakeKeys,
+    clearAllPendingWakeLeases,
+    wakeConfigUpdatedKeys,
+    wakeConfigMissCount,
+    SOCIAL_V2_FILE,
+    api,
+    sendWakePromptV2,
+    modeAllowed,
+    initialPrompts,
+    initialPromptMaxChars,
+    isInitialPromptWritable,
+    canonicalV2Key,
+    setInitialPrompt,
   } = deps;
 
   return async function handleSocialV2Write(req, url) {
-    if (req.method !== 'POST') return false;
+    // initial-prompt 有 GET（读列表/单条），其它分支都是 POST
+    if (req.method !== 'POST' && url.pathname !== '/api/socialV2/initial-prompt') return false;
     const { pathname } = url;
 
     // ── POST /api/socialV2/record-sent（内部接口，恒 403）──────────────────
@@ -373,6 +399,148 @@ export function createSocialV2WriteHandler(deps) {
       saveSocialV2State();
       sendJson({ ok: true, key, category: category || 'all', memory: formatMemoryV2(st) });
       return true;
+    }
+
+    // ── POST /api/socialV2/reset（清空二代全部状态）────────────────────────
+    if (pathname === '/api/socialV2/reset') {
+      bumpSessionEpoch();
+      sessionPromises.clear();
+      clearAllSocialV2Timers();
+      drainAllPromptQueues('二代状态已重置');
+      const state = getState();
+      for (const key of [...getSocialV2().conversations.keys()]) {
+        const sid = state.sessions[key];
+        if (sid) {
+          delete state.sessions[key];
+          // 与 retireSession / session-reset / workspace-reset 一致：先让 DSH 停下这个会话的活。
+          // 少了这一步，DSH 会继续跑完在途/排队的 turn（token 照烧、副作用照做），
+          // 而桥接这边已经把所有映射删掉 —— 输出被静默丢弃，agentToken 也已轮换。
+          stopRetiredSessionWork(sid, key);
+          sessionModels.delete(sid);
+          maps.modelAppliedSessions.delete(sid);
+          maps.reverse.delete(sid);
+          maps.collectors.delete(sid);
+          maps.v2TurnStartAt.delete(sid);
+          maps.turnLeaseNoted.delete(sid);
+          maps.toolCallNames.delete(sid);
+          maps.pendingSendToolCalls.delete(sid);
+          maps.sendToolSucceededSessions.delete(sid);
+          // 订阅也要退掉，否则它会在每次重连时被重新 follow 并重发整份快照。
+          api.events.forget?.(sid);
+        }
+        delete state.sessionPolicies[key];
+        forgetAgentToken(key);
+        getSocialV2().conversations.delete(key);
+        seenForwardIds.delete(key);
+      }
+      saveState();
+      pendingWakeKeys.clear();
+      clearAllPendingWakeLeases();
+      wakeConfigUpdatedKeys.clear();
+      markReadCalledKeys.clear();
+      wakeConfigMissCount.clear();
+      getSocialV2().paused = false;
+      try {
+        atomicWriteJson(SOCIAL_V2_FILE, { conversations: {} });
+      } catch (error) {
+        log('重置二代状态：写空状态文件失败:', error?.message ?? error);
+      }
+      log('控制台：二代 AI 状态已重置（会话、定时器、唤醒配置已清空，工具日志保留）');
+      sendJson({ ok: true });
+      return true;
+    }
+
+    // ── POST /api/socialV2/wake（手动唤醒）─────────────────────────────────
+    if (pathname === '/api/socialV2/wake') {
+      const body = await readBody();
+      const key = String(body.key ?? '').trim();
+      const reason = String(body.reason ?? 'admin').trim() || 'admin';
+      if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return true; }
+      if (getMode() !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return true; }
+      const keyMatch = /^(group|private):(\d+)$/.exec(key);
+      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const kind = keyMatch[1];
+      const id = Number(keyMatch[2]);
+      if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
+        sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
+        return true;
+      }
+      const st = getSocialV2State(key);
+      if (st.pendingWakeTimer) {
+        clearTimeout(st.pendingWakeTimer);
+        st.pendingWakeTimer = null;
+      }
+      // 第一次唤醒必须走 bootstrap：那条 prompt 里带着「二代协议说明 + 操作者为这个会话
+      // 预写的初始提示词」。若用手动唤醒的 admin 文案顶掉它，这个会话就永远拿不到引导。
+      const firstWake = !st.bootstrapSent;
+      if (firstWake) st.bootstrapSent = true;
+      const effectiveReason = firstWake ? 'bootstrap' : reason;
+      saveSocialV2State();
+      // sendWakePromptV2 是异步的，这里不 await（不能让 HTTP 回复等一个可能卡几十秒的模型回合），
+      // 但必须挂 catch：裸调用 reject 就是 unhandledRejection。
+      void sendWakePromptV2(key, effectiveReason).catch((error) => log(`[reserved2] 手动唤醒异常 ${key}:`, error?.message ?? error));
+      log(`控制台：手动唤醒 ${key}（${effectiveReason}${firstWake && reason !== effectiveReason ? `，首次唤醒，请求原因 ${reason} 已升级为 bootstrap` : ''}）`);
+      sendJson({ ok: true, key, reason: effectiveReason, requestedReason: reason, firstWake });
+      return true;
+    }
+
+    // ── /api/socialV2/initial-prompt（GET 列表/单条，POST 保存/删除）────────
+    if (pathname === '/api/socialV2/initial-prompt') {
+      if (req.method === 'GET') {
+        const key = String(url.searchParams.get('key') ?? '').trim();
+        if (!key) {
+          const entries = [...initialPrompts.entries()]
+            .map(([entryKey, entry]) => ({
+              key: entryKey,
+              chars: entry.text.length,
+              createdAt: entry.createdAt || 0,
+              updatedAt: entry.updatedAt || 0,
+              preview: entry.text.replace(/\s+/g, ' ').slice(0, 80),
+            }))
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          sendJson({ ok: true, entries, maxChars: initialPromptMaxChars(), writable: isInitialPromptWritable() });
+          return true;
+        }
+        const canonical = canonicalV2Key(key);
+        if (!canonical) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+        const entry = initialPrompts.get(canonical) ?? null;
+        sendJson({
+          ok: true,
+          key: canonical,
+          exists: !!entry,
+          text: entry?.text ?? '',
+          createdAt: entry?.createdAt || 0,
+          updatedAt: entry?.updatedAt || 0,
+          maxChars: initialPromptMaxChars(),
+          writable: isInitialPromptWritable(),
+        });
+        return true;
+      }
+      if (req.method === 'POST') {
+        const body = await readBody();
+        const key = String(body.key ?? '').trim();
+        const explicitDelete = body.delete === true;
+        // 只接受 { key, text: string } 或 { key, delete: true }：
+        // 缺 text 时不当作「清空」（否则一次漏字段的调用就把操作者写的内容删了）。
+        if (!explicitDelete && typeof body.text !== 'string') {
+          sendJson({ ok: false, error: 'text 必须是字符串（留空表示删除），或用 delete:true 显式删除' }, 400);
+          return true;
+        }
+        const result = setInitialPrompt(key, explicitDelete ? '' : body.text);
+        if (!result.ok) { sendJson({ ok: false, error: result.error }, result.statusCode ?? 400); return true; }
+        log(`控制台：${result.deleted ? '已删除' : '已保存'}会话初始提示词 ${result.key}${result.deleted ? '' : `（${result.chars} 字符，仅首次唤醒注入）`}`);
+        sendJson({
+          ok: true,
+          key: result.key,
+          deleted: result.deleted,
+          chars: result.chars,
+          exists: !!result.entry,
+          updatedAt: result.entry?.updatedAt || 0,
+          maxChars: initialPromptMaxChars(),
+        });
+        return true;
+      }
+      return false;
     }
 
     return false;
