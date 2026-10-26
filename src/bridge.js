@@ -36,6 +36,7 @@ import { createTokensHandler } from './api/tokens.js';
 import { createSocialHandler } from './api/social.js';
 import { createSocialV2ReadHandler } from './api/socialV2-read.js';
 import { createSocialV2WriteHandler } from './api/socialV2-write.js';
+import { createSocialV2SendHandler } from './api/socialV2-send.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
@@ -1064,6 +1065,10 @@ function loadConfig() {
   }
 
   // 人格卡注入上限（字符）。历史硬编码 6000，现在可配：每条约 4~6k token 的成本护栏。
+  // paths：外部工具脚本目录（tools 等）。历史上只认 QQBOT_TOOLS 环境变量、
+  // 从不读 config.json 的 paths 段 —— 于是 say/sing 在没设环境变量的机器上
+  // 永远报「脚本不存在」。这里补上合并，优先级仍是 环境变量 > 配置 > 默认目录。
+  cfg.paths = { ...(file.paths ?? {}) };
   cfg.role = { maxInjectChars: ROLE_INJECT_MAX_CHARS_DEFAULT, ...(file.role ?? {}) };
   roleInjectMaxChars = applyRoleInjectLimit(cfg.role.maxInjectChars);
   if (roleInjectMaxChars !== cfg.role.maxInjectChars) {
@@ -1356,13 +1361,34 @@ async function transcribeVoiceLocal(url, timeoutMs = 25000) {
 // ── 运行路径解析：环境变量 → config.paths → 旧版默认（存在才用）→ 项目相对目录 ──
 const QQBOT_ROOT = process.env.QQBOT_ROOT
   || (typeof process.cwd === 'function' ? process.cwd() : '.');
+/**
+ * 读 config.json 的 paths 段（带缓存）。
+ *
+ * 为什么不能直接看 `cfg`：这个函数在**模块顶层**，而真正那份 `cfg` 是 main() 里的
+ * 局部常量 —— 顶层根本看不到它（此前 `typeof cfg !== 'undefined'` 恒为 false，
+ * 于是 config.paths 永远被忽略，say/sing 在没设 QQBOT_TOOLS 的机器上必然报
+ * 「脚本不存在」）。这里直接从文件读，与作用域无关。
+ */
+let runtimePathsCache = null;
+function readRuntimePaths() {
+  if (runtimePathsCache) return runtimePathsCache;
+  try {
+    const raw = fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8').replace(/^\uFEFF/, '');
+    const parsed = JSON.parse(raw);
+    runtimePathsCache = (parsed && typeof parsed.paths === 'object' && parsed.paths) || {};
+  } catch {
+    runtimePathsCache = {};
+  }
+  return runtimePathsCache;
+}
+
 function resolveRuntimeDir(envKey, cfgKey, legacy) {
   const fromEnv = process.env[envKey];
   if (fromEnv) return fromEnv;
   let fromCfg = '';
   try {
-    // cfg 在 main() 里才初始化；模块级调用时用 typeof 兜住，避免 TDZ 报错
-    if (typeof cfg !== 'undefined' && cfg && cfg.paths) fromCfg = cfg.paths[cfgKey] || '';
+    const paths = readRuntimePaths();
+    fromCfg = paths[cfgKey] || '';
   } catch { fromCfg = ''; }
   if (fromCfg) return String(fromCfg);
   if (legacy && fs.existsSync(legacy)) return legacy;
@@ -4278,6 +4304,18 @@ async function main() {
           });
           if (await handleV2Write(req, url)) return;
         }
+        // ── socialV2 语音合成（C 批安全子集，已迁出到 src/api/socialV2-send.js）──────
+        // say / sing：spawn 外部 PowerShell 脚本，不经过 sendMessagesV2
+        if (req.method === 'POST') {
+          const handleV2Send = createSocialV2SendHandler({
+            sendJson, readBody, log,
+            getMode: () => currentMode,
+            agentTokenOk, v2ToolEnabled, v2SessionAllowed,
+            shouldBlockSilentReply,
+            fs, path, resolveRuntimeDir,
+          });
+          if (await handleV2Send(req, url)) return;
+        }
 
         if (req.method === 'POST' && url.pathname === '/api/socialV2/config') {
           const body = await readBody();
@@ -5093,73 +5131,8 @@ async function main() {
         }
 
         // ── 说话（TTS 现场合成语音条） ──────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/say') {
-          const body = await readBody();
-          const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
-          const key = String(body.key ?? '').trim();
-          const text = String(body.text ?? '').trim().slice(0, 120);
-          const mood = String(body.mood ?? '正常').trim();
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (!text) { sendJson({ ok: false, error: 'text 不能为空（要说的话）' }, 400); return; }
-          if (req.headers['x-agent-token']) {
-            if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-            if (!v2ToolEnabled('sendVoice')) { sendJson({ ok: false, error: '工具未启用：qq_say' }, 403); return; }
-            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          }
-          if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const sayScript = process.env.QQBOT_SAY_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'speak.ps1');
-          if (!fs.existsSync(sayScript)) { sendJson({ ok: false, error: '说话脚本不存在' }, 500); return; }
-          const textFile = path.join(os.tmpdir(), `qq-say-${Date.now()}.txt`);
-          try { fs.writeFileSync(textFile, text, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写文本文件失败：${error?.message ?? error}` }, 500); return; }
-          try {
-            const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', sayScript, '-TextFile', textFile, '-Mood', mood, '-Target', key], { windowsHide: true, stdio: 'ignore' });
-            child.on('exit', (code) => log(`[say] ${key} 结束 code=${code}（${mood}）`));
-            child.on('error', (error) => log(`[say] ${key} 失败：${error?.message ?? error}`));
-            log(`[say] ${key} 开始合成（${mood}｜${text.slice(0, 40)}）`);
-            sendJson({ ok: true, key, text, mood, note: '正在合成，约 3 秒后以语音条发出' });
-          } catch (error) {
-            sendJson({ ok: false, error: `启动合成失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
 
         // ── 唱歌（歌词变调合成唱腔；支持唱整首歌） ──────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/sing') {
-          const body = await readBody();
-          const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
-          const key = String(body.key ?? '').trim();
-          const lyric = String(body.lyric ?? '').trim().slice(0, 40);
-          const songName = String(body.song ?? '').trim().slice(0, 60);
-          const style = String(body.style ?? '儿歌').trim();
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (!lyric && !songName) { sendJson({ ok: false, error: 'lyric 或 song 至少给一个（song=唱某首歌，自动取歌词）' }, 400); return; }
-          if (req.headers['x-agent-token']) {
-            if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-            if (!v2ToolEnabled('sendVoice')) { sendJson({ ok: false, error: '工具未启用：qq_sing' }, 403); return; }
-            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          }
-          if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const singScript = process.env.QQBOT_SING_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'sing.ps1');
-          if (!fs.existsSync(singScript)) { sendJson({ ok: false, error: '唱歌脚本不存在' }, 500); return; }
-          const argFile = path.join(os.tmpdir(), `qq-sing-${Date.now()}.txt`);
-          try { fs.writeFileSync(argFile, songName || lyric, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写临时文件失败：${error?.message ?? error}` }, 500); return; }
-          const singArgs = songName
-            ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', singScript, '-SongFile', argFile, '-Style', style, '-Target', key]
-            : ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', singScript, '-LyricFile', argFile, '-Style', style, '-Target', key];
-          const label = songName ? `唱《${songName}》` : lyric;
-          try {
-            const child = spawn('powershell.exe', singArgs, { windowsHide: true, stdio: 'ignore' });
-            child.on('exit', (code) => log(`[sing] ${key} 生成结束 code=${code}（${style}｜${label}）`));
-            child.on('error', (error) => log(`[sing] ${key} 生成失败：${error?.message ?? error}`));
-            log(`[sing] ${key} 开始合成（${style}｜${label}）`);
-            sendJson({ ok: true, key, lyric, song: songName, style, note: songName ? '正在取歌词并合成，约 10~25 秒后以语音条发出' : '正在合成，几秒后以语音条发出' });
-          } catch (error) {
-            sendJson({ ok: false, error: `启动合成失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
 
         // ── QQ 空间：好友动态列表（只读） ────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/qzone-feeds') {
