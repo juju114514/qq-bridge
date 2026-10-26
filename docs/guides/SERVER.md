@@ -1,5 +1,13 @@
 # 服务器部署（Linux）
 
+> ⚠️ **先读：[TOPOLOGY.md](TOPOLOGY.md)**。
+> 把桥接单独放到服务器、而 DSH / SnowLuma 留在家里 Windows 上，是**不建议**的架构：
+> 桥接是本系统最轻的组件，还多出一段跨机链路；DSH 的会话 Cookie 依赖**本机**签名密钥，
+> 跨机就得外借凭据。真正值得上服务器的是「DSH 能无头 + QQ 网关换 NapCat/Lagrange」那种
+> 全 Linux 方案（拓扑 B）。家里有常开 PC 的话，直接用 Windows 的 `install.ps1` 更省事。
+>
+> 本文的脚本适用于：**三个组件在同一台 Linux 上**（NAS / 软路由 / 云服务器）。
+
 > Windows 用 `install.ps1` / `verify.ps1` / `maintain.ps1`；
 > **Linux 用 `deploy/*.sh`**（systemd + bash）。桥接本体是 Node，两边行为一致。
 

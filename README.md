@@ -161,6 +161,8 @@ sudo ./deploy/verify-server.sh
 ```
 
 systemd 托管、崩了自动重启、日志进 journald；维护与熔断脚本见
+> 先确认该不该上服务器：**[docs/guides/TOPOLOGY.md](docs/guides/TOPOLOGY.md)**（桥接是最轻的组件；DSH/SnowLuma 留在桌面时，搬桥接只会多一段链路）
+
 **[docs/guides/SERVER.md](docs/guides/SERVER.md)**（`deploy/maintain-server.sh` / `guard-server.sh`）。
 
 ## 项目展示
