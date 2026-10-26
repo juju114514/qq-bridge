@@ -2,6 +2,8 @@
 > 改动清单见 [FORK.md](FORK.md)；上游版权归 Derpyu520 与各位贡献者，本分支同样 MIT。
 > 本仓库不含任何真实账号、群号、令牌或 Cookie。
 
+> 常用命令速查：[COMMANDS.md](COMMANDS.md)
+
 ## 三步上手（换成你自己的 DeepSeek）
 
 1. **装 DeepSeek Harness（DSH）**，用自己的 DeepSeek 账号登录 —— 密钥只存在 DSH 里，本项目不存

@@ -5,8 +5,10 @@ state/
 logs/
 *.log
 audio/
-assets/
-public/
+assets/*
+!assets/deepseek娘.png
+public/*
+!public/console.html
 _snowluma-catalog.json
 .DS_Store
 .env
