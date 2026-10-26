@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadApiModules } from './lib/api-module-loader.mjs';
 import * as markdown from '../src/md-to-plain.js';
 import * as sensitive from '../src/sensitive.js';
 import * as wait from '../src/v2-wait.js';
@@ -219,6 +220,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
   // should see the same prototypes as real bridge messages, just as in Node.
   const modelViewSource = fs.readFileSync(path.join(root, 'src/qq-model-view.js'), 'utf8').replace(/^export /gm, '');
   vm.runInContext(`Object.assign(globalThis, (() => { ${modelViewSource}\nreturn { compactModelMessage, compactModelData, serializeModelData, describeAge }; })());`, context);
+    // 按域拆出去的 handler 模块（src/api/*.js）：VM 里没有 import，这里逐个注入。
+  // 目录不存在时是 no-op，所以迁移前后都能跑。
+  loadApiModules(context, { root, vm, fs, path });
+
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);

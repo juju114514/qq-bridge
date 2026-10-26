@@ -25,6 +25,7 @@ import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { normalizeImageForModel } from './media-normalize.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
+import { createStatusHandler } from './api/status.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
 import { resolvePriceTable } from './model-prices.js';
@@ -3596,39 +3597,20 @@ async function main() {
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/status') {
-          const rs = readRoleState();
-          // 带 agent token 的调用来自 QQ 群里的 AI：只能拿到它自己该知道的运行状态。
-          // activity 是**全局**收发摘要（含其它群的发言片段与告警），ownerQQ/白名单属于管理信息，
-          // 都不能给到会话级主体，否则 A 群的 AI 能读到 B 群的内容。
-          // 判定「是不是智能体调用」必须同时看 x-agent-call：无令牌的智能体调用
-          // （旧只读工具的模式探测）不带 x-agent-token，但它同样**绝不能**拿到管理端字段
-          // —— ownerQQ / 白名单 / activity（含其它群的发言片段）是跨群管理信息。
-          // 只认 token 会让这类请求落到下面的完整对象上，等于把 A 群的 AI 变成管理端。
-          if (req.headers['x-agent-token'] || req.headers['x-agent-call'] !== undefined) {
-            sendJson({
-              mode: currentMode,
-              role: rs.role ?? null,
-              roleMode: rs.mode ?? 'active',
-              dshReady,
-              socialV2Paused: socialV2.paused,
-            });
-            return;
-          }
-          sendJson({
-            mode: currentMode,
-            closedAgentPreset,
-            role: rs.role ?? null,
-            roleMode: rs.mode ?? 'active',
-            dshReady,
-            ownerQQ: cfg.ownerQQ ?? null,
-            allowGroups: cfg.allow?.groups ?? [],
-            allowPrivate: cfg.allow?.private ?? [],
-            socialV2Paused: socialV2.paused,
-            // 上游健康只给操作者看：它包含网关诊断信息（good/hint），
-            // 属于管理侧观测，不该进 QQ 会话里那个受限的智能体视图。
-            snowluma: snowlumaHealthSnapshot(),
-            activity: readActivityTail(100)
+          // 已迁出到 src/api/status.js（阶段 3 第 1 组样板）。
+          // 依赖显式注入 —— 不再靠本函数的闭包；行为与迁移前逐字段一致。
+          const handleStatus = createStatusHandler({
+            sendJson,
+            readRoleState,
+            getMode: () => currentMode,
+            isDshReady: () => dshReady,
+            getClosedAgentPreset: () => closedAgentPreset,
+            getSocialV2: () => socialV2,
+            getCfg: () => cfg,
+            snowlumaHealthSnapshot,
+            readActivityTail,
           });
+          handleStatus(req);
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/presets') {
