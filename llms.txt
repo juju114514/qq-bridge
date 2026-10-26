@@ -1,0 +1,23 @@
+# qq-bridge
+
+> QQ ↔ DeepSeek Harness 桥接。让 DeepSeek 通过 MCP 工具在 QQ 里聊天、看图、发表情、发语音。
+> Fork of https://github.com/Derpyu520/qq-bridge (MIT). 不含账号/令牌。
+
+## 给 AI agent
+- 入口: AGENTS.md
+- 安装: AGENT-INSTALL.md
+- 排错: TROUBLESHOOTING.md
+- 手动安装: SETUP.md
+- 指令清单: COMMANDS.md
+
+## 一键命令
+powershell -ExecutionPolicy Bypass -File ./install.ps1 -OwnerQQ <QQ号>
+powershell -ExecutionPolicy Bypass -File ./verify.ps1
+
+## 外部依赖（需人登录）
+- DeepSeek Harness (DSH)：提供 AI
+- SnowLuma：提供 QQ (OneBot v11)
+
+## 要求
+- Node >= 22.13
+- 不要提交 config.json / state / logs
