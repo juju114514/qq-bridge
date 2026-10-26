@@ -161,6 +161,16 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 >
 > **来源说明**：这段视频是上游原作者 [Derpyu520](https://github.com/Derpyu520/qq-bridge) 制作并托管在他自己仓库 Release 里的，不是本仓库生成或托管的文件。本仓库只保留链接。
 
+## 代码结构
+
+`src/bridge.js` 目前约 1.34 万行（`main()` 占 1.1 万行、147 处路由分派）。
+**分阶段拆法与进度工具**见 **[docs/REFACTOR-BRIDGE.md](docs/REFACTOR-BRIDGE.md)**：
+
+```powershell
+node scripts/route-inventory.mjs   # 导出全部路由（115 条唯一路径）
+node scripts/test-router.mjs       # 路由表单测
+```
+
 ## 架构
 
 - **QQ 侧**：`@snowluma/sdk` 的 `SnowLumaWebSocketClient`（OneBot v11 WebSocket 客户端，自动重连）

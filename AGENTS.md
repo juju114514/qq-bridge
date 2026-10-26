@@ -56,6 +56,7 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 | [FORK.md](FORK.md) | 想知道本 fork 相比上游多了什么 |
 | [roles/README.md](roles/README.md) | 要新建角色卡时的格式 |
 | [docs/guides/SECURITY.md](docs/guides/SECURITY.md) | 提示词注入 / 花费熔断 / 远程访问 / 最小权限 / 告警 |
+| [docs/REFACTOR-BRIDGE.md](docs/REFACTOR-BRIDGE.md) | 要改 bridge.js 结构时先读（分阶段拆法 + 路由清单工具） |
 | [docs/](docs/README.md) | 深层实现（DSH 协议适配、控制台测试等） |
 
 ## 硬性规则（违反会出事故）
