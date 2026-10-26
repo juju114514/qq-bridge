@@ -11947,6 +11947,100 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
       return;
     }
 
+    // /role（不带参数）—— 列出可用人设，顺便提示怎么切换
+    if (/^\/role\s*$/i.test(cmdText)) {
+      const roles = listRoles();
+      const rs = readRoleState();
+      const cur = rs.role ? `「${rs.role}」` : '默认人格（未指定角色卡）';
+      const lines = [
+        `当前人设：${cur}`,
+        `可用角色卡（${roles.length} 张）：`,
+        ...roles.map((r) => `· ${r}`),
+        '',
+        '切换：/role 名字      恢复默认：/role off',
+        '新建：把你想要的性格/说话风格发我，我写成一张卡',
+      ];
+      await sendToQQ(key, lines.join('\n'));
+      return;
+    }
+
+    // 首次使用：让人选人设（默认 / 新建 / 不用），避免拿到别人的人设
+    {
+      const firstRun = cfg.role?.firstRunChoice !== false;
+      const setupFile = path.join(STATE_DIR, 'role-setup.json');
+      let setup = readJsonSafe(setupFile, { done: false, pending: null });
+      if (firstRun && isOwner && kind === 'private' && !setup.done) {
+        const t = cmdText.trim();
+        const hasPendingDescribe = setup.pending === 'describe';
+
+        if (hasPendingDescribe && t && !/^[123]$/.test(t)) {
+          // 用用户描述生成一张角色卡
+          const desc = t.slice(0, 1200);
+          const base = desc.split(/[，,。.！!？?\s]/).find((x) => x && x.length >= 2) || '自定义角色';
+          const name = sanitizeRoleName(base).slice(0, 8) || '自定义角色';
+          const card = [
+            `# ${name}`,
+            '',
+            '## 你是谁',
+            desc,
+            '',
+            '## 说话方式',
+            '- 保持上面描述的语气与称呼，别退回客服腔',
+            '- 回复简短自然，像群友聊天，不写作文',
+            '',
+            '## 互动规则',
+            '- 别人 @ 你或直接提问时才回复',
+            '- 不确定的事就说不确定，别编',
+          ].join('\n');
+          try {
+            const content = validateRoleContent(card);
+            if (listRoles().includes(name)) {
+              await sendToQQ(key, `已经有「${name}」这张卡了，换个名字或直接 /role ${name} 用它。`);
+            } else {
+              writeRoleContent(name, content);
+              writeRoleState(name, 'active');
+              atomicWriteJson(setupFile, { done: true, pending: null, role: name });
+              await sendToQQ(key, `角色卡「${name}」已创建并启用（roles/${name}.md）。\n想改就编辑那个文件，或者 /role off 恢复默认。`);
+              log(`[role-setup] 新建角色卡 ${name}`);
+            }
+          } catch (error) {
+            await sendToQQ(key, `建卡失败：${error?.message ?? error}`);
+          }
+          return;
+        }
+
+        const choice = /^1$|^默认/.test(t) ? '1' : /^2$|^新建/.test(t) ? '2' : /^3$|^不用|^关闭/.test(t) ? '3' : null;
+        if (choice === '1') {
+          const def = cfg.role?.defaultName || (listRoles().includes('小鲸鱼') ? '小鲸鱼' : listRoles()[0] || null);
+          if (def) writeRoleState(def, 'active'); else writeRoleState(null, 'active');
+          atomicWriteJson(setupFile, { done: true, pending: null, role: def });
+          await sendToQQ(key, `好，用默认人设${def ? `「${def}」` : ''}。随时 /role 换。`);
+          return;
+        }
+        if (choice === '2') {
+          atomicWriteJson(setupFile, { done: false, pending: 'describe' });
+          await sendToQQ(key, '发我想要的人设吧：性格、说话风格、怎么称呼对方，随便写几句就行。');
+          return;
+        }
+        if (choice === '3') {
+          writeRoleState(null, 'active');
+          atomicWriteJson(setupFile, { done: true, pending: null, role: null });
+          await sendToQQ(key, '好，不用角色卡，我按默认人格说话。以后想加用 /role 新建。');
+          return;
+        }
+
+        // 还没选：把菜单发出去，并停在这里等回复
+        await sendToQQ(key, [
+          '第一次用，先定个人设吧（回数字就行）：',
+          '1. 用默认人设（小鲸鱼/大肥鱼）',
+          '2. 新建一个（你说性格，我写卡）',
+          '3. 不用人设，按默认说话',
+        ].join('\n'));
+        atomicWriteJson(setupFile, { done: false, pending: 'choose' });
+        return;
+      }
+    }
+
     // 管理员快捷命令：/like 与 /song
     if (isOwner && plainContent.startsWith('/')) {
       const likeCmd = /^\/like\s+(\d{5,12})(?:\s+(\d{1,2}))?\s*$/i.exec(cmdText);
