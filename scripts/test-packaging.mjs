@@ -107,6 +107,23 @@ check('README 指向 NOTICE.md 而不是 LICENSE 去读合规说明', () => {
   assert.doesNotMatch(readme, /\[LICENSE\]\(LICENSE\) 的「数据出机清单」/, 'README 还把「数据出机清单」指向 LICENSE');
 });
 
+// ── 6. 文档里的相对链接必须指向真文件（悬空引用比没写更糟）────────────────
+check('NOTICE.md 里提到的决策记录真实存在', () => {
+  const notice = read('NOTICE.md');
+  if (!notice.includes('docs/design/decisions/')) {
+    // 允许以后改措辞：只要不再提这个目录，就不校验
+    return;
+  }
+  const dir = path.join(root, 'docs/design/decisions');
+  assert.ok(fs.existsSync(dir), 'NOTICE.md 提到 docs/design/decisions/ 但目录不存在');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+  assert.ok(files.length >= 1, 'docs/design/decisions/ 里没有决策记录');
+  // 提到就要真的链到具体文件，而不是只给一个目录（那样读者点不进去）
+  assert.match(notice, /docs\/design\/decisions\/[0-9]{4}-[a-z0-9-]+\.md/, 'NOTICE.md 只给了目录、没链到具体记录');
+  const rel = notice.match(/docs\/design\/decisions\/([0-9]{4}-[a-z0-9-]+\.md)/)[1];
+  assert.ok(fs.existsSync(path.join(dir, rel)), `NOTICE.md 链到的 ${rel} 不存在`);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else {

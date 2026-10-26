@@ -103,7 +103,7 @@ SnowLuma 采用「源码可见非商业许可」（[LICENSE](https://github.com/
 
 **⇒ 因此本项目的实际立场是：风险不高且大概率不会被追究，但"无需申请"是过于自信的说法。**
 正确处理是：**在公开发布/公开宣布之前，向 SnowLumaDevs 发一封简短邮件说明用途并询问是否需要额外条件**，
-把回复（或未回复的事实）记录在 `docs/design/decisions/` 里。成本是一封邮件；对价是这条许可里唯一
+把回复（或未回复的事实）记录在 [docs/design/decisions/0001-snowluma-license-inquiry.md](docs/design/decisions/0001-snowluma-license-inquiry.md)（**草稿已备好、未发送**）。成本是一封邮件；对价是这条许可里唯一
 可能让项目被迫改名或下架的条款。
 
 **此外，有一条 EULA 条款是本项目**必须**遵守的硬边界（比 §4(b) 更容易踩到）**：
