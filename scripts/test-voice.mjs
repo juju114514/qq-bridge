@@ -150,7 +150,11 @@ console.log('## MCP 工具与 bridge 路由');
   ok(voiceBlock.includes('/api/socialV2/send-voice'), 'qq_send_voice 调 /api/socialV2/send-voice');
   ok(!voiceBlock.includes("绝对路径的音频"), 'qq_send_voice 不暴露绝对路径参数');
 
-  const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
+  const _apiDir = path.join(ROOT, 'src', 'api');
+  const _apiSrc = fs.existsSync(_apiDir)
+    ? fs.readdirSync(_apiDir).filter((f) => f.endsWith('.js')).map((f) => fs.readFileSync(path.join(_apiDir, f), 'utf8')).join('\n')
+    : '';
+  const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8') + '\n' + _apiSrc;
   for (const s of [
     '/api/voice/send', '/api/socialV2/send-voice', '/api/socialV2/voices',
     'sendVoiceV2', 'sendVoiceForV2', 'resolveVoicePathForV2', 'resolveVoicePathForOperator',
@@ -302,8 +306,15 @@ console.log('## 回归：AI 通道的语音库响应不许带出绝对路径（P
   // 由来：/api/socialV2/voices 的 dir 字段做了 agentCall ? undefined 抑制，
   // 但紧邻的 hint 模板字符串仍然无条件插值 ${voice.dir} —— 绝对路径又从旁边漏给模型了。
   // 这类"字段堵了、文案没堵"的漏法静态查最有效：AI 通道的所有响应字段与文案都不该含盘符/家目录。
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
-  const at = src.indexOf("url.pathname === '/api/socialV2/voices'");
+  // handler 可能已按域拆到 src/api/*.js —— 断言必须扫「bridge + api 目录」的合并源，
+  // 否则代码搬家就会误报（这类「绑死文件位置」的测试是重构噪音的主要来源）。
+  const apiDir = path.join(ROOT, 'src', 'api');
+  const apiSources = fs.existsSync(apiDir)
+    ? fs.readdirSync(apiDir).filter((f) => f.endsWith('.js')).sort()
+        .map((f) => fs.readFileSync(path.join(apiDir, f), 'utf8')).join('\n')
+    : '';
+  const src = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8') + '\n' + apiSources;
+  const at = src.indexOf("'/api/socialV2/voices'");
   ok(at > 0, '找到 voices 路由');
   const section = src.slice(at, at + 3200);
   ok(/dir: agentCall \? undefined : voice\.dir/.test(section), 'dir 字段对 AI 通道抑制');

@@ -118,8 +118,13 @@ console.log('## 各入口 import 的符号都真实存在');
 console.log('## qq-bridge 语音系统：路由与开关');
 {
   const bridge = read('src/bridge.js');
+  // handler 可能已按域拆到 src/api/*.js：路由存在性要在合并源里查
+  const _apiDir2 = path.join(ROOT, 'src', 'api');
+  const bridgeAll = bridge + '\n' + (fs.existsSync(_apiDir2)
+    ? fs.readdirSync(_apiDir2).filter((f) => f.endsWith('.js')).map((f) => fs.readFileSync(path.join(_apiDir2, f), 'utf8')).join('\n')
+    : '');
   for (const route of ["'/api/voice/send'", "'/api/send/voice'", "'/api/socialV2/send-voice'", "'/api/voice/list'", "'/api/socialV2/voices'"]) {
-    ok(bridge.includes(route), `路由 ${route}`);
+    ok(bridgeAll.includes(route), `路由 ${route}`);
   }
   ok(/v2ToolEnabled\('sendVoice'\)/.test(bridge), 'AI 路由受 tools.sendVoice 开关控制');
   ok(/voiceBudgetCheck/.test(bridge) && /voiceBudgetCommit/.test(bridge), '语音额度：检查与记账分离');
