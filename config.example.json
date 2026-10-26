@@ -10,7 +10,7 @@
     "allowRemote": false
   },
   "role": {
-    "maxInjectChars": 6000,
+    "maxInjectChars": 32000,
     "firstRunChoice": true,
     "defaultName": "小鲸鱼"
   },
