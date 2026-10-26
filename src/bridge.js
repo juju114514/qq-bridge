@@ -11949,6 +11949,16 @@ if (req.method === 'POST' && url.pathname === '/api/socialV2/send-poke') {
         '· 查梗 —— /梗 丝竹，查群里黑话的意思',
         '· 潜水 —— 不理我就自己潜，@我立刻醒',
       ];
+      {
+        const roleList = listRoles();
+        const curRole = readRoleState().role;
+        if (roleList.length) {
+          helpLines.push(
+            `· 人设 —— 现在用的是「${curRole || '默认'}」；/role 看全部、/role 名字 切换`,
+            `  现有：${roleList.join('、')}`,
+          );
+        }
+      }
       if (isOwner && kind === 'private') {
         helpLines.push(
           '———',
