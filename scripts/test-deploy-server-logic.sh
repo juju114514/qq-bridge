@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
 # 逻辑自测：不碰系统、不碰权限，只验「凭据探测 / 主机判定 / unit 占位替换」这三段纯逻辑。
-# 目的是在 Windows 上也能证明 install-server.sh 的判定分支没错，避免又出现
+# 目的是在 Windows 和 Linux 上都能证明 install-server.sh 的判定分支没错，避免又出现
 # 「加固做一半、默认配置跑不通」这类只能到服务器上才暴露的问题。
+#
+# 注意：所有路径都相对脚本自身解析 —— 早期版本把仓库路径写死成 D:/...，
+# 在 Linux CI 上直接读不到文件（这类"只在某个 OS 上过"的测试本身就是 bug 源）。
 set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(dirname "$HERE")"
+INSTALL_SH="$REPO/deploy/install-server.sh"
+UNIT_TPL="$REPO/deploy/qq-bridge.service"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  ok   %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  FAIL %s — %s\n' "$1" "$2"; }
 eq()  { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1" "期望[$3] 实际[$2]"; fi; }
+
+echo "## 0) 前置：被测文件都在"
+[[ -f "$INSTALL_SH" ]] && ok "找到 install-server.sh" || bad "找到 install-server.sh" "$INSTALL_SH"
+[[ -f "$UNIT_TPL" ]] && ok "找到 qq-bridge.service" || bad "找到 qq-bridge.service" "$UNIT_TPL"
 
 echo "## 1) DSH 主机判定（只有回环才用本机密钥铸造）"
 dsh_local() { # url -> 1/0
@@ -45,18 +57,14 @@ eq "环境变量 DSH_HOME 次之" "$(DSH_HOME_ARG="" DSH_HOME="$TMP/b" HOME="$TM
 
 eq "都没有时返回非零" "$(DSH_HOME_ARG="" DSH_HOME="" HOME="$TMP/none" detect_dsh_home; echo "rc=$?")" "rc=1"
 
-# 目录存在但没有 .credentials.yaml → 不能被当命中
 mkdir -p "$TMP/c"
 eq "空 .dsh 目录不算命中" "$(DSH_HOME_ARG="" DSH_HOME="$TMP/c" HOME="$TMP/none" detect_dsh_home; echo "rc=$?")" "rc=1"
 
 echo "## 3) unit 占位替换（含 DSH_HOME 为空时不能写坏 unit）"
-mkdir -p "$TMP/unit"
-cp "$(dirname "$0")/../deploy/qq-bridge.service" "$TMP/unit/qq-bridge.service" 2>/dev/null \
-  || cp "/d/QQBot-open/qq-bridge/deploy/qq-bridge.service" "$TMP/unit/qq-bridge.service"
 render() { # dsh_home
   sed -e "s#__USER__#qqbridge#g" -e "s#__DIR__#/opt/qq-bridge#g" \
       -e "s#__NODE__#/usr/bin/node#g" -e "s#__HOME__#/home/qqbridge#g" \
-      -e "s#__DSH_HOME__#$1#g" "$TMP/unit/qq-bridge.service"
+      -e "s#__DSH_HOME__#$1#g" "$UNIT_TPL"
 }
 OUT="$(render /root/.dsh)"
 grep -q '^Environment=DSH_HOME=/root/.dsh$' <<<"$OUT" \
@@ -70,7 +78,6 @@ grep -q '^Environment=DSH_HOME=$' <<<"$OUT_EMPTY" \
 
 echo "## 4) --help 区间覆盖新的文件头（不能截断，也不能把代码打出来）"
 # 区间从脚本里读，避免测试自己写死一份而与被测脚本漂移
-INSTALL_SH="/d/QQBot-open/qq-bridge/deploy/install-server.sh"
 RANGE="$(grep -oE "sed -n '[0-9]+,[0-9]+p'" "$INSTALL_SH" | head -n1 | sed -E "s/.*'([0-9]+,[0-9]+)p'/\1/")"
 if [[ -z "$RANGE" ]]; then
   bad "--help 区间可解析" "没从 install-server.sh 里读到 sed -n 'a,bp'"

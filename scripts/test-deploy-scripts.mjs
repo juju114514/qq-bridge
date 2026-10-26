@@ -35,15 +35,51 @@ function check(name, fn) {
 }
 
 // ── 找 bash ────────────────────────────────────────────────────────────────
+// 关键：Windows 上 PATH 里的 `bash` 往往是 **WSL** 的 /bin/bash，它读不了 `D:/...`
+// 这种路径（会报 No such file or directory，exit 127）。所以要**实测**：让候选
+// bash 去 stat 一个真实仓库文件，能读到才采用。Git Bash 优先，WSL 兜底并转换路径。
+const probeFile = path.join(root, 'package.json');
+
+function bashCanRead(bin, candidatePath) {
+  const r = spawnSync(bin, ['-c', `test -f "${candidatePath}" && echo ok`], { encoding: 'utf8', timeout: 10000 });
+  return r.status === 0 && String(r.stdout).trim() === 'ok';
+}
+
+function wslPath(p) {
+  // D:\a\b → /mnt/d/a/b
+  const m = /^([A-Za-z]):[\\/](.*)$/.exec(p);
+  if (!m) return p.replace(/\\/g, '/');
+  return `/mnt/${m[1].toLowerCase()}/${m[2].replace(/\\/g, '/')}`;
+}
+
 function findBash() {
-  const candidates = ['bash', 'C:/Program Files/Git/bin/bash.exe', 'D:/Git/bin/bash.exe', '/bin/bash', '/usr/bin/bash'];
+  const plain = process.platform === 'win32'
+    ? [probeFile.replace(/\\/g, '/'), probeFile]
+    : [probeFile];
+  const candidates = process.platform === 'win32'
+    // 显式 Git Bash 优先：能直接吃 Windows 路径
+    ? ['C:/Program Files/Git/bin/bash.exe', 'D:/Git/bin/bash.exe', 'C:/Program Files (x86)/Git/bin/bash.exe', 'bash', '/bin/bash']
+    : ['bash', '/bin/bash', '/usr/bin/bash'];
   for (const bin of candidates) {
-    const r = spawnSync(bin, ['-c', 'echo ok'], { encoding: 'utf8', timeout: 10000 });
-    if (r.status === 0 && String(r.stdout).trim() === 'ok') return bin;
+    for (const candidatePath of plain) {
+      if (bashCanRead(bin, candidatePath)) return bin;
+    }
+    // WSL/Cygwin 兜底：换成它们认的路径再试
+    if (process.platform === 'win32' && bashCanRead(bin, wslPath(probeFile))) return { bin, converter: wslPath };
   }
   return null;
 }
-const bash = findBash();
+
+const bashFound = findBash();
+const bash = bashFound && typeof bashFound === 'object' ? bashFound.bin : bashFound;
+const bashConverter = (bashFound && typeof bashFound === 'object' && bashFound.converter) || null;
+
+// 把路径交给 bash：Git Bash 用正斜杠即可（反斜杠会被当转义吃掉）；
+// WSL 需要 /mnt/d/... 形式。
+const forBash = (p) => {
+  if (bashConverter) return bashConverter(p);
+  return process.platform === 'win32' ? p.replace(/\\/g, '/') : p;
+};
 
 // ── 1. bash -n：真语法错 ───────────────────────────────────────────────────
 const scripts = fs.readdirSync(deployDir).filter((f) => f.endsWith('.sh')).sort();
@@ -56,7 +92,7 @@ if (!bash) {
 } else {
   for (const script of scripts) {
     check(`bash -n deploy/${script}`, () => {
-      const r = spawnSync(bash, ['-n', path.join(deployDir, script)], { encoding: 'utf8', timeout: 20000 });
+      const r = spawnSync(bash, ['-n', forBash(path.join(deployDir, script))], { encoding: 'utf8', timeout: 20000 });
       assert.equal(r.status, 0, (r.stderr || r.stdout || '').trim());
     });
   }
@@ -125,7 +161,7 @@ if (!bash) {
   check('test-deploy-server-logic.sh 存在', () => { throw new Error('缺 scripts/test-deploy-server-logic.sh'); });
 } else {
   check('纯逻辑自测：主机判定 / 探测顺序 / 占位替换 / --help 区间', () => {
-    const r = spawnSync(bash, [logicTest], { encoding: 'utf8', timeout: 60000, cwd: root });
+    const r = spawnSync(bash, [forBash(logicTest)], { encoding: 'utf8', timeout: 60000, cwd: forBash(root) });
     assert.equal(r.status, 0, `${(r.stdout || '').split('\n').filter((l) => l.includes('FAIL')).join(' | ') || r.stderr}`);
   });
 }
