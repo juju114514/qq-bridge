@@ -253,7 +253,7 @@ node scripts/test-audit.mjs
 | stickers | 8 | ✅ 已迁出 | `src/api/stickers.js` |
 | send | 6 | ✅ 已迁出 | `src/api/send.js` |
 | sessions/tokens | 8 | ✅ 已迁出（8/8，含高危 reset） | `src/api/sessions.js`、`src/api/tokens.js`；reset 有回归测试 `test-session-reset.mjs`（10 项） |
-| social(v1) | 4 | ⬜ 待迁 | — |
+| social(v1) | 4 | ✅ 已迁出 | `src/api/social.js` |
 | socialV2 | 68 | ⬜ 待迁 | — |
 
 每迁一组必须满足：
