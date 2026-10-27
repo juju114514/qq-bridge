@@ -12,7 +12,7 @@
   "role": {
     "maxInjectChars": 32000,
     "firstRunChoice": true,
-    "defaultName": "小鲸鱼（已测试）",
+    "defaultName": "小鲸鱼",
     "groupEnabled": false,
     "groupDefaultName": ""
   },

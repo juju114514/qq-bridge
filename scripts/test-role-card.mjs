@@ -141,3 +141,40 @@ test('roles/ 下的说明文档不会被当成人格卡', () => {
   // 带全角括号的既有卡片必须能被解析（sanitize 会吃掉括号，所以走了 resolveExistingRole）
   assert.match(bridge, /function resolveExistingRole/, '缺 resolveExistingRole（全角括号卡名依赖它）');
 });
+
+test('默认人设名必须在 roles/ 里解析得到（新装用户第一句就看这个）', () => {
+  // 反例（真实踩过）：config.example.json 写 `小鲸鱼（已测试）`，而首次引导用
+  // `listRoles().includes('小鲸鱼')` 判断 ⇒ 永远 false，掉到排序第一的
+  // `傲娇助手（无测试）`（198 字节占位卡）。现在改成 resolveRoleName（精确→前缀→包含）。
+  const rolesDir = new URL('../roles/', import.meta.url);
+  const names = fs.readdirSync(rolesDir)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md' && f !== 'ATTRIBUTION.md')
+    .map((f) => f.slice(0, -3));
+  assert.ok(names.length > 0, 'roles/ 下没有角色卡');
+
+  const cfg = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  const want = String(cfg.role?.defaultName ?? '').trim();
+  assert.ok(want, 'config.example.json 应设置 role.defaultName');
+
+  const resolve = (raw) => {
+    const w = String(raw ?? '').trim();
+    if (!w) return null;
+    const exact = names.find((r) => r === w);
+    if (exact) return exact;
+    const prefixed = names.filter((r) => r.startsWith(w));
+    if (prefixed.length === 1) return prefixed[0];
+    const contained = names.filter((r) => r.includes(w));
+    return contained.length === 1 ? contained[0] : null;
+  };
+
+  assert.equal(resolve(want), names.find((n) => n.startsWith('小鲸鱼')) || resolve(want),
+    `config.example.json 的默认人设「${want}」解析不到角色卡（现有：${names.join(', ')}）`);
+
+  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  assert.match(bridge, /resolveRoleName\(cfg\.role\?\.defaultName\)/,
+    '首次引导必须用 resolveRoleName 解析默认人设（不能再用 listRoles().includes(精确名)）');
+  // 只看"代码形态"（旧写法是 `includes('小鲸鱼') ? '小鲸鱼' : ...`）；
+  // 注释里引用旧代码是允许的，所以必须带上 `?` 才算残留。
+  assert.doesNotMatch(bridge, /listRoles\(\)\.includes\('小鲸鱼'\)\s*\?/,
+    '还残留 includes(\'小鲸鱼\') ? ... 这种精确匹配（带后缀的卡永远匹配不上）');
+});

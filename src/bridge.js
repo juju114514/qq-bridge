@@ -336,7 +336,10 @@ function resolveExistingRole(raw) {
   const want = String(raw ?? '').trim();
   if (!want) return null;
   try {
-    return listRoles().includes(want) ? want : null;
+    if (listRoles().includes(want)) return want;
+    // 再退一步走「前缀 / 包含」解析：这样 `name=小鲸鱼` 也能读到
+    // `小鲸鱼（已测试）.md`（读接口宽容、写接口严格 —— 新建仍然只认 validateRoleName）。
+    return resolveRoleName(want);
   } catch {
     return null;
   }
@@ -9612,7 +9615,16 @@ async function main() {
 
         const choice = /^1$|^默认/.test(t) ? '1' : /^2$|^新建/.test(t) ? '2' : /^3$|^不用|^关闭/.test(t) ? '3' : null;
         if (choice === '1') {
-          const def = cfg.role?.defaultName || (listRoles().includes('小鲸鱼') ? '小鲸鱼' : listRoles()[0] || null);
+          // 解析顺序：配置里写的名字（可能是 `小鲸鱼` 这种不带后缀的）→ 按前缀找小鲸鱼 → 第一张卡。
+          // ⚠️ 旧写法是 `listRoles().includes('小鲸鱼')`，而真实文件名是
+          // `小鲸鱼（已测试）.md` ⇒ includes 永远 false，直接掉到 `listRoles()[0]`，
+          // 也就是排序最靠前的 `傲娇助手（无测试）`（198 字节的占位卡）。
+          // 用 resolveRoleName 走「精确 → 前缀 → 包含」，改名/加后缀都不再影响默认人设。
+          const configured = resolveRoleName(cfg.role?.defaultName);
+          if (cfg.role?.defaultName && !configured) {
+            log(`⚠️ 配置的默认人设「${cfg.role.defaultName}」找不到对应角色卡，已改用可用卡片`);
+          }
+          const def = configured || resolveRoleName('小鲸鱼') || listRoles()[0] || null;
           if (def) writeRoleStateForKey(key, def, 'active'); else writeRoleStateForKey(key, null, 'active');
           atomicWriteJson(setupFile, { done: true, pending: null, role: def });
           await sendToQQ(key, `好，用默认人设${def ? `「${def}」` : ''}。随时 /role 换。`);
