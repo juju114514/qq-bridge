@@ -34,7 +34,7 @@
   退出码：0 = 配置好且试跑成功；1 = cookies 无效/试跑失败；2 = 参数或环境问题。
 #>
 param(
-  [Parameter(Mandatory = $true)][string]$File,
+  [string]$File = '',
   [string]$Url = 'https://v.douyin.com/9mapTsybjbY/',
   [string]$Site = 'douyin.com',
   [string]$Root = ''
@@ -47,6 +47,43 @@ function Ok([string]$m) { Write-Host "  [OK]   $m" -ForegroundColor Green }
 function Bad([string]$m) { Write-Host "  [FAIL] $m" -ForegroundColor Red }
 
 if (-not $Root) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
+
+# ── 0. 没给 -File 时，自动找最近导出的 cookies 文件 ───────────────────────
+# 体会：扩展导出时默认落在「下载」里，文件名形如 www.douyin.com_cookies.txt，
+# 让用户再抄路径是多余的摩擦 —— 直接按"最近 2 小时内改动的 *cookie*.txt"挑最新的。
+if (-not $File) {
+  $dirs = @((Join-Path $env:USERPROFILE 'Downloads'), (Join-Path $env:USERPROFILE 'Desktop'), 'D:\QQBot\temp')
+  $since = (Get-Date).AddHours(-6)
+  $hits = @()
+  foreach ($d in $dirs) {
+    if (-not (Test-Path -LiteralPath $d)) { continue }
+    $hits += Get-ChildItem -LiteralPath $d -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -match 'cookie' -and $_.Extension -eq '.txt' -and $_.LastWriteTime -gt $since }
+  }
+  # 只按文件名挑会误中「commit-cookies-utf8.txt」这种（实测踩过）——必须看**内容**：
+  # 至少 3 行是 7 字段的 Netscape 行，且其中出现目标域名。
+  $hits = @($hits | Where-Object {
+      $ok = $false
+      try {
+        $probe = @(Get-Content -LiteralPath $_.FullName -TotalCount 400 -Encoding UTF8 |
+          Where-Object { $_ -and -not $_.StartsWith('#') })
+        $netscape = @($probe | Where-Object { ($_ -split "`t").Count -ge 6 })
+        $siteHit = @($netscape | Where-Object { $_ -match [regex]::Escape($Site) })
+        $ok = ($netscape.Count -ge 3 -and $siteHit.Count -ge 1)
+      } catch { $ok = $false }
+      $ok
+    })
+  $hits = @($hits | Sort-Object LastWriteTime -Descending)
+  if ($hits.Count -eq 0) {
+    Bad '没找到最近导出的 cookies 文件'
+    Info '请用扩展「Get cookies.txt LOCALLY」在 douyin.com 上导出，存到「下载」或 D:\QQBot\temp\ 即可；'
+    Info '也可以直接指定：-File <路径>'
+    exit 2
+  }
+  $File = $hits[0].FullName
+  Info "自动选中最近的 cookie 文件：$File（$($hits[0].LastWriteTime)）"
+  if ($hits.Count -gt 1) { Info ("另外还有 " + ($hits.Count - 1) + " 个候选，用 -File 指定其它") }
+}
 
 # ── 1. 校验 cookies.txt ──────────────────────────────────────────────────
 if (-not (Test-Path -LiteralPath $File)) { Bad "找不到文件：$File"; exit 2 }
