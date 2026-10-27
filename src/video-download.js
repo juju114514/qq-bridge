@@ -76,6 +76,33 @@ export function explainYtDlpError(errFile) {
 }
 
 /**
+ * 播放地址的白名单域名。
+ *
+ * 为什么需要：入口 URL 有 video-link 的白名单，但**解析出来的播放地址是数据、不是信任**——
+ * 它是从页面 HTML 里正则抠出来的，页面被投毒/改版时可以把我们引到任意 host。
+ * 而下载会跟着 302 走好几跳，所以**每一跳**都必须校验域名，不能只看第一个。
+ *
+ * 只放行抖音/字节实际在用的媒体域；字节的 CDN 偶尔换域名时，这里加一条并补测试即可。
+ */
+export const MEDIA_HOST_SUFFIXES = [
+  'snssdk.com',
+  'douyinvod.com',
+  'douyincdn.com',
+  'amemv.com',
+  'byteimg.com',
+  'douyinpic.com'
+];
+
+/** 这个 URL 的 host 是否在媒体白名单里（精确后缀匹配，防 evil-snssdk.com）。 */
+export function isAllowedMediaHost(rawUrl) {
+  let url;
+  try { url = new URL(String(rawUrl ?? '').trim()); } catch { return false; }
+  if (!['http:', 'https:'].includes(url.protocol)) return false;
+  const host = url.hostname.toLowerCase();
+  return MEDIA_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
+
+/**
  * 抖音专用：用分享页的 play_addr 直接下载（不经过 yt-dlp）。
  * 成功返回和 yt-dlp 分支同形状的对象，调用方无需区分。
  */
@@ -97,10 +124,19 @@ async function tryDouyinResolver(url, dir, opts) {
   }
 }
 
-/** 直链下载（跟随重定向）。抖音播放地址会 302 到 CDN，所以手动跟几跳。 */
+/**
+ * 直链下载（跟随重定向）。抖音播放地址会 302 到 CDN，所以手动跟几跳。
+ *
+ * 安全：**每一跳都校验媒体域名**（见 isAllowedMediaHost）。只校验第一跳是不够的——
+ * 一个 302 就能把请求带到任意 host，而我们对"解析出来的地址"不该有那种信任。
+ */
 async function downloadDirect(rawUrl, dest, opts) {
   let current = String(rawUrl);
-  for (let hop = 0; hop < 5; hop += 1) {
+  const MAX_HOPS = 3;
+  for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
+    if (!isAllowedMediaHost(current)) {
+      throw new Error(`播放地址不在媒体白名单内（host=${(() => { try { return new URL(current).hostname; } catch { return '解析失败'; } })()}）`);
+    }
     const res = await fetch(current, {
       headers: { 'user-agent': 'Mozilla/5.0', 'referer': 'https://www.douyin.com/' },
       redirect: 'manual',
@@ -109,6 +145,7 @@ async function downloadDirect(rawUrl, dest, opts) {
     if (res.status >= 300 && res.status < 400) {
       const next = res.headers.get('location');
       if (!next) throw new Error(`重定向缺少 Location（${res.status}）`);
+      if (hop === MAX_HOPS) throw new Error(`重定向超过 ${MAX_HOPS} 跳，已停止`);
       current = new URL(next, current).toString();
       continue;
     }

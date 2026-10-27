@@ -6,6 +6,7 @@
 //   · 它要读 cookies.txt，所以"只挑抖音域名"这条必须钉死（别把别的站凭据发出去）
 //
 // 全程离线：不联网、不发 cookies、不下载。
+// 另外用 scripts/fixtures/video/ 下的**页面快照**做结构回归：上游改版时这里会红。
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -17,6 +18,9 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const { extractAwemeId, cookieHeaderFor, stripWatermark, parseSharePage, inspectCookies, cookieHealth, describeRemaining } = await import(
   new URL('../src/douyin-resolve.js', import.meta.url).href
+);
+const { isAllowedMediaHost, MEDIA_HOST_SUFFIXES } = await import(
+  new URL('../src/video-download.js', import.meta.url).href
 );
 
 let failures = 0;
@@ -152,6 +156,59 @@ check('describeRemaining：小时/天/已过期 都说人话', () => {
 });
 
 // ── 5. 接线 ──────────────────────────────────────────────────────────────
+// ── 4.6 fixture 回归：上游页面结构一变，这里必须红 ─────────────────────────
+check('fixture：真实形态的分享页能被解析出 playwm 地址（含 \u002F 转义）', () => {
+  const html = read('scripts/fixtures/video/douyin-share-page.html');
+  const parsed = parseSharePage(html);
+  assert.equal(parsed.urls.length, 1, 'fixture 里应抠出恰好 1 个播放地址');
+  assert.match(parsed.urls[0], /^https:\/\/aweme\.snssdk\.com\//, '域名解析错了');
+  assert.match(parsed.urls[0], /\/playwm\//, '原地址应是带水印的 playwm');
+  assert.match(stripWatermark(parsed.urls[0]), /\/play\//, '去水印应换成 /play/');
+  assert.match(parsed.desc, /fixture/, 'desc 也要解析出来（补投/展示要用）');
+  assert.equal(parsed.durationMs, 12345);
+});
+
+check('fixture：风控/验证页要优雅返回空，不许编造地址', () => {
+  const html = read('scripts/fixtures/video/douyin-verify-page.html');
+  const parsed = parseSharePage(html);
+  assert.deepEqual(parsed.urls, [], '验证页里没有 play_addr，不能凭空造一个');
+  assert.equal(parsed.desc, '');
+});
+
+// ── 4.7 播放地址白名单（解析结果是不可信输入）─────────────────────────────
+check('isAllowedMediaHost：只放行抖音/字节媒体域，其余一律拒', () => {
+  const allow = [
+    'https://aweme.snssdk.com/aweme/v1/play/?video_id=x',
+    'https://v3-web.douyinvod.com/abc.mp4',
+    'https://p3-pc-sign.douyinpic.com/x.jpg',
+    'https://v26-web.douyincdn.com/x.mp4'
+  ];
+  for (const url of allow) assert.equal(isAllowedMediaHost(url), true, `应放行 ${url}`);
+  const deny = [
+    'https://evil-snssdk.com/aweme/v1/play/',            // 后缀伪装
+    'https://aweme.snssdk.com.evil.com/x',               // 前缀伪装
+    'https://v3-default.ixigua.com/abc.mp4',             // 未列入的字节域
+    'http://127.0.0.1:3100/api/status',                  // 内网
+    'http://169.254.169.254/latest/meta-data/',          // 元数据服务
+    'file:///C:/Windows/win.ini',
+    'not-a-url'
+  ];
+  for (const url of deny) assert.equal(isAllowedMediaHost(url), false, `应拒绝 ${url}`);
+  assert.ok(MEDIA_HOST_SUFFIXES.includes('snssdk.com'), '白名单里应有 snssdk.com');
+});
+
+check('video-download：直链下载**每一跳**都校验域名，跳数上限 3', () => {
+  const dl = read('src/video-download.js');
+  assert.match(dl, /export function isAllowedMediaHost/);
+  const body = dl.slice(dl.indexOf('async function downloadDirect'), dl.indexOf('function cleanDir'));
+  assert.match(body, /MAX_HOPS = 3/, '跳数要收紧');
+  assert.match(body, /if \(!isAllowedMediaHost\(current\)\)/, '每跳都要校验');
+  assert.match(body, /不在媒体白名单内/, '拒绝时要说清原因');
+  // 校验必须在 fetch 之前（否则等于没校验）
+  assert.ok(body.indexOf('isAllowedMediaHost(current)') < body.indexOf('await fetch(current'),
+    '校验必须发生在请求之前');
+});
+
 check('video-download：抖音先走专用解析器，失败才回退 yt-dlp，且挂 cleanup', () => {
   const dl = read('src/video-download.js');
   assert.match(dl, /from '\.\/douyin-resolve\.js'/, '必须导入解析器');

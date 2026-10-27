@@ -76,6 +76,7 @@ DSH/                         ← 工作区根（不是仓库根）
 | `ocr-image.ps1` | **Windows 自带 OCR**（`Windows.Media.Ocr`）识别一张图里的文字：结果写 JSON 到 `-Out`（不走 stdout，沙箱下 pipe 会 EPERM），带行级坐标与语言标签 | 保留（长图省钱路径） |
 | `verify-video-live.ps1` | **真机验证视频理解**：给 `-Key` + `-MessageId`（或 seq），打 `/api/socialV2/video`，打印状态/耗时/条目/说明，`-Out` 可存故事板 jpg；自动读控制台令牌与会话 agentToken | 保留（排查「视频读不了」的第一步） |
 | `make-video-storyboard-sample.py` | 生成文档配图 `assets/video-storyboard-sample.jpg`（**合成** 3×3 故事板，避免把真实画面带进仓库） | 保留 |
+| `scripts/fixtures/video/` | 视频解析的**页面快照**（脱敏）：`douyin-share-page.html`（结构回归）与 `douyin-verify-page.html`（风控页必须优雅返回空） | 保留 |
 | `test-video-resolve.mjs` | 抖音解析契约：取 id / cookie 只挑抖音域 / 去水印 / 分享页解析 / cleanup 挂载 | 保留 |
 | `test-video-link.mjs` | 链接识别契约：B站/抖音形态、假域名/非视频页不认、白名单、只下前 N 秒、MCP 工具与配置接线 | 保留 |
 | `test-video-frames.mjs` | 视频故事板契约：布局/宽度上限/真 ffmpeg 抽帧/probeVideo/音轨/接线/ASR 不许 spawn | 保留 |

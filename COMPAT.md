@@ -242,6 +242,8 @@ DSH 的图片入口只吃静态图，所以视频必须是**降维**而不是"�
 否则"看视频"就成了任意 URL 下载器）；② **只下前 N 秒**（`--download-sections`，实测 84MB/8s → 1.5MB/3s）。
 `qq_open_video` 走 `POST /api/socialV2/video-link`，与消息附件那条路共用同一套故事板+转写。
 
+**每站策略与理由见 [docs/guides/VIDEO-SOURCES.md](docs/guides/VIDEO-SOURCES.md)**（B 站走 API 不走 HTML：HTML 会 412 且按 IP 判定）。
+
 **抖音例外**：yt-dlp 的 Douyin extractor 要 a_bogus 签名（无签名 403，登录也无效），
 所以抖音先走 `src/douyin-resolve.js` 的分享页解析（cookies.txt + iPhone UA → `play_addr` → playwm 去水印），
 失败才回退 yt-dlp。cookie 只挑 `douyin.com` 域，且只存在于 `state/cookies/`（gitignore）。

@@ -19,6 +19,7 @@
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
 | [guides/FRESH-INSTALL.md](guides/FRESH-INSTALL.md) | **全新机器安装**（入口：Windows `.\scripts\first-run.ps1` / Linux `./deploy/first-run.sh`，或 `node scripts/preflight.mjs` 只体检）：按阶段（系统准备→取代码→装依赖→配置→装 DSH/SnowLuma→首次启动→首次对话）列出会踩的坑，每条标「有没有对应排查」；含本次补的 4 个缺口（没有 npm / PowerShell 执行策略 / preset 没装 / postinstall 提示不是错误）。入口命令 `node scripts/preflight.mjs` | ✅ 2026-10-27 |
+| [guides/VIDEO-SOURCES.md](guides/VIDEO-SOURCES.md) | **视频来源策略**：站点 → 路径 → 为什么；B 站 HTML 会 412（按 IP 判定）而抖音必须爬（缺 a_bogus 签名）；爬虫范围限制清单 + 失败码表 | ✅ 2026-10-28 |
 | [guides/SKILLS.md](guides/SKILLS.md) | **技能**：装了哪个（caveman）、其余 4 个为什么不装、**压缩只许针对日志/输出（代码一律逐字）**、怎么加/卸载 | ✅ 2026-10-28 |
 | [guides/VIDEO.md](guides/VIDEO.md) | **视频理解**：模型看不了视频，唯一解法是「抽帧故事板 + 音轨转写」。含四段管线（流式下载→ffprobe→tile 抽帧→ASR）、**链接识别（B站/抖音，yt-dlp 只下前 180 秒）**、`mode=storyboard\|transcript` 的取舍、8 类踩坑（黑格/糊/时间戳/内存/SSRF/空转写/慢/无 url）、测试与量测 | ✅ 2026-10-27 |
 | [guides/SINGING.md](guides/SINGING.md) | **让 AI 唱歌**：四条链路（说话 / TTS 变调唱 / 点歌 / RVC 换声）各自能做什么、**模型运用顺序**（TTS 分词→变调→气口→拼接；RVC 六步训练）、踩坑总表（ffmpeg / PowerShell 编码 / 网络 / 显存 / 导出失败）、**诚实的测试状态**（TTS 与点歌已通，RVC 训练到 train、导出失败、无翻唱成品）、外部大纲 v9 里可借的六个音域指标与「RVC 换音色 + SVS 造音高」的分工结论 | ✅ 2026-10-27 |
