@@ -12,6 +12,19 @@
 2. **换机器**：迁移清单见 [docs/guides/MIGRATION.md](docs/guides/MIGRATION.md)（DPAPI 备份跨机不可解密、
    sessions 必须清空、DSH 端口与预设要重配）。
 
+## 怎么把它跑起来（Windows 一键）
+
+```powershell
+.\start-bridge.ps1          # 起守护 → 起桥接；崩溃自动拉起
+.\start-bridge.ps1 -Status  # 诊断：守护/桥接/3100/SnowLuma/DSH 一张表
+.\start-bridge.ps1 -Stop
+```
+
+链路是 `start-bridge.ps1` → `scripts\bridge-supervisor.ps1` → `node src\bridge.js`。
+**不要绕过它直接长跑 `node src\bridge.js`**（没有单实例保护、崩了没人拉起）。
+`SnowLuma` 是第三方程序，必须用户自己启动并登录 —— 守护**只探测** `:3000/:3001`，
+不代启、不代停（设计不变量 L6）。完整契约见 [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)。
+
 ## 这是什么
 
 `qq-bridge` 是一个 **QQ ↔ DeepSeek Harness（DSH）** 的桥接：

@@ -8,7 +8,10 @@
     "snowluma": "2.1.1",
     "schemastery": "3.18.5",
     "dshHostApiproxy": "0.1.1-rc.2",
-    "os": ["Windows 10/11 (x64)", "Linux (systemd)"]
+    "os": [
+      "Windows 10/11 (x64)",
+      "Linux (systemd)"
+    ]
   },
   "requires": {
     "node": ">=22.13.0",
@@ -106,16 +109,35 @@
   },
   "platforms": {
     "windows": {
-      "ok": ["聊天", "表情", "图片", "语音（需 PowerShell 脚本）", "点歌/唱歌（需 PowerShell）", "空间", "控制台"],
+      "ok": [
+        "聊天",
+        "表情",
+        "图片",
+        "语音（需 PowerShell 脚本）",
+        "点歌/唱歌（需 PowerShell）",
+        "空间",
+        "控制台"
+      ],
       "stateAcl": "icacls 移除继承，只留 当前用户/SYSTEM/Administrators",
-      "launcher": "install.ps1 / verify.ps1 / scripts/maintain.ps1"
+      "launcher": "start-bridge.ps1 → scripts/bridge-supervisor.ps1 → node src/bridge.js（守护：崩溃自动拉起/单实例/退避重启；不代启 SnowLuma）",
+      "launcherDoc": "docs/guides/LAUNCHER.md"
     },
     "linux": {
-      "ok": ["聊天", "表情", "图片", "空间", "控制台"],
-      "notAvailable": ["语音", "点歌", "唱歌"],
+      "ok": [
+        "聊天",
+        "表情",
+        "图片",
+        "空间",
+        "控制台"
+      ],
+      "notAvailable": [
+        "语音",
+        "点歌",
+        "唱歌"
+      ],
       "notAvailableReason": "这些功能 spawn powershell.exe；接口会直接返回「依赖 Windows PowerShell」，需用 QQBOT_*_SCRIPT 指向平台脚本",
       "stateAcl": "chmod 700",
-      "launcher": "deploy/install-server.sh + systemd"
+      "launcher": "deploy/install-server.sh + systemd（deploy/qq-bridge.service）"
     }
   },
   "notes": [

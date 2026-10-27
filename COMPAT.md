@@ -92,7 +92,17 @@ roles/<任意文件名>.md
 迁移工具：`node scripts/migrate-roles-to-ids.mjs`（`--dry-run` 默认；`--apply` 真写）。
 回归：`scripts/test-role-id.mjs`（9 项，含「改文件名 id 不变」）。
 
-### 3.5 配置键（换 DSH/换机器要重配的）
+### 3.5 启动方式（Windows 一键 / Linux systemd）
+
+| 平台 | 入口 | 说明 |
+| --- | --- | --- |
+| Windows | `.\start-bridge.ps1` | 起守护 → 起桥接；崩溃自动拉起、单实例、退避重启。启动器**不代启 SnowLuma**（只探测 `:3000/:3001`）。契约见 [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md) |
+| Linux | `deploy/install-server.sh` + systemd | `systemctl start qq-bridge`；unit 见 `deploy/qq-bridge.service` |
+
+不要绕过入口直接长跑 `node src\bridge.js`：那样没有单实例保护、崩了没人拉起。
+退出码契约（0/1/2/3/4/5）在 LAUNCHER.md，改启动逻辑必须同步更新那张表。
+
+### 3.6 配置键（换 DSH/换机器要重配的）
 
 `compat.json` 的 `contracts.configKeys` 有完整清单。最常需要改的四个：
 

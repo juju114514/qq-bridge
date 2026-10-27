@@ -95,6 +95,9 @@ const tests = [
   // HTTP 层（src/http/*）：响应头 / 请求体限额 / 前导关的每条拒绝 / 路由表分派。
   //   这一层坏了的症状不是报错，而是「某个 403 悄悄消失」——只能靠断言钉住。
   'test-http-layer.mjs',
+  // 启动器与守护：设计不变量 L6（不代启 SnowLuma）、退出码契约、单实例/停止信号/
+  //   退避重启/ExitCode 归一化、.ps1 必须带 BOM、文档与入口互链。
+  'test-launcher-scripts.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

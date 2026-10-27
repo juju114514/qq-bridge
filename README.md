@@ -107,6 +107,23 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
 **让 AI 帮你装**：把仓库交给任意能执行命令的 AI agent，让它按 [`AGENT-INSTALL.md`](AGENT-INSTALL.md)
 一步步做——里面有期望输出、失败分支、必须停下来问人的点（登录 DSH、扫码 QQ）和验收标准。
 
+### 日常启动（一键 + 守护）
+
+Windows 下**只需要这一个命令**：
+
+```powershell
+.\start-bridge.ps1            # 起守护 → 守护起桥接；崩了自动拉起
+.\start-bridge.ps1 -Status    # 看谁在跑、端口、SnowLuma、DSH
+.\start-bridge.ps1 -Stop      # 优雅停止
+.\start-bridge.ps1 -InstallStartup   # 登录自动起（计划任务）
+```
+
+三层关系：`start-bridge.ps1` → `scripts\bridge-supervisor.ps1` → `node src\bridge.js`。
+**SnowLuma 不在这条链上**（第三方程序，你自己启动并登录；守护只探测 `:3000/:3001`，
+不会代启）。退出码契约、重启退避、排障速查见 [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)。
+
+Linux 用 systemd，不用这个：见 [docs/guides/SERVER.md](docs/guides/SERVER.md)。
+
 ### 日常维护
 
 ```powershell
