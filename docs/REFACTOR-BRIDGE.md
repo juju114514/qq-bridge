@@ -317,7 +317,20 @@ node scripts/test-router.mjs           → 11/11
 
 ### 9.6 尚未做（后续阶段）
 
-- 阶段 1：把 `src/http/router.js` 真正接入 bridge（当前仍 flat if 链，只是 handler 移走了）。
+- ~~阶段 1：把 `src/http/router.js` 真正接入 bridge~~ ✅ 2026-10-27
+  · 12 个域 handler 现在由 `createRouter().chain(...)` 按**原顺序**串起来（`dispatch` 在控制台首页
+    分支之后），路由表另有 exact/param/prefix 三个入口，后续逐组搬老 if 分支即可。
+  · 注意三个**不进链**的：`handleV2Wait`（签名 `(req, res, url)`，自己写响应）、
+    `handleImages` / `handleSend`（终端处理器，无返回值）——塞进链里会跑两次。
+- ~~阶段 2：中间件/前导关层~~ ✅ 2026-10-27
+  · `src/http/prelude.js`：favicon → Host 头（DNS rebinding）→ 控制台令牌（定长比较）
+    → 智能体声明（confused deputy）→ CSRF → 暂停/关停/模式/管理端/白名单 → 只读降级。
+    **只判定不写响应**，返回 `{ status, json|html|empty }` 由 `applyDenial` 落地，因此可单测。
+  · `src/http/response.js`（`writeJson/writeHtml/writeEmpty` + 硬化头）、
+    `src/http/body.js`（1MB/30s 限额，四类错误文案逐字保留）。
+  · `scripts/test-http-layer.mjs`（26 项）钉住每条拒绝；`test-router.mjs`（11 项）钉住匹配语义。
+  · 顺带补了审计 harness 的一个缺口：`src/role-card.js` 之前**从未被注入** VM，
+    只是没有测试走到「构造 roles 分派器」那条路径，所以一直隐形。
 - 阶段 2：中间件化（loopback/token/CSRF/agent 白名单/只读降级）。
 - 阶段 4/5：`services/`、`store/` 与 `main()` 拆分。
 

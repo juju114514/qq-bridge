@@ -53,6 +53,8 @@ function compile(pattern) {
 export function createRouter() {
   /** @type {{method:string, pattern:string, kind:'exact'|'prefix'|'param', handler:Function, re?:RegExp, keys?:string[]}[]} */
   const table = [];
+  /** @type {Function[]} 链式处理器（各自内部再分派，返回 true 即停止） */
+  const chainHandlers = [];
 
   function add(method, pattern, handler, kind) {
     if (typeof handler !== 'function') {
@@ -90,6 +92,39 @@ export function createRouter() {
     post(p, h) { return api.exact('POST', p, h); },
     put(p, h) { return api.exact('PUT', p, h); },
     del(p, h) { return api.exact('DELETE', p, h); },
+
+    /**
+     * 注册一个「链式处理器」：**每条请求都会按注册顺序尝试**，返回 true 表示已处理。
+     *
+     * 这是接入现有代码的关键：从 bridge.js 拆出去的 12 个域（roles/slang/socialV2/…）
+     * 各自内部按 pathname 分派、不认领时 return false。它们原本是一串
+     * `if (await handleX(req, url)) return;`，用 chain() 注册进来语义完全等价
+     * （顺序 = 注册顺序），不需要按前缀猜归属。
+     */
+    chain(handler) {
+      if (typeof handler !== 'function') throw new TypeError('chain handler 必须是函数');
+      chainHandlers.push(handler);
+      return api;
+    },
+
+    /**
+     * 派发一次请求：精确/模板 → 前缀 → 链式 → fallback。
+     * @returns {Promise<boolean>} true=已处理；false=无人认领（调用方回 404）
+     */
+    async dispatch(req, url, { fallback = null } = {}) {
+      const hit = api.match(req.method, url?.pathname ?? '/');
+      if (hit) {
+        if (await hit.handler(req, { ...url, params: hit.params })) return true;
+      }
+      for (const handler of chainHandlers) {
+        if (await handler(req, url)) return true;
+      }
+      if (typeof fallback === 'function') return Boolean(await fallback(req, url));
+      return false;
+    },
+
+    /** 链式处理器数量（/api/status 与测试用）。 */
+    get chainSize() { return chainHandlers.length; },
 
     /** 注册表只读视图（测试/清单用） */
     routes() {

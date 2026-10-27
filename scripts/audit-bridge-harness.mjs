@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { loadApiModules } from './lib/api-module-loader.mjs';
+import { loadApiModules, stripExports, stripImports } from './lib/api-module-loader.mjs';
 import * as markdown from '../src/md-to-plain.js';
 import * as sensitive from '../src/sensitive.js';
 import * as wait from '../src/v2-wait.js';
@@ -227,6 +227,22 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     // 按域拆出去的 handler 模块（src/api/*.js）：VM 里没有 import，这里逐个注入。
   // 目录不存在时是 no-op，所以迁移前后都能跑。
   loadApiModules(context, { root, vm, fs, path });
+  // HTTP 层（src/http/*.js）：响应/请求体/前导关/路由表。同样是"顶层 import 被剥掉，
+  // 这里按导出名注入"，和 src/api 用同一个 loader（只是换个目录）。
+  loadApiModules(context, { root, vm, fs, path, apiDir: 'src/http' });
+  // 纯函数模块 src/role-card.js：bridge.js 从它 import 了 parseRoleSections / roleCharStats /
+  // parseRoleFrontMatter 等。之前这套 harness 一直没注入它 —— 只是没有测试走到「构造 roles
+  // 分派器」那条路径，所以缺口是隐形的。一旦某条测试请求走到那里就会
+  // `roleCharStats is not defined`。这里显式注入，缺口补上。
+  {
+    const roleCardRaw = fs.readFileSync(path.join(root, 'src/role-card.js'), 'utf8');
+    const body = stripExports(stripImports(roleCardRaw));
+    vm.runInContext(
+      `Object.assign(globalThis, (() => {\n${body}\nreturn { parseRoleFrontMatter, buildRoleFrontMatter, slugifyRoleId, hashRoleId, parseRoleSections, selectRoleText, roleSectionReport, roleCharStats, GEN1_ROLE_LINE_RE }; })())`,
+      context,
+      { filename: 'src/role-card.js' },
+    );
+  }
 
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;

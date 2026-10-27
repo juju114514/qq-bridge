@@ -17,6 +17,12 @@ import {
   GEN1_ROLE_LINE_RE, buildRoleFrontMatter, hashRoleId, parseRoleFrontMatter,
   parseRoleSections, roleCharStats, roleSectionReport, selectRoleText, slugifyRoleId,
 } from './role-card.js';
+// HTTP 层（重构阶段 1/2）：响应/请求体/前导关/路由表都在 src/http/ 下，
+// 让安全语义集中在一处、可单测，而不是散在 11k 行的 main() 里。
+import { SECURITY_HEADERS, writeJson, writeHtml, writeEmpty, applyDenial } from './http/response.js';
+import { readJsonBody } from './http/body.js';
+import { runPrelude, allowedHosts } from './http/prelude.js';
+import { createRouter } from './http/router.js';
 import { fileURLToPath } from 'node:url';
 import { OneBotWsClient, text } from './onebot-ws.js';
 import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } from './dsh-client.js';
@@ -3563,250 +3569,11 @@ async function main() {
         res.end(JSON.stringify({ ok: false, error: '无效的请求地址' }));
         return;
       }
-      const SECURITY_HEADERS = {
-        'X-Frame-Options': 'DENY',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'no-referrer'
-      };
-      const sendJson = (obj, status = 200) => {
-        res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...SECURITY_HEADERS });
-        res.end(JSON.stringify(obj, null, 2));
-      };
-      const readBody = () => new Promise((resolve, reject) => {
-        const MAX_BODY_BYTES = 1_000_000;
-        const chunks = [];
-        let total = 0;
-        let settled = false;
-        let bodyTimer = null;
-        const fail = (status, message) => {
-          if (settled) return;
-          settled = true;
-          if (bodyTimer) clearTimeout(bodyTimer);
-          const err = new Error(message);
-          err.statusCode = status;
-          reject(err);
-        };
-        const done = (val) => {
-          if (settled) return;
-          settled = true;
-          if (bodyTimer) clearTimeout(bodyTimer);
-          resolve(val);
-        };
-        // 提前按 Content-Length 拒绝超限请求体
-        const declared = Number(req.headers['content-length']);
-        if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-          fail(413, '请求体过大（超过 1MB）');
-          return;
-        }
-        bodyTimer = setTimeout(() => fail(400, '请求体读取超时'), 30000);
-        req.on('data', (c) => {
-          if (settled) return;
-          const buf = Buffer.isBuffer(c) ? c : Buffer.from(c);
-          total += buf.length;
-          if (total > MAX_BODY_BYTES) {
-            req.pause();
-            fail(413, '请求体过大（超过 1MB）');
-            return;
-          }
-          chunks.push(buf);
-        });
-        req.on('end', () => {
-          if (settled) return;
-          const data = Buffer.concat(chunks).toString('utf8');
-          if (!data.trim()) { done({}); return; }
-          let parsed;
-          try { parsed = JSON.parse(data); } catch { fail(400, '请求体必须是合法 JSON'); return; }
-          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            fail(400, '请求体必须是 JSON 对象');
-            return;
-          }
-          done(parsed);
-        });
-        // 请求体超限/连接异常时也要结束等待，避免 handler 悬挂
-        req.on('error', () => fail(400, '请求体读取失败'));
-        req.on('aborted', () => fail(400, '请求体读取中断'));
-      });
-      // 浏览器会自动请求 /favicon.ico，且**不带控制台令牌**。若让它落到下面的鉴权分支，
-      // 每次打开控制台都会在 DevTools 里留一条 401 噪音（离线预览 fixture 早已用 204 处理，
-      // 真实服务端此前与自己的 fixture 行为不一致）。这里在任何鉴权之前直接 204 收掉。
-      if (req.method === 'GET' && (url.pathname === '/favicon.ico' || url.pathname === '/apple-touch-icon.png')) {
-        res.writeHead(204, SECURITY_HEADERS);
-        res.end();
-        return;
-      }
-      // Host 头校验（DNS rebinding 硬化）：控制台只监听 127.0.0.1，因此合法请求的 Host
-      // 只可能是 127.0.0.1 / localhost / [::1] 加本端口。攻击者用一个 TTL=0 的域名解析到
-      // 127.0.0.1 时，浏览器会把 evil.com:3100 当作同源，Origin 校验随之失效；卡住 Host
-      // 这一层后，这类请求在进入任何业务分支之前就被拒掉。
-      // 反代/端口转发场景会被一并拒绝——这是有意的（要远程访问请用 SSH 隧道并自行承担）。
-      const hostHeader = String(req.headers.host ?? '');
-      // 用**实际绑定端口**而不是配置值：测试夹具用 consolePort: 0 让系统分配端口，
-      // 配置里那个 0 不是请求里的 Host 端口。请求必然发生在 listen 之后，所以这里拿得到。
-      const boundPort = server.address()?.port ?? port;
-      const allowedHosts = [`127.0.0.1:${boundPort}`, `localhost:${boundPort}`, `[::1]:${boundPort}`];
-      if (!allowedHosts.includes(hostHeader.toLowerCase())) {
-        sendJson({ ok: false, error: `Host 头不被允许（${hostHeader || '缺失'}）：控制台只接受本机回环访问` }, 403);
-        return;
-      }
-      // 控制台鉴权：所有请求需带 x-console-token 或 ?token=
-      // 定长比较：`!==` 会在第一个不同的字符处短路，理论上可被本机进程用响应时延逐字节试探。
-      // 令牌是 192 bit 随机值且只监听回环，所以这是纵深防御而非在野漏洞。
-      const suppliedToken = String(url.searchParams.get('token') ?? req.headers['x-console-token'] ?? '');
-      const tokenMatches = (() => {
-        if (!consoleToken) return false; // 上面已拒绝空令牌；真出现也只许失败关闭，绝不 return true
-        const a = Buffer.from(suppliedToken, 'utf8');
-        const b = Buffer.from(consoleToken, 'utf8');
-        if (a.length !== b.length) return false;
-        return crypto.timingSafeEqual(a, b);
-      })();
-      if (consoleToken && !tokenMatches) {
-        if (req.method === 'GET' && url.pathname === '/') {
-          res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', ...SECURITY_HEADERS });
-          res.end('<!doctype html><meta charset="utf-8"><title>需要令牌</title><script>const t=prompt(\'请输入控制台访问令牌\');if(t)location.href=\'/?token=\'+encodeURIComponent(t);</script>');
-        } else {
-          sendJson({ ok: false, error: '未授权：请提供控制台访问令牌' }, 401);
-        }
-        return;
-      }
-      // 智能体调用隔离（集中关卡）。
-      //
-      // 背景：控制台令牌是「管理端全权」，会话令牌是「只能动自己这个会话」。MCP 工具进程
-      // 两者都持有，所以「这次请求到底是智能体发的还是管理端发的」必须由请求自己声明。
-      // 各端点用 `if (x-agent-token && !agentTokenOk(...))` 做会话绑定校验，但那个写法在
-      // **头缺失时整条跳过** —— 而头缺失恰恰是模型没传 token 时的自然结果
-      // （旧版 mcp-snowluma-safe.js 用 `...(token ? {...} : {})` 直接省略了这个头）。
-      // 于是「漏传令牌」不是被拒绝，而是**升级成控制台全权**：典型的 confused deputy。
-      //
-      // 现在 MCP 端一律带上 x-agent-call: 1；带了令牌就必须命中某个活跃会话，
-      // 端点自己漏写校验也不会退回管理端。
-      //
-      // 但「没带令牌」的智能体调用不能一律拒绝：closed-agent（管理员私聊）模式下模型
-      // 本来就**没有**会话令牌（令牌只在 reserved2 的唤醒提示里下发），而 qq_send_group_message
-      // / qq_list_groups 等工具必须在这个模式里可用（工具描述写的也是"closed-agent 模式不需要"）。
-      // 这些端点各自按模式判定（/api/send/* 只在 closed-agent 放行；/api/images/* 在 reserved2
-      // 强制要令牌；/api/status 对智能体调用只回最小对象），所以这里把「无令牌智能体调用」
-      // 限制到这条非 v2 会话面；整个 /api/socialV2/ 前缀一概不放——那里的 token 校验全是
-      // `if (x-agent-token && …)`，放进来就等于退化成管理端全权（confused deputy）。
-      if (req.headers['x-agent-call'] !== undefined) {
-        const agentToken = req.headers['x-agent-token'];
-        const hasToken = typeof agentToken === 'string' && agentToken !== '';
-        if (hasToken && !isLiveAgentToken(agentToken)) {
-          sendJson({ ok: false, error: '未授权：智能体调用携带的会话令牌无效' }, 403);
-          return;
-        }
-        if (!hasToken) {
-          const tokenlessAgentAllowed = url.pathname === '/api/status'
-            || url.pathname.startsWith('/api/send/')
-            || url.pathname.startsWith('/api/images/');
-          if (!tokenlessAgentAllowed) {
-            sendJson({ ok: false, error: '未授权：该接口的智能体调用必须携带有效的会话令牌' }, 403);
-            return;
-          }
-        }
-      }
-      // CSRF 防护：所有写操作必须是 application/json，且（若带 Origin）必须来自本机页面。
-      // 默认未配 consoleToken 时，这可阻止任意网页用表单/跨站请求触发
-      // /api/restart、/api/workspace/reset、/api/role 等破坏性接口。
-      if (req.method !== 'GET') {
-        const ctype = String(req.headers['content-type'] ?? '');
-        if (!ctype.toLowerCase().includes('application/json')) {
-          sendJson({ ok: false, error: '请求必须是 application/json' }, 415);
-          return;
-        }
-        const origin = req.headers['origin'];
-        if (origin) {
-          let originHost = '';
-          try { originHost = new URL(String(origin)).host; } catch {}
-          if (![`127.0.0.1:${boundPort}`, `localhost:${boundPort}`, `[::1]:${boundPort}`].includes(originHost)) {
-            sendJson({ ok: false, error: '跨站请求被拒绝' }, 403);
-            return;
-          }
-        }
-      }
-      try {
-        // 空 agent token 一律拒绝，防止 MCP 传入空字符串时被当作“管理端/无 token”绕过校验
-        if (req.headers['x-agent-token'] === '') {
-          sendJson({ ok: false, error: 'agent token 不能为空' }, 403);
-          return;
-        }
-        // 暂停二代 AI 时，所有带 agent token 的 v2 工具调用一律拒绝
-        if (socialV2.paused && req.headers['x-agent-token'] && (url.pathname.startsWith('/api/socialV2/') || url.pathname.startsWith('/api/send/') || url.pathname.startsWith('/api/images/'))) {
-          sendJson({ ok: false, error: 'AI 已暂停，当前不允许执行 v2 工具' }, 403);
-          return;
-        }
-        // 二代模式总开关：关闭后 agent token 调用的 v2 工具全部拒绝（控制台仍可管理）
-        if (cfg.socialV2?.enabled === false && req.headers['x-agent-token'] && (url.pathname.startsWith('/api/socialV2/') || url.pathname.startsWith('/api/send/') || url.pathname.startsWith('/api/images/'))) {
-          sendJson({ ok: false, error: '二代模式已关闭，当前不允许执行 v2 工具' }, 403);
-          return;
-        }
-        // 模式隔离：带 agent token 的 v2 接口只允许在 reserved2 模式下使用
-        if (req.headers['x-agent-token'] && url.pathname.startsWith('/api/socialV2/') && currentMode !== 'reserved2') {
-          sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403);
-          return;
-        }
-        // 管理端专用 v2 接口：带 agent token 的请求一律拒绝，防止 MCP 工具越权访问控制台功能
-        // /api/socialV2/initial-prompt 也在这里：它是操作者写给 AI 的"环境背景"，
-        // 让 AI 自己读/改等于把控制台的管理输入（以及未来可能写入的其它群信息）交给会话主体。
-        const adminOnlyV2Paths = ['/api/socialV2/config', '/api/socialV2/activity', '/api/socialV2/reset', '/api/socialV2/states', '/api/socialV2/wake', '/api/socialV2/initial-prompt'];
-        if (req.headers['x-agent-token'] && (adminOnlyV2Paths.includes(url.pathname) || (url.pathname === '/api/socialV2/feedback' && req.method === 'GET') || (url.pathname === '/api/socialV2/tool-log' && req.method === 'GET'))) {
-          sendJson({ ok: false, error: '该接口仅控制台可用' }, 403);
-          return;
-        }
-        // 表情库管理接口只允许控制台（带 agent token 的 v2 工具一律拒绝，防止越权改库）
-        if (req.headers['x-agent-token'] && (url.pathname === '/api/stickers' || url.pathname.startsWith('/api/stickers/'))) {
-          sendJson({ ok: false, error: '该接口仅控制台可用' }, 403);
-          return;
-        }
-        // agent token 默认拒绝：MCP 的 v2 工具同时携带 x-console-token 与 x-agent-token，
-        // 因此仅靠控制台令牌挡不住 AI。这里改成白名单：只有 AI 真正需要的面放行，
-        // 其余（人格/提示词/思考强度/白名单/重启…）一律 403——避免以后新增管理端点时忘记拉黑。
-        if (req.headers['x-agent-token']) {
-          const agentAllowed = url.pathname === '/api/status'
-            || url.pathname.startsWith('/api/socialV2/')
-            || url.pathname.startsWith('/api/send/')
-            || url.pathname.startsWith('/api/images/')
-            || url.pathname === '/api/authorize/read';
-          if (!agentAllowed) {
-            sendJson({ ok: false, error: '该接口仅控制台可用' }, 403);
-            return;
-          }
-        }
-        // 只读降级：黑话库/表情库在启动时加载失败时，写接口必须**明确失败**。
-        // 旧行为是 save 函数里只打一行日志就 return，而接口照样回 {ok:true}：
-        // 控制台显示"✅ 已保存"，实际只改在内存里，重启后全部消失。
-        if (req.method !== 'GET') {
-          const readonlyStore = (!slangStoreWritable && (url.pathname === '/api/slang'
-            || url.pathname === '/api/slang/clear'
-            || url.pathname === '/api/slang/extract'
-            || url.pathname === '/api/slang/research'
-            || url.pathname.startsWith('/api/slang/batch-')
-            || url.pathname === '/api/socialV2/slang/submit')) ? '黑话库'
-            : (!stickerStoreWritable && (url.pathname === '/api/stickers/sync'
-              || url.pathname === '/api/stickers/note'
-              || url.pathname === '/api/stickers/remark'
-              || url.pathname === '/api/socialV2/sticker-note'
-              || url.pathname === '/api/socialV2/sticker-remark'
-              || url.pathname === '/api/socialV2/collect-sticker')) ? '表情库'
-              : '';
-          if (readonlyStore) {
-            sendJson({ ok: false, error: `${readonlyStore}处于只读降级状态（启动时加载失败，未覆盖原文件），本次修改不会落盘；请修复 state/ 下的对应文件后重启桥接` }, 503);
-            return;
-          }
-        }
-        if (req.method === 'GET' && url.pathname === '/') {
-          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...SECURITY_HEADERS });
-          try {
-            res.end(fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8'));
-          } catch {
-            res.end('控制台页面缺失：qq-bridge/public/console.html');
-          }
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/status') {
-          // 已迁出到 src/api/status.js（阶段 3 第 1 组样板）。
-          // 依赖显式注入 —— 不再靠本函数的闭包；行为与迁移前逐字段一致。
+      // 响应头与 sendJson 已迁到 src/http/response.js；这里保留同名薄封装，
+      // 让 100+ 个既有调用点（sendJson(obj, status)）一行都不用改。
+      const sendJson = (obj, status = 200) => writeJson(res, obj, status);
+      // 请求体读取已迁到 src/http/body.js（同样的 1MB 上限、30s 超时、四类错误文案）。
+      const readBody = () => readJsonBody(req);
           const handleStatus = createStatusHandler({
             sendJson,
             readRoleState,
@@ -3819,6 +3586,298 @@ async function main() {
             readActivityTail,
             roleName,
           });
+          const handleRoles = createRolesHandler({
+            sendJson, readBody, log, fs, path, ROOT,
+            readRoleState, writeRoleState,
+            roleSummaries, readRoleContent, writeRoleContent,
+            roleName, roleEntry, readRoleRaw,
+            createRoleCard, renameRoleCard, deleteRoleCard,
+            roleWarnings, roleCharStats, roleSectionReport,
+            validateRoleName,
+            resolveExistingRole, validateRoleContent, sanitizeRoleName, roleFilePath,
+            getInjectMaxChars: () => roleInjectMaxChars,
+            setInjectLimit: (raw) => {
+              const next = applyRoleInjectLimit(raw);
+              const configFile = path.join(ROOT, 'config.json');
+              const file = readConfigObject(configFile);
+              file.role = { ...(file.role ?? {}), maxInjectChars: next };
+              atomicWriteJson(configFile, file);
+              cfg.role = { ...(cfg.role ?? {}), maxInjectChars: next };
+              roleInjectMaxChars = next;
+              log(`控制台：人格注入上限已设为 ${next} 字符（下一条消息生效）`);
+              return next;
+            },
+            limits: { ROLE_NAME_MAX, ROLE_CONTENT_MAX_BYTES },
+          });
+          const handleSlang = createSlangHandler({
+            sendJson, readBody, log, path, ROOT,
+            readConfigObject, atomicWriteJson,
+            getCfg: () => cfg,
+            saveSlangConfig: (merged) => {
+              const configFile = path.join(ROOT, 'config.json');
+              const file = readConfigObject(configFile);
+              file.slang = merged;
+              atomicWriteJson(configFile, file);
+              cfg.slang = { ...cfg.slang, ...merged };
+            },
+            getEntries: () => slangEntries,
+            setEntries: (next) => { slangEntries = next; },
+            isWritable: () => slangStoreWritable,
+            saveStore: () => saveSlangStore(),
+            createSlangEntry,
+            SLANG_STATUS,
+            slangWindows,
+            slangExtractionCooldowns,
+            slangSubmitTimes,
+            slangResearchingIds,
+            queueSlangTask,
+            runSlangExtraction,
+            runSlangResearch,
+            invalidateSlangLearnerSession,
+          });
+          const handleSessions = createSessionsHandler({
+            sendJson, readBody, log,
+            getState: () => state,
+            getCfg: () => cfg,
+            bumpSessionEpoch: () => { sessionEpoch++; },
+            maps: {
+              modelAppliedSessions, reverse, collectors,
+              sendToolSucceededSessions, pendingSendToolCalls,
+              v2TurnStartAt, turnLeaseNoted, toolCallNames,
+            },
+            pending, queued, queuedHintAt, sessionPromises,
+            cancelPendingEntry, drainPromptQueue,
+            social, messageMediaStore,
+            slangWindows, slangExtractionCooldowns, slangSubmitTimes,
+            cancelSocialTimers, clearSocialV2Timers,
+            pendingWakeKeys, wakeConfigUpdatedKeys, markReadCalledKeys, wakeConfigMissCount,
+            forgetAgentToken,
+            socialV2, seenForwardIds,
+            saveSocialV2State, saveState,
+            api, withTimeout, DSH_CONTROL_TIMEOUT_MS,
+          });
+          const handleSocial = createSocialHandler({
+            sendJson, readBody, log, path, ROOT,
+            readConfigObject, atomicWriteJson,
+            getCfg: () => cfg,
+            setSocialConfig: (merged) => { cfg.social = { ...cfg.social, ...merged }; },
+            social,
+            enterActive, leaveActive,
+            flushSummaries,
+          });
+          const handleV2Read = createSocialV2ReadHandler({
+            sendJson,
+            getCfg: () => cfg,
+            getSocialV2: () => socialV2,
+            readToolLog,
+            readFeedbackEntries,
+            getSocialV2State,
+            agentTokenOk,
+            v2SessionAllowed,
+            v2ToolEnabled,
+            readThroughSeqV2,
+            formatMemoryV2,
+            confirmedSlangListV2,
+            buildSlangContext,
+            getSlangEntries: () => slangEntries,
+            noteModelMessagesV2,
+            stickerEnabled,
+            syncStickerLibrary,
+            formatStickerList,
+            getStickerEntries: () => stickerEntries,
+            getStickerSyncedAt: () => stickerSyncedAt,
+            voiceCfg,
+            listAudioFiles,
+            inspectAudio,
+            describeAudio,
+            fs,
+            path,
+            ROOT,
+            mimeFromBuffer,
+          });
+          const handleV2Write = createSocialV2WriteHandler({
+            sendJson, readBody, log,
+            fs, TOOL_LOG_FILE, FEEDBACK_FILE, atomicWriteJson,
+            getCfg: () => cfg,
+            getMode: () => currentMode,
+            agentTokenOk, v2SessionAllowed, v2ToolEnabled,
+            getSocialV2: () => socialV2,
+            getSocialV2State,
+            requestedReadThroughSeqV2, isSleepingConfigV2, preSleepWaitBlockedV2,
+            pickWakeTriggersV2, normalizeSpeakerIdsV2,
+            cancelReplyCheckV2, setupSleepTimerV2,
+            acknowledgeMessagesV2, ensureWakeableV2,
+            markReadCalledKeys, saveSocialV2State,
+            readThroughSeqV2, computeWakeSafetyV2,
+            feedbackTimes, truncateText, appendFeedbackEntry, appendActivity,
+            appendMemoryV2, formatMemoryV2, redactKnownTokensOnly,
+            bumpSessionEpoch: () => { sessionEpoch++; },
+            getState: () => state,
+            sessionPromises,
+            clearAllSocialV2Timers,
+            drainAllPromptQueues,
+            stopRetiredSessionWork,
+            sessionModels,
+            forgetAgentToken,
+            seenForwardIds,
+            saveState,
+            pendingWakeKeys,
+            clearAllPendingWakeLeases,
+            wakeConfigUpdatedKeys,
+            markReadCalledKeys,
+            wakeConfigMissCount,
+            atomicWriteJson,
+            SOCIAL_V2_FILE,
+            api,
+            sendWakePromptV2,
+            modeAllowed,
+            initialPrompts,
+            initialPromptMaxChars,
+            isInitialPromptWritable: () => initialPromptsWritable,
+            canonicalV2Key,
+            setInitialPrompt,
+          });
+          const handleV2Send = createSocialV2SendHandler({
+            sendJson, readBody, log,
+            getMode: () => currentMode,
+            agentTokenOk, v2ToolEnabled, v2SessionAllowed,
+            shouldBlockSilentReply,
+            fs, path, resolveRuntimeDir,
+            getCfg: () => cfg,
+            getSocialV2: () => socialV2,
+            getSocialV2State, saveSocialV2State,
+            syncStickerLibrary,
+            getStickerEntries: () => stickerEntries,
+            pickStickersByMood, stickerEnabled,
+            applyStickerNoteV2, setStickerRemarkV2, collectStickerV2,
+            assertGroupMember,
+            getSelfUserId: () => selfUserId,
+            onebotHttpAction,
+            appendActivity,
+            getStickerImageData, safeFetchBuffer,
+            MAX_MEDIA_BYTES, MAX_MEDIA_PIXELS, getImageDimensions,
+            mimeFromBuffer, mimeFromUrl, toModelMedia,
+            voiceCfg, modeAllowed,
+            resolveVoicePathForV2, voiceBudgetCheck,
+            inspectAudio, describeAudio, sendVoiceForV2,
+            resolveReplyTargetV2, sendStickerV2,
+            truncateText, scheduleReplyCheckV2,
+            bot, captureSendGuard,
+            computeGapsV2, SENSITIVE_RE,
+            findCjkSpaceWarning, findSplitBoundaryWarning,
+            sendMessagesV2, recordSentMessagesV2,
+          });
+          const handleV2Qzone = createSocialV2QzoneHandler({
+            sendJson, readBody, log, fs, path,
+            getCfg: () => cfg,
+            getMode: () => currentMode,
+            agentTokenOk, v2SessionAllowed,
+            onebotHttpAction, appendActivity,
+            ensureDirSafe, resolveRuntimeDir, sendGuideTemplate,
+            getSelfUserId: () => selfUserId,
+            safeFetchBuffer, describeImageBuffer,
+          });
+          const handleV2Wait = createSocialV2WaitHandler({
+            sendJson, readBody, log,
+            getMode: () => currentMode,
+            getCfg: () => cfg,
+            getSocialV2: () => socialV2,
+            getSocialV2State, saveSocialV2State,
+            agentTokenOk, v2SessionAllowed, v2ToolEnabled,
+            readThroughSeqV2, noteModelMessagesV2, suggestQuietMsV2,
+            preSleepWaitBlockedV2, canonicalV2Key,
+            activeWaits, ACTIVE_WAIT_LEASE_MS,
+            cancelReplyCheckV2, sleep, looksLikeUnfinished,
+          });
+          const handleStickers = createStickersHandler({
+            sendJson, readBody,
+            getCfg: () => cfg,
+            syncStickerLibrary,
+            formatStickerList,
+            getStickerEntries: () => stickerEntries,
+            getStickerSyncedAt: () => stickerSyncedAt,
+            isWritable: () => stickerStoreWritable,
+            applyStickerNoteV2,
+            setStickerRemarkV2,
+          });
+          const handleTokens = createTokensHandler({
+            sendJson, log,
+            getTokenLedger: () => tokenLedger,
+            getPriceTable: () => priceTable,
+          });
+          const handleImages = createImagesHandler({
+            sendJson,
+            getMode: () => currentMode,
+            agentTokenOk,
+            modeAllowed,
+            getCfg: () => cfg,
+            v2ToolEnabled,
+            findMessageMedia,
+            fetchMediaData,
+            log,
+          });
+          const handleSend = createSendHandler({
+            sendJson, readBody, log,
+            unquoteJsonString,
+            getMode: () => currentMode,
+            getSocialV2: () => socialV2,
+            getCfg: () => cfg,
+            agentTokenOk, v2ToolEnabled, modeAllowed, shouldBlockSilentReply,
+            getSocialV2State, saveSocialV2State, resolveReplyTargetV2,
+            sendMessagesV2, recordSentMessagesV2,
+            appendActivity, scheduleReplyCheckV2,
+            SENSITIVE_RE,
+          });
+
+      // ── 域分派（重构阶段 1：路由表真正接上）───────────────────────────────
+      // 这 12 个域各自内部按 pathname 分派、不认领时 return false。它们原本是分散在
+      // 4000 行之间的 `if (await handleX(req, url)) return;`，现在由 src/http/router.js
+      // 按**同样的顺序**串起来；路由表还留了 exact/param/prefix 三个入口，后续把
+      // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
+      const domainRouter = createRouter()
+        .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
+        .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone)
+        .chain(handleStickers).chain(handleTokens);
+      // 注意：handleV2Wait / handleImages / handleSend **不进链**。
+      //   · handleV2Wait 的签名是 (req, res, url)，它自己写响应，不是布尔分派；
+      //   · handleImages / handleSend 是终端处理器（无 return 值），只在原位置调用一次。
+      // 把它们塞进链里会变成「跑两次」，表现为 headers already sent。
+      // ── 前导关（重构阶段 2：整段搬到 src/http/prelude.js）──────────────────
+      // favicon → Host 头 → 控制台令牌 → 智能体声明 → CSRF → 暂停/关停/模式/管理端/白名单
+      // → 只读降级。判定逻辑与文案逐条保留；这里只负责落响应。
+      const denial = runPrelude({
+        req,
+        url,
+        boundPort: server.address()?.port ?? port,
+        consoleToken,
+        crypto,
+        isLiveAgentToken,
+        isSocialV2Paused: () => socialV2.paused === true,
+        isSocialV2Disabled: () => cfg.socialV2?.enabled === false,
+        getMode: () => currentMode,
+        slangStoreWritable,
+        stickerStoreWritable,
+      });
+      if (denial) {
+        applyDenial(res, denial);
+        return;
+      }
+
+      try {
+        if (req.method === 'GET' && url.pathname === '/') {
+          try {
+            writeHtml(res, fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8'));
+          } catch {
+            writeHtml(res, '控制台页面缺失：qq-bridge/public/console.html');
+          }
+          return;
+        }
+        // 域分派：一个 handler 认领即停止（顺序与拆分前完全一致）
+        if (await domainRouter.dispatch(req, url)) return;
+
+        if (req.method === 'GET' && url.pathname === '/api/status') {
+          // 已迁出到 src/api/status.js（阶段 3 第 1 组样板）。
+          // 依赖显式注入 —— 不再靠本函数的闭包；行为与迁移前逐字段一致。
           handleStatus(req);
           return;
         }
@@ -3891,30 +3950,6 @@ async function main() {
         // ── 人格管理（已迁出到 src/api/roles.js）──────────────────────────────
         // 9 条路由：/api/role, /api/role-mode, /api/roles*, /api/roles/{content,limit,create,update,rename,delete}
         if (url.pathname === '/api/role' || url.pathname.startsWith('/api/role')) {
-          const handleRoles = createRolesHandler({
-            sendJson, readBody, log, fs, path, ROOT,
-            readRoleState, writeRoleState,
-            roleSummaries, readRoleContent, writeRoleContent,
-            roleName, roleEntry, readRoleRaw,
-            createRoleCard, renameRoleCard, deleteRoleCard,
-            roleWarnings, roleCharStats, roleSectionReport,
-            validateRoleName,
-            resolveExistingRole, validateRoleContent, sanitizeRoleName, roleFilePath,
-            getInjectMaxChars: () => roleInjectMaxChars,
-            setInjectLimit: (raw) => {
-              const next = applyRoleInjectLimit(raw);
-              const configFile = path.join(ROOT, 'config.json');
-              const file = readConfigObject(configFile);
-              file.role = { ...(file.role ?? {}), maxInjectChars: next };
-              atomicWriteJson(configFile, file);
-              cfg.role = { ...(cfg.role ?? {}), maxInjectChars: next };
-              roleInjectMaxChars = next;
-              log(`控制台：人格注入上限已设为 ${next} 字符（下一条消息生效）`);
-              return next;
-            },
-            limits: { ROLE_NAME_MAX, ROLE_CONTENT_MAX_BYTES },
-          });
-          if (await handleRoles(req, url)) return;
         }
 
         // ── 仿真提示词（一代 / 二代各自的预设内置提示词）──────────────────────
@@ -4036,33 +4071,6 @@ async function main() {
         // 14 条路由命中：/api/slang, /clear, /batch-{delete,confirm,reject},
         // /api/slang/:id (PATCH/DELETE), /:id/{confirm,reject}, /extract, /research, /config
         if (url.pathname === '/api/slang' || url.pathname.startsWith('/api/slang/')) {
-          const handleSlang = createSlangHandler({
-            sendJson, readBody, log, path, ROOT,
-            readConfigObject, atomicWriteJson,
-            getCfg: () => cfg,
-            saveSlangConfig: (merged) => {
-              const configFile = path.join(ROOT, 'config.json');
-              const file = readConfigObject(configFile);
-              file.slang = merged;
-              atomicWriteJson(configFile, file);
-              cfg.slang = { ...cfg.slang, ...merged };
-            },
-            getEntries: () => slangEntries,
-            setEntries: (next) => { slangEntries = next; },
-            isWritable: () => slangStoreWritable,
-            saveStore: () => saveSlangStore(),
-            createSlangEntry,
-            SLANG_STATUS,
-            slangWindows,
-            slangExtractionCooldowns,
-            slangSubmitTimes,
-            slangResearchingIds,
-            queueSlangTask,
-            runSlangExtraction,
-            runSlangResearch,
-            invalidateSlangLearnerSession,
-          });
-          if (await handleSlang(req, url)) return;
         }
 
         // ── 会话查看 ──────────────────────────────────────────────────────────
@@ -4072,28 +4080,6 @@ async function main() {
         // reset 是高危路径：清 ~30 个 Map 后**最后**才停/归档 DSH 会话。
         // 回归测试：scripts/test-session-reset.mjs（10 项）
         if (url.pathname === '/api/sessions' || url.pathname === '/api/session/reset') {
-          const handleSessions = createSessionsHandler({
-            sendJson, readBody, log,
-            getState: () => state,
-            getCfg: () => cfg,
-            bumpSessionEpoch: () => { sessionEpoch++; },
-            maps: {
-              modelAppliedSessions, reverse, collectors,
-              sendToolSucceededSessions, pendingSendToolCalls,
-              v2TurnStartAt, turnLeaseNoted, toolCallNames,
-            },
-            pending, queued, queuedHintAt, sessionPromises,
-            cancelPendingEntry, drainPromptQueue,
-            social, messageMediaStore,
-            slangWindows, slangExtractionCooldowns, slangSubmitTimes,
-            cancelSocialTimers, clearSocialV2Timers,
-            pendingWakeKeys, wakeConfigUpdatedKeys, markReadCalledKeys, wakeConfigMissCount,
-            forgetAgentToken,
-            socialV2, seenForwardIds,
-            saveSocialV2State, saveState,
-            api, withTimeout, DSH_CONTROL_TIMEOUT_MS,
-          });
-          if (await handleSessions(req, url)) return;
         }
         // ── 挂起审批 / 提问 ───────────────────────────────────────────────────
         if (req.method === 'GET' && url.pathname === '/api/pending') {
@@ -4315,16 +4301,6 @@ async function main() {
         // ── 一代仿真社交引擎（已迁出到 src/api/social.js）──────────────────────
         // POST /api/social/state、GET /api/social、POST /api/social、POST /api/social/flush
         if (url.pathname === '/api/social' || url.pathname === '/api/social/state' || url.pathname === '/api/social/flush') {
-          const handleSocial = createSocialHandler({
-            sendJson, readBody, log, path, ROOT,
-            readConfigObject, atomicWriteJson,
-            getCfg: () => cfg,
-            setSocialConfig: (merged) => { cfg.social = { ...cfg.social, ...merged }; },
-            social,
-            enterActive, leaveActive,
-            flushSummaries,
-          });
-          if (await handleSocial(req, url)) return;
         }
 
         // ── 后台控制端引导：向指定会话的 DSH agent 投递提醒 ──────────────────
@@ -4401,133 +4377,17 @@ async function main() {
         // ── socialV2 只读端点（A 批，已迁出到 src/api/socialV2-read.js）──────────
         // config / activity / tool-log / feedback / states / my-recent / memory / slang-query
         if (req.method === 'GET') {
-          const handleV2Read = createSocialV2ReadHandler({
-            sendJson,
-            getCfg: () => cfg,
-            getSocialV2: () => socialV2,
-            readToolLog,
-            readFeedbackEntries,
-            getSocialV2State,
-            agentTokenOk,
-            v2SessionAllowed,
-            v2ToolEnabled,
-            readThroughSeqV2,
-            formatMemoryV2,
-            confirmedSlangListV2,
-            buildSlangContext,
-            getSlangEntries: () => slangEntries,
-            noteModelMessagesV2,
-            stickerEnabled,
-            syncStickerLibrary,
-            formatStickerList,
-            getStickerEntries: () => stickerEntries,
-            getStickerSyncedAt: () => stickerSyncedAt,
-            voiceCfg,
-            listAudioFiles,
-            inspectAudio,
-            describeAudio,
-            fs,
-            path,
-            ROOT,
-            mimeFromBuffer,
-          });
-          if (await handleV2Read(req, url)) return;
         }
         // ── socialV2 写入端点（B 批之一，已迁出到 src/api/socialV2-write.js）──────
         // mark-read / check-send / tool-log-clear / feedback-clear / record-sent
         if (req.method === 'POST' || url.pathname === '/api/socialV2/initial-prompt') {
-          const handleV2Write = createSocialV2WriteHandler({
-            sendJson, readBody, log,
-            fs, TOOL_LOG_FILE, FEEDBACK_FILE, atomicWriteJson,
-            getCfg: () => cfg,
-            getMode: () => currentMode,
-            agentTokenOk, v2SessionAllowed, v2ToolEnabled,
-            getSocialV2: () => socialV2,
-            getSocialV2State,
-            requestedReadThroughSeqV2, isSleepingConfigV2, preSleepWaitBlockedV2,
-            pickWakeTriggersV2, normalizeSpeakerIdsV2,
-            cancelReplyCheckV2, setupSleepTimerV2,
-            acknowledgeMessagesV2, ensureWakeableV2,
-            markReadCalledKeys, saveSocialV2State,
-            readThroughSeqV2, computeWakeSafetyV2,
-            feedbackTimes, truncateText, appendFeedbackEntry, appendActivity,
-            appendMemoryV2, formatMemoryV2, redactKnownTokensOnly,
-            bumpSessionEpoch: () => { sessionEpoch++; },
-            getState: () => state,
-            sessionPromises,
-            clearAllSocialV2Timers,
-            drainAllPromptQueues,
-            stopRetiredSessionWork,
-            sessionModels,
-            forgetAgentToken,
-            seenForwardIds,
-            saveState,
-            pendingWakeKeys,
-            clearAllPendingWakeLeases,
-            wakeConfigUpdatedKeys,
-            markReadCalledKeys,
-            wakeConfigMissCount,
-            atomicWriteJson,
-            SOCIAL_V2_FILE,
-            api,
-            sendWakePromptV2,
-            modeAllowed,
-            initialPrompts,
-            initialPromptMaxChars,
-            isInitialPromptWritable: () => initialPromptsWritable,
-            canonicalV2Key,
-            setInitialPrompt,
-          });
-          if (await handleV2Write(req, url)) return;
         }
         // ── socialV2 语音合成（C 批安全子集，已迁出到 src/api/socialV2-send.js）──────
         // say / sing：spawn 外部 PowerShell 脚本，不经过 sendMessagesV2
         if (req.method === 'POST' || url.pathname === '/api/socialV2/sticker-image') {
-          const handleV2Send = createSocialV2SendHandler({
-            sendJson, readBody, log,
-            getMode: () => currentMode,
-            agentTokenOk, v2ToolEnabled, v2SessionAllowed,
-            shouldBlockSilentReply,
-            fs, path, resolveRuntimeDir,
-            getCfg: () => cfg,
-            getSocialV2: () => socialV2,
-            getSocialV2State, saveSocialV2State,
-            syncStickerLibrary,
-            getStickerEntries: () => stickerEntries,
-            pickStickersByMood, stickerEnabled,
-            applyStickerNoteV2, setStickerRemarkV2, collectStickerV2,
-            assertGroupMember,
-            getSelfUserId: () => selfUserId,
-            onebotHttpAction,
-            appendActivity,
-            getStickerImageData, safeFetchBuffer,
-            MAX_MEDIA_BYTES, MAX_MEDIA_PIXELS, getImageDimensions,
-            mimeFromBuffer, mimeFromUrl, toModelMedia,
-            voiceCfg, modeAllowed,
-            resolveVoicePathForV2, voiceBudgetCheck,
-            inspectAudio, describeAudio, sendVoiceForV2,
-            resolveReplyTargetV2, sendStickerV2,
-            truncateText, scheduleReplyCheckV2,
-            bot, captureSendGuard,
-            computeGapsV2, SENSITIVE_RE,
-            findCjkSpaceWarning, findSplitBoundaryWarning,
-            sendMessagesV2, recordSentMessagesV2,
-          });
-          if (await handleV2Send(req, url)) return;
         }
         // ── socialV2 空间/攻略（C3a，已迁出到 src/api/socialV2-qzone.js）──────────
         if (req.method === 'POST') {
-          const handleV2Qzone = createSocialV2QzoneHandler({
-            sendJson, readBody, log, fs, path,
-            getCfg: () => cfg,
-            getMode: () => currentMode,
-            agentTokenOk, v2SessionAllowed,
-            onebotHttpAction, appendActivity,
-            ensureDirSafe, resolveRuntimeDir, sendGuideTemplate,
-            getSelfUserId: () => selfUserId,
-            safeFetchBuffer, describeImageBuffer,
-          });
-          if (await handleV2Qzone(req, url)) return;
         }
 
         if (req.method === 'POST' && url.pathname === '/api/socialV2/config') {
@@ -5052,34 +4912,10 @@ async function main() {
         // 管理端表情库接口（控制台）
         // ── 表情库（已迁出到 src/api/stickers.js）────────────────────────────────
         if (url.pathname === '/api/stickers' || url.pathname.startsWith('/api/stickers/')) {
-          const handleStickers = createStickersHandler({
-            sendJson, readBody,
-            getCfg: () => cfg,
-            syncStickerLibrary,
-            formatStickerList,
-            getStickerEntries: () => stickerEntries,
-            getStickerSyncedAt: () => stickerSyncedAt,
-            isWritable: () => stickerStoreWritable,
-            applyStickerNoteV2,
-            setStickerRemarkV2,
-          });
-          if (await handleStickers(req, url)) return;
         }
 
         // ── socialV2 长轮询等待（D 批，已迁出到 src/api/socialV2-wait.js）─────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/wait') {
-          const handleV2Wait = createSocialV2WaitHandler({
-            sendJson, readBody, log,
-            getMode: () => currentMode,
-            getCfg: () => cfg,
-            getSocialV2: () => socialV2,
-            getSocialV2State, saveSocialV2State,
-            agentTokenOk, v2SessionAllowed, v2ToolEnabled,
-            readThroughSeqV2, noteModelMessagesV2, suggestQuietMsV2,
-            preSleepWaitBlockedV2, canonicalV2Key,
-            activeWaits, ACTIVE_WAIT_LEASE_MS,
-            cancelReplyCheckV2, sleep, looksLikeUnfinished,
-          });
           if (await handleV2Wait(req, res, url)) return;
         }
 
@@ -5090,12 +4926,6 @@ async function main() {
         if (url.pathname === '/api/tokens/summary' || url.pathname.startsWith('/api/tokens/')) {
           // 「仅控制台可用」的闸门留在 bridge（它包住整个前缀），方法分支已迁出到 src/api/tokens.js
           if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅控制台可用' }, 403); return; }
-          const handleTokens = createTokensHandler({
-            sendJson, log,
-            getTokenLedger: () => tokenLedger,
-            getPriceTable: () => priceTable,
-          });
-          if (await handleTokens(req, url)) return;
           sendJson({ ok: false, error: 'not found' }, 404);
           return;
         }
@@ -5419,17 +5249,6 @@ async function main() {
         // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
         // ── 图片/表情查询端点（已迁出到 src/api/images.js） ──────────────────
         if (req.method === 'GET' && url.pathname === '/api/images/message') {
-          const handleImages = createImagesHandler({
-            sendJson,
-            getMode: () => currentMode,
-            agentTokenOk,
-            modeAllowed,
-            getCfg: () => cfg,
-            v2ToolEnabled,
-            findMessageMedia,
-            fetchMediaData,
-            log,
-          });
           await handleImages(req, url);
           return;
         }
@@ -5438,18 +5257,6 @@ async function main() {
         // ── 统一发送端点（已迁出到 src/api/send.js）──────────────────────────────
         // /api/send/{group,private,reply} 三端点合一
         if (req.method === 'POST' && (url.pathname === '/api/send/group' || url.pathname === '/api/send/private' || url.pathname === '/api/send/reply')) {
-          const handleSend = createSendHandler({
-            sendJson, readBody, log,
-            unquoteJsonString,
-            getMode: () => currentMode,
-            getSocialV2: () => socialV2,
-            getCfg: () => cfg,
-            agentTokenOk, v2ToolEnabled, modeAllowed, shouldBlockSilentReply,
-            getSocialV2State, saveSocialV2State, resolveReplyTargetV2,
-            sendMessagesV2, recordSentMessagesV2,
-            appendActivity, scheduleReplyCheckV2,
-            SENSITIVE_RE,
-          });
           await handleSend(req, url);
           return;
         }

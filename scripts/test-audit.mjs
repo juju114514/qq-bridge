@@ -92,6 +92,9 @@ const tests = [
   // 角色卡 id 化：身份存在文件里（front matter），文件名随便改 —— 绑定不再随改名/搬机器失效。
   //   覆盖 front matter 解析、id 与文件名解耦、老卡片确定性 id、注入路径剥离元数据。
   'test-role-id.mjs',
+  // HTTP 层（src/http/*）：响应头 / 请求体限额 / 前导关的每条拒绝 / 路由表分派。
+  //   这一层坏了的症状不是报错，而是「某个 403 悄悄消失」——只能靠断言钉住。
+  'test-http-layer.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
