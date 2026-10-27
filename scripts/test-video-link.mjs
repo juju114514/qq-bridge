@@ -204,6 +204,19 @@ check('一条命令查工具可见性：diag-tools.mjs 存在、文档指向它�
   assert.match(ts, /scripts\\diag-tools\.mjs/, 'TROUBLESHOOTING 要指向它');
   const fm = read('docs/FOLDER_MAP.md');
   assert.match(fm, /`diag-tools\.mjs`/, 'FOLDER_MAP 要登记');
+  assert.match(script, /'--out'/, '要支持 --out（PowerShell 的 > 会写 UTF-16，读回来炸）');
+});
+
+check('verify.ps1：体检包含视频工具，且依赖检查不再硬编码已移除的依赖', () => {
+  const verify = read('verify.ps1');
+  assert.match(verify, /视频工具/, '体检要有视频工具这一项');
+  assert.match(verify, /diag-tools\.mjs/, '要复用 diag-tools 而不是另写一套');
+  assert.match(verify, /--out/, '要用 --out 交接 JSON');
+  // 8f65bac 起已移除 @snowluma/*；再硬编码它就会在全新机器上稳定报假 FAIL。
+  // 注意只看**非注释行**：修复说明里提到它是对的（注释解释了坑）。
+  const verifyCode = verify.split(/\r?\n/).filter((l) => !l.trimStart().startsWith('#')).join('\n');
+  assert.doesNotMatch(verifyCode, /@snowluma/, '代码里别再引用已移除的 @snowluma 依赖');
+  assert.match(verify, /package\.json/, '依赖检查应读 package.json');
 });
 
 check('配置项齐全（links 可整体关掉）', () => {

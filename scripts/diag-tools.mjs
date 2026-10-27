@@ -36,6 +36,14 @@ const baseArg = (() => {
   return i >= 0 && args[i + 1] ? args[i + 1] : 'http://127.0.0.1:3100';
 })();
 
+// --out <file>：把 JSON 写到文件（UTF-8 **无 BOM**）。
+// 为什么不靠 shell 重定向：PowerShell 5.1 的 `>` 默认写 UTF-16LE，`ConvertFrom-Json` 读回来直接炸，
+// 而且 `$raw -join` 这种管道还会踩到 PS 对首字符 `{` 的怪癖。写文件是最稳的交接方式。
+const outFile = (() => {
+  const i = args.indexOf('--out');
+  return i >= 0 && args[i + 1] ? args[i + 1] : '';
+})();
+
 const VIDEO_TOOLS = ['qq_get_message_images', 'qq_get_message_video', 'qq_open_video'];
 
 function readToken() {
@@ -164,7 +172,21 @@ if (!bridge.ok) {
   verdict = '三件套都注册了。如果模型仍看不到：重启 DSH（工具清单是启动快照），再不行就新建会话';
 }
 
-console.log('');
-console.log(`  ── 结论：${verdict}`);
-console.log('');
+
+// --json 只输出 JSON（含结论与退出码）：给脚本/CI 用，不能混人类可读文本，
+// 否则 `ConvertFrom-Json` 直接失败（自我踩过：verify.ps1 里就是这么挂的）。
+if (!wantJson) {
+
+
+  console.log('');
+  console.log(`  ── 结论：${verdict}`);
+  console.log('');
+} else {
+  const payload = JSON.stringify({ ...result, verdict, exitCode }, null, 2);
+  if (outFile) {
+    fs.writeFileSync(outFile, payload + '\n', 'utf8'); // 无 BOM
+  } else {
+    console.log(payload);
+  }
+}
 process.exit(exitCode);

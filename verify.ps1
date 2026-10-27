@@ -78,9 +78,28 @@ if (-not $nodeExe) {
 }
 
 # ── 2. 依赖 ────────────────────────────────────────────────────────────────
-$sdk = Join-Path $Root 'node_modules\@snowluma\sdk'
-if (Test-Path $sdk) { Line OK '依赖' 'node_modules/@snowluma/sdk 存在' }
-else { Line FAIL '依赖' '缺 node_modules，先跑 npm install 或 install.ps1' }
+# 依赖检查必须**跟着 package.json 走**：原来这里硬编码 `node_modules\@snowluma\sdk`，
+# 而 8f65bac 起已经移除 @snowluma/* 依赖（自带 OneBot 客户端）——
+# 于是全新装的机器体检会稳定报「缺 node_modules」，而它其实什么都不缺（假 FAIL，很伤人）。
+$depOk = $true
+$depMissing = @()
+$pkgPath = Join-Path $Root 'package.json'
+if (Test-Path $pkgPath) {
+  try {
+    $pkg = Read-JsonFile $pkgPath
+    $deps = @($pkg.dependencies.PSObject.Properties.Name)
+    foreach ($d in $deps) {
+      if (-not (Test-Path (Join-Path $Root ("node_modules\" + $d)))) { $depOk = $false; $depMissing += $d }
+    }
+    if ($deps.Count -eq 0) { Line OK '依赖' 'package.json 没有第三方依赖（自带 OneBot 客户端）' }
+    elseif ($depOk) { Line OK '依赖' ("$($deps.Count) 个第三方依赖都在 node_modules") }
+    else { Line FAIL '依赖' ("缺：" + ($depMissing -join ', ') + "（先跑 npm install 或 install.ps1）") }
+  } catch {
+    Line WARN '依赖' ("读不到 package.json：" + $_.Exception.Message)
+  }
+} else {
+  Line WARN '依赖' '没有 package.json（目录不对？）'
+}
 
 # ── 3. config.json ─────────────────────────────────────────────────────────
 $cfgPath = Join-Path $Root 'config.json'
@@ -228,6 +247,42 @@ if (Test-Path $cv) {
   if ($code2 -eq 0) { Line OK '版本兼容' '与验证点一致' }
   elseif ($code2 -eq 1) { Line WARN '版本兼容' '与验证点不同（跑 scripts\check-versions.ps1 看明细）' }
   else { Line FAIL '版本兼容' '不满足最低要求（跑 scripts\check-versions.ps1 看明细）' }
+}
+
+# ── 9. 视频工具就绪（图片 / 视频消息 / 视频链接 三件套）─────────────────────
+# 为什么并进体检：模型说"没有 qq_open_video"这种问题，以前只能等它开口才知道，
+# 而且极易被误判成"功能没做"（真实案例：对方 AI 断言作者没接工具，实际是开关关了）。
+# 这里复用 scripts\diag-tools.mjs 的三侧检查，只判定、不改任何东西。
+$diag = Join-Path $Root 'scripts\diag-tools.mjs'
+if (-not $nodeExe) {
+  Line WARN '视频工具' '跳过（没有 node）'
+} elseif (-not (Test-Path $diag)) {
+  Line WARN '视频工具' '跳过（缺 scripts\diag-tools.mjs，版本旧）'
+} else {
+  # --skip-mcp：体检不该额外拉起一个 MCP 进程（只验桥接侧 + 代码侧）
+  # --out：让 node 自己写 UTF-8 无 BOM 的 JSON。PowerShell 的 `>` 默认写 UTF-16LE，
+  # 用管道接又多踩一个「首字符 { 被当脚本块」的怪癖 —— 写文件读文件最稳。
+  $diagFile = Join-Path $env:TEMP ('qqb-diag-' + [guid]::NewGuid().ToString('N') + '.json')
+  & $nodeExe $diag --json --skip-mcp --out $diagFile 2>$null | Out-Null
+  $diagCode = $LASTEXITCODE
+  $parsed = $null
+  try {
+    if (Test-Path $diagFile) {
+      $parsed = [IO.File]::ReadAllText($diagFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    }
+  } catch { $parsed = $null }
+  finally { Remove-Item $diagFile -Force -ErrorAction SilentlyContinue }
+  if (-not $parsed) {
+    Line WARN '视频工具' ("无法判定（diag-tools 退出码 $diagCode，桥接可能没跑）")
+  } elseif ($parsed.bridge.ok -eq $false) {
+    Line WARN '视频工具' ("桥接未就绪，暂无法判定：" + $parsed.bridge.error)
+  } elseif ($parsed.bridge.data.getImages -eq $false) {
+    Line WARN '视频工具' 'socialV2.tools.getImages=false ⇒ 三件套都不注册；改成 true 后必须重启 DSH'
+  } elseif ($parsed.source.ok -eq $false) {
+    Line WARN '视频工具' ('代码里缺工具：' + (($parsed.source.missing) -join ', ') + '（版本太旧，先 git pull）')
+  } else {
+    Line OK '视频工具' '图片/视频/链接三件套都会注册（getImages=true）'
+  }
 }
 
 # ── 汇总 ───────────────────────────────────────────────────────────────────

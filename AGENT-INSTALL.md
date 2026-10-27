@@ -106,6 +106,9 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ <管理员的QQ�
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\verify.ps1
+# 其中这两行必须 [OK]：
+#   [OK] 依赖      N 个第三方依赖都在 node_modules
+#   [OK] 视频工具   图片/视频/链接三件套都会注册（getImages=true）
 ```
 
 退出码 `0` = 全通过；`2` = 有警告但可用；`1` = 有致命问题（看它标 `[FAIL]` 的那几行）。
