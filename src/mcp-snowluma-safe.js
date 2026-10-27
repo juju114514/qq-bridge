@@ -1078,11 +1078,14 @@ if (cfg.socialV2?.tools?.getImages !== false) {
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       messageId: z.union([z.number(), z.string()]).describe('要查看的消息 id（QQ 消息 id 可为负数；二代也可用本地 seq）'),
+      mode: z.enum(['auto', 'text', 'image']).optional()
+        .describe('长图怎么给：auto（默认，长图先 OCR 出文字，拿不到再切片给图）/ text（只要文字）/ image（只看图，长图切片）'),
       token: z.string().optional().describe('二代会话令牌（reserved2 下必填，见唤醒提示中的【会话令牌】）')
     },
-    async ({ key, messageId, token }) => {
+    async ({ key, messageId, mode, token }) => {
       try {
         const q = new URLSearchParams({ key, messageId: String(messageId) });
+        if (mode) q.set('mode', String(mode));
         const data = await agentApi(`/api/images/message?${q.toString()}`, {
           headers: token ? { 'x-agent-token': token } : {},
           timeoutMs: 180000
@@ -1094,6 +1097,12 @@ if (cfg.socialV2?.tools?.getImages !== false) {
         const content = [];
         const textParts = [];
         for (const img of images) {
+          // OCR 结果：只回文字，不回图 —— 这正是"省 token"的意义
+          if (img?.ocrText) {
+            textParts.push(`[${img.kind === 'face' ? '表情' : '图片'}${img.index ?? ''}${img.text ? ' ' + img.text : ''}]`);
+            content.push({ type: 'text', text: String(img.ocrText) });
+            continue;
+          }
           if (img?.data && img?.mimeType) {
             textParts.push(`[${img.kind === 'face' ? '表情' : '图片'}${img.index ?? ''}${img.text ? ' ' + img.text : ''}]`);
             content.push({ type: 'image', mimeType: img.mimeType, data: img.data });

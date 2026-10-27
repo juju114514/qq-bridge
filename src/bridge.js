@@ -32,6 +32,7 @@ import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage, describeAge } from './qq-model-view.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { normalizeImageForModel } from './media-normalize.js';
+import { ocrAvailable, ocrImage } from './ocr.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
@@ -6258,7 +6259,15 @@ async function main() {
     return parts;
   }
 
-  async function fetchMediaData(mediaList) {
+  async function fetchMediaData(mediaList, opts = {}) {
+    // mode（只影响图片，不影响表情）：
+    //   auto  = 长图先 OCR（省钱），OCR 拿不到东西再切片
+    //   text  = 一律先 OCR，失败才退回给图
+    //   image = 不看文字，直接给图（长图切片刻）
+    const mode = ['auto', 'text', 'image'].includes(String(opts.mode ?? '')) ? String(opts.mode) : 'auto';
+    // OCR 模块可能没被注入（审计 harness 的 VM 只注入 src/api），也可能在非 Windows 上不可用。
+    // 两种情况都必须静默降级成"不 OCR"——绝不能让图片读取整条失败。
+    const ocrReady = typeof ocrAvailable === 'function' && (() => { try { return ocrAvailable() === true; } catch { return false; } })();
     const out = [];
     let index = 0;
     let totalBytes = 0;
@@ -6304,6 +6313,31 @@ async function main() {
           ...(media.summary ? { summary: String(media.summary) } : {}),
           ...(media.subType ? { subType: String(media.subType) } : {})
         };
+        // ── 长图优先 OCR：省 token，而且文字比糊图更有用 ──────────────────
+        if (img?.buffer && mode !== 'image' && ocrReady) {
+          const info = (() => { try { return getImageDimensions(img.buffer); } catch { return null; } })();
+          const longImage = !!info && info.width > 0 && info.height > 0
+            && Math.max(info.width, info.height) / Math.min(info.width, info.height) >= 2.4;
+          if (mode === 'text' || longImage) {
+            const ocr = typeof ocrImage === 'function'
+              ? await ocrImage(img.buffer, { mimeType: img.mimeType })
+              : { ok: false, reason: 'unavailable' };
+            if (ocr.ok && String(ocr.text).replace(/\s+/g, '').length >= 20) {
+              const chars = ocr.text.replace(/\s+/g, '').length;
+              out.push({
+                ...base,
+                kind: base.kind,
+                ocrText: ocr.text,
+                text: `（长图已 OCR：${ocr.lines?.length ?? 0} 行 / ${chars} 字，${ocr.ms}ms，lang=${ocr.lang || '-'}；要看原图请传 mode=image）`
+              });
+              continue;
+            }
+            if (!ocr.ok || mode === 'text') {
+              // OCR 没东西/不可用：text 模式也退回给图，别让模型什么都拿不到
+              log(`[ocr] ${noun}${index} 未取到文字（${ocr.reason || 'empty'}），退回给图`);
+            }
+          }
+        }
         const prep = img?.buffer ? await toModelMedia(img.buffer, img.mimeType, `${noun}${index}`) : null;
         const pieces = prep?.ok
           ? (Array.isArray(prep.slices) && prep.slices.length ? prep.slices : [{ buffer: prep.buffer, mimeType: prep.mimeType, note: '' }])

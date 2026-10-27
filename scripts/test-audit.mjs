@@ -104,6 +104,8 @@ const tests = [
   'test-session-busy.mjs',
   // 长图切片：长宽比 ≥2.4 走 slice（每片短边 1000、有重叠、片数≤6），普通图仍走 shrink。
   'test-long-image.mjs',
+  // 长图 OCR：空格归一律、降级不抛异常、bridge/api/MCP 三处接线。
+  'test-ocr.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

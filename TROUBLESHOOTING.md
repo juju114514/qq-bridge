@@ -1115,6 +1115,27 @@ python scripts\asr_server.py
 
 失败也不致命：聊天照常，只是语音转不了文字。
 
+### O3b. 长图 OCR 不出文字 / 报 `no-lang`
+
+**现象**：模型说「图片里的字看不清」，或日志里 `[ocr] 图片N 未取到文字（no-lang）`。
+
+**为什么**：OCR 用的是 Windows 自带引擎（`Windows.Media.Ocr`），需要系统装**对应语言的识别包**。
+不装的话引擎创建失败，桥接会自动退回切片（不崩），但长图会多花好几倍 token。
+
+**查**：
+
+```powershell
+# 看装了哪些 OCR 语言
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+[Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag }
+```
+
+**修**：设置 → 时间和语言 → 语言和区域 → 中文(简体) → 语言选项 → 确认装了「光学字符识别」/
+「基本键入」组件；装完重启桥接（引擎在进程内缓存过一次探测结果）。
+
+**如果系统就是装不上**：接受降级即可 —— 长图会自动切片，模型照样能看图，只是更贵。
+也可以用 `mode=image` 显式要求"只看图"，省掉一次 OCR 尝试。
+
 ### O4. 外部语音工具（仓库外）坏了没人兜底
 
 **说明**：语音合成/翻唱这类重活可能被拆到仓库外的独立目录（例如 `../voice-tool/`）。
