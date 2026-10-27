@@ -92,6 +92,22 @@ roles/<任意文件名>.md
 迁移工具：`node scripts/migrate-roles-to-ids.mjs`（`--dry-run` 默认；`--apply` 真写）。
 回归：`scripts/test-role-id.mjs`（9 项，含「改文件名 id 不变」）。
 
+### 3.4b 模型 provider（DeepSeek 已测 / 其他未测）
+
+桥接**不直连厂商**：它把 `dsh.provider` / `dsh.model` / `dsh.reasoningEffort` 原样交给 DSH，
+再从 `session.modelCatalog` 读档位。所以"换模型"主要是 **DSH 侧**的事，桥接无需改代码。
+
+| provider | 状态 | 说明 |
+| --- | --- | --- |
+| `deepseek-official` | ✅ 已测试 | 43 套离线回归 + 54 项全功能自测都在这个组合下跑过 |
+| `openai` 及其他兼容 provider | ⚠️ **已接入，未测试** | 代码路径透传；计价按 `deepseek-flash` 兜底估算（标 `estimated`）；思考强度词表/工具调用/多模态/人格协议均未验证 |
+
+细节、接入步骤与验证清单见 [docs/guides/MODELS.md](docs/guides/MODELS.md)。
+探针：`node scripts/probe-dsh-providers.mjs`（打印 DSH 现有 provider 分组与模型接入相关 settings 路径）。
+
+> 启动时若 `dsh.provider` 不是 `deepseek-official`，桥接会在日志里打三条如实提示
+> （计价估算 / 档位词表 / 工具与人格未验证），这是刻意设计的"不夸大支持范围"。
+
 ### 3.5 启动方式（Windows 一键 / Linux systemd）
 
 | 平台 | 入口 | 说明 |
@@ -148,6 +164,7 @@ roles/<任意文件名>.md
 | `test-compat.mjs` | `compat.json` 动作清单 ↔ 代码、平台能力 ↔ 闸门 | 加接口/加动作/改平台行为 |
 | `test-packaging.mjs` | 单一锁文件、LICENSE 纯净、**归属完整性**（角色卡/素材） | 加依赖/加素材 |
 | `test-console.mjs` | 控制台真机冒烟（打 `127.0.0.1:3100`） | **不在审计里**，手动：`node scripts/test-console.mjs` |
+| `probe-dsh-providers.mjs` | 打印 DSH 的 provider 分组与模型接入 settings 路径（接新模型前先跑） | 换 provider / 换 DSH 版本 |
 | `live-full-test.ps1` | **全功能自测（54 项，会真发消息）**：只读接口 + 守卫 + 人格 CRUD + 真实 QQ 动作 + 媒体 | 改完功能、上线前手工跑：`powershell -File scripts\live-full-test.ps1`（`-MaxSends` 控发送量） |
 
 ## 五、失败特征表（症状 → 根因）

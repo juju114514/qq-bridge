@@ -64,6 +64,7 @@ DSH/                         ← 工作区根（不是仓库根）
 | `test-compat.mjs` | 兼容契约一致性：`compat.json` 的动作清单 ↔ 代码实际使用（双向）、平台能力表 ↔ 平台闸门 | 保留 |
 | `test-portability.mjs` | 换机器审计：硬编码盘符、示例配置里的本机值、`powershell.exe` 前的平台闸门、迁移清单完整性 | 保留 |
 | `migrate-roles-to-ids.mjs` | 一次性迁移（幂等）：给老角色卡补 front matter，并把 `state/` 里以旧显示名记录的绑定改写成 id。默认 dry-run，`--apply` 才写 | 保留（老仓库升级用） |
+| `probe-dsh-providers.mjs` | **模型接入探针**：打印 `session.modelCatalog` 的 provider 分组与 settings 里与模型接入有关的路径（`providers.*` / `apiKeyEnv` / `baseURL` / `allowedModels`），值一律脱敏 | 接新 provider / 换 DSH 版本时先跑 |
 | `route-list-all.mjs` | 路由清单（`bridge.js` + `src/api/*` + `src/http/*`）。注：`route-inventory.mjs` 只扫 `bridge.js`，重构后它会漏报 | 保留（对账用） |
 | `live-full-test.ps1` | **全功能自测（对着活的桥接跑）**：54 项 —— 只读接口、守卫、人格 CRUD、真实 QQ 动作、媒体/外部。约束写进脚本头：只发 `ownerQQ` 私聊、只做可逆写、跳过破坏性接口、`-MaxSends` 限流、自动处理「AI 暂停」与 agentToken | 保留（改完代码手工跑一次） |
 | `harden-state-acl.mjs` | 收紧 `state/` 目录权限（Windows 上 `mode 0o600` 是空操作，必须动 ACL）。直接试 → 失败提权重试 → 仍失败则打印可复制命令；**任何路径都以 0 退出，绝不阻断启动**。被 `start-bridge.ps1` → 桥接启动路径调用 | 保留（`start.bat` 依赖） |
@@ -85,7 +86,7 @@ DSH/                         ← 工作区根（不是仓库根）
 docs/
 ├── README.md     # 文档索引（每篇一句话 + 是否仍然有效）  ← 先看这个
 ├── FOLDER_MAP.md # 本文件
-├── guides/       # 面向使用者/运维：DSH_SETUP / DSH_020_ADAPTATION / SECURITY_BASELINE / TOKEN_USAGE_CONSOLE / CONSOLE-UI-TESTING / PRIVACY / PROJECT_GUIDE / VOICE
+├── guides/       # 面向使用者/运维：DSH_SETUP / DSH_020_ADAPTATION / SECURITY_BASELINE / TOKEN_USAGE_CONSOLE / CONSOLE-UI-TESTING / PRIVACY / PROJECT_GUIDE / VOICE / LAUNCHER / MIGRATION / **MODELS**
 ├── design/       # 设计与规划：GEN2_SIMULATION_PLAN / SOCIAL_MODE_PLAN / DSH_QQ_TOOLS_PLAN / 真人语感策略
 ├── research/     # 调研：SnowLuma功能调研 / 免打扰 / 表情包 / 本地模型选型
 ├── audits/       # 审查与优化报告（最新的全项目体检是 AUDIT_REPORT_2026-09-20）

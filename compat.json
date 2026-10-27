@@ -147,5 +147,20 @@
     "DSH 的监听端口每次重启可能变化：config.json 的 dsh.baseUrl 必须跟着改（Windows 用 launcher/sync-dsh-port.ps1）。",
     "state/sessions.json 里的 DSH sessionId 是机器相关的，换机器后应清空；DPAPI 备份跨机不可解密（见 docs/guides/MIGRATION.md）。",
     "上游 fork 与本仓库的 preset 结构不同时，DSH 端需要重新安装 preset（见 SETUP.md）。"
-  ]
+  ],
+  "providers": {
+    "$comment": "模型 provider 的验证状态。桥接把 provider/model 原样交给 DSH；这里只记录「本仓库验证到哪一步」。",
+    "deepseek-official": {
+      "tested": true,
+      "models": [
+        "deepseek-flash"
+      ],
+      "note": "43 套离线回归 + 54 项全功能自测都在这个 provider 上跑过"
+    },
+    "openai": {
+      "tested": false,
+      "models": [],
+      "note": "OpenAI / GPT 等兼容 provider：代码路径是透传，功能已接入但**未测试**。已知缺口见 docs/guides/MODELS.md（计价按 deepseek-flash 兜底估算、思考强度词表可能不同、工具调用/多模态/人格协议未验证）"
+    }
+  }
 }

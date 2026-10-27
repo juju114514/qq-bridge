@@ -36,6 +36,7 @@
 | 人格 | 身份在文件 front matter：`roles/<任意文件名>.md` 里 `id:` + `name:`。state 只存 id，**改名不影响绑定**（`test-role-id.mjs` 钉住） |
 | 协议层 | 自带 `src/onebot-ws.js`（Node 内置 WebSocket）；**不依赖 `@snowluma/*`**，也不修改任何第三方包 |
 | 契约 | [COMPAT.md](COMPAT.md)（人读）+ [compat.json](compat.json)（机器读），`test-compat.mjs` 保证两者与代码一致 |
+| 模型 | `dsh.provider` 透传给 DSH。`deepseek-official` **已测试**；`openai`（GPT）**已接入但未测试**（计价/档位/工具/人格均未验证）→ [guides/MODELS.md](docs/guides/MODELS.md)，探针 `scripts/probe-dsh-providers.mjs` |
 
 > ⚠️ 最容易误判的一件事：**AI 可能处于「暂停」状态**（`socialV2.paused=true`）。
 > 此时所有 v2 工具都会 403「AI 已暂停」，群里也不会回话。先查

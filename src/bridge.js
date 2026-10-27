@@ -2746,6 +2746,21 @@ async function main() {
     // 该开关曾经允许 AI 发送语音库之外的任意本机音频文件（prompt injection 可用来外发文件）。
     // 现在无论开关如何，AI 通道都只接受语音库内的文件；这里提示它已经不再放宽边界。
     log('ℹ️  socialV2.voice.allowAbsolutePath=true 已不再放宽 AI 通道：AI 发的语音始终只允许来自语音库（库外文件请用语音工具/CLI 发送）');
+
+  // 非 DeepSeek 官方 provider（例如 OpenAI / GPT）：功能上是**透传**给 DSH 的，
+  // 但本仓库只在 deepseek-official 上验证过。启动时如实标注三件事，
+  // 避免用户把「能跑」当成「验证过」：
+  //   ① 计价表只有 DeepSeek 的，其他模型按 deepseek-flash 兜底估算（会标 estimated）
+  //   ② 思考强度（reasoningEffort）的词表来自 DSH 的模型目录，换 provider 可能不同
+  //   ③ 工具调用 / 多模态 / 人格协议在非 DeepSeek 模型上的表现未验证
+  const configuredProvider = String(cfg.dsh?.provider ?? '').trim();
+  if (configuredProvider && configuredProvider !== 'deepseek-official') {
+    log(`⚠️  当前 provider = ${configuredProvider}（非 DeepSeek 官方）：`);
+    log('   · provider/model 是原样交给 DSH 的；本仓库只在 deepseek-official 上测试过；');
+    log('   · 计价表只有 DeepSeek 的，其他模型会按 deepseek-flash 兜底估算并标 estimated；');
+    log('   · 工具调用 / 多模态 / 人格协议在该 provider 上的表现未经本仓库验证。');
+    log('   详见 docs/guides/MODELS.md（含 OpenAI / GPT 的接入步骤与已知缺口）');
+  }
   }
 
   // DSH 侧

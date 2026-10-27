@@ -100,6 +100,40 @@ check('平台能力表写「非 Windows 不支持语音」，代码里确有此�
     '点歌缺少平台闸门（QQBOT_SONG_SCRIPT 特例）');
 });
 
+// ── 4b. provider 验证状态必须如实标注（不许把未测试写成已支持）───────────
+check('provider 表：DeepSeek 标已测，其他 provider 必须标 tested:false', () => {
+  const provs = compat.providers ?? {};
+  assert.ok(provs['deepseek-official'], 'compat.json 缺 deepseek-official 条目');
+  assert.equal(provs['deepseek-official'].tested, true, 'DeepSeek 官方应标 tested:true');
+  const others = Object.entries(provs).filter(([k]) => !k.startsWith('$') && k !== 'deepseek-official');
+  assert.ok(others.length >= 1, '至少应有 openai 这条「已接入未测试」的登记');
+  for (const [id, v] of others) {
+    assert.equal(v.tested, false, `${id} 目前未经本仓库测试，必须标 tested:false`);
+    assert.ok(String(v.note ?? '').length > 20, `${id} 的 note 要写清未测试的具体含义`);
+  }
+});
+
+check('MODELS.md 存在，且把 GPT 明确标成「未测试」', () => {
+  const p = path.join(root, 'docs', 'guides', 'MODELS.md');
+  assert.ok(fs.existsSync(p), '缺 docs/guides/MODELS.md');
+  const doc = fs.readFileSync(p, 'utf8');
+  assert.match(doc, /未测试/, 'MODELS.md 必须出现「未测试」字样');
+  assert.match(doc, /openai|GPT/i, 'MODELS.md 必须写明 OpenAI / GPT');
+  assert.match(doc, /apiKeyEnv|API Key/, 'MODELS.md 必须说明 key 走环境变量、不要入库');
+  assert.match(doc, /estimated/, 'MODELS.md 必须说明计价是兜底估算');
+});
+
+check('文档与启动日志都如实提示「非 DeepSeek provider 未验证」', () => {
+  const readme = read('README.md');
+  assert.match(readme, /MODELS\.md/, 'README 应链接 MODELS.md');
+  assert.match(readme, /未测试/, 'README 必须写明未测试');
+  const en = read('README.en.md');
+  assert.match(en, /NOT tested|untested/i, 'README.en 必须写明 untested');
+  const bridge = read('src/bridge.js');
+  assert.match(bridge, /configuredProvider !== 'deepseek-official'/, '桥接启动时应检测非 DeepSeek provider');
+  assert.match(bridge, /未经本仓库验证/, '启动日志要如实标注未验证');
+});
+
 // ── 5. AI 入口必须能找到这份手册 ───────────────────────────────────────────
 check('AGENTS.md 指向 COMPAT.md', () => {
   const agents = read('AGENTS.md');

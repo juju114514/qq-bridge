@@ -161,6 +161,34 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 
 手装流程见 [SETUP.md](SETUP.md)。
 
+## 模型接入（DeepSeek 已测 / GPT 等未测）
+
+桥接**不直连任何模型厂商**：它把 `config.json` 里的 `dsh.provider` / `dsh.model` /
+`dsh.reasoningEffort` 原样交给 DSH，并从 DSH 的模型目录读可用档位。
+
+| provider | 状态 |
+| --- | --- |
+| `deepseek-official`（默认） | ✅ 已测试（本仓库所有回归与自测都在这个组合下跑） |
+| `openai`（GPT 及其他 OpenAI 兼容 provider） | ⚠️ **功能已接入，但未测试** |
+
+```jsonc
+// config.json —— 换成 GPT 时只动这三行
+"dsh": { "provider": "openai", "model": "gpt-4o", "reasoningEffort": "off" }
+```
+
+**"未测试"具体指什么**（不要当成"已支持"）：
+
+- 计价表只有 DeepSeek 的模型价 → 其他模型按 `deepseek-flash` **兜底估算**（控制台会标 estimated，金额别当真）；
+- 思考强度档位词表来自 DSH 模型目录，换 provider 可能没有对应档；
+- 工具调用协议、多模态（识图/表情）、人格卡与分条节奏**都没有在非 DeepSeek 模型上验证**；
+- 启动日志会主动打一条醒目提示，提醒这三件事。
+
+接入步骤（在 DSH 侧配 provider + 三行 config）、已知缺口表、验证清单：
+见 **[docs/guides/MODELS.md](docs/guides/MODELS.md)**。接新模型前先跑
+`node scripts/probe-dsh-providers.mjs` 看清 DSH 认识哪些 provider。
+
+> 不要把 API Key 写进仓库：DSH 走 `apiKeyEnv`（环境变量名）而不是明文 key。
+
 ## 安全
 
 | 面 | 文档 |

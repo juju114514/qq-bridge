@@ -97,6 +97,37 @@ This installs:
 
 Then restart DSH. See [docs/guides/DSH_SETUP.md](docs/guides/DSH_SETUP.md) for details.
 
+## Model providers (DeepSeek tested / GPT untested)
+
+The bridge never talks to a model vendor directly: it passes `dsh.provider` /
+`dsh.model` / `dsh.reasoningEffort` from `config.json` to DSH, and reads the model
+catalog (reasoning levels, model list) from DSH.
+
+| provider | status |
+| --- | --- |
+| `deepseek-official` (default) | ✅ tested — every regression and the live suite ran on this |
+| `openai` (GPT / other OpenAI-compatible) | ⚠️ **wired up, but NOT tested** |
+
+```jsonc
+// config.json — switching to GPT means changing only these three lines
+"dsh": { "provider": "openai", "model": "gpt-4o", "reasoningEffort": "off" }
+```
+
+What "untested" means here:
+
+- the price table only covers DeepSeek models — others fall back to `deepseek-flash`
+  prices and are flagged `estimated` (do not trust the money number);
+- reasoning-effort levels come from the DSH catalog and may not exist / may differ;
+- tool calling, multimodal input (images/stickers), and the persona + split-message
+  behaviour have **not** been verified on non-DeepSeek models;
+- at startup the bridge prints a warning saying exactly this.
+
+Setup (configure the provider on the DSH side + three lines of config), the known-gaps
+table and the verification checklist: **[docs/guides/MODELS.md](docs/guides/MODELS.md)**.
+Probe first: `node scripts/probe-dsh-providers.mjs`.
+
+> Never commit an API key: DSH uses `apiKeyEnv` (the env var name), not a literal key.
+
 ## Security Notes
 
 - `config.json` and `state/` are **never committed**; the repository only ships `config.example.json`. Both are ACL-hardened to the owner / SYSTEM / Administrators (`npm run harden-acl`).
