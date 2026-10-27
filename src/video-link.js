@@ -7,7 +7,10 @@
 //
 // 注意：这里只做**识别**，不下载。下载在 bridge 里调 yt-dlp（见 docs/guides/VIDEO.md）。
 
-/** 站点白名单：id → { label, hosts, patterns } */
+/** 站点白名单：id → { label, hosts, patterns }。
+ *  注意：**能识别 ≠ 能下载**。识别只看 URL 形态；真正下载靠 yt-dlp 的 extractor，
+ *  小红书/YouTube 常要 cookies 或代理，快手根本没有专用 extractor（走 generic）。
+ *  失败时会翻成人话（见 video-download.js 的 explainYtDlpError）。 */
 export const VIDEO_SITES = [
   {
     id: 'bilibili',
@@ -30,6 +33,43 @@ export const VIDEO_SITES = [
       /https?:\/\/(?:www\.)?douyin\.com\/video\/\d+/i,
       /https?:\/\/(?:www\.)?iesdouyin\.com\/share\/video\/\d+/i,
       /https?:\/\/(?:www\.)?douyin\.com\/note\/\d+/i
+    ]
+  },
+  {
+    // ⚠️ yt-dlp **没有** kuaishou 专用 extractor（2026.10.21 实测），只会走 generic，
+    //    成功率取决于页面里有没有直链。所以快手是"尽力而为"，失败文案会明确指向这条路。
+    id: 'kuaishou',
+    label: '快手',
+    hosts: ['kuaishou.com', 'v.kuaishou.com', 'chenzhongtech.com'],
+    patterns: [
+      /https?:\/\/v\.kuaishou\.com\/[0-9A-Za-z_-]+/i,
+      /https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[0-9A-Za-z_-]+/i,
+      /https?:\/\/(?:www\.)?kuaishou\.com\/f\/[0-9A-Za-z_-]+/i,
+      /https?:\/\/(?:www\.)?chenzhongtech\.com\/fw\/photo\/[0-9A-Za-z_-]+/i
+    ]
+  },
+  {
+    // xhslink.com 是分享短链；/user/profile/... 是主页，不算视频（正则不匹配 → 自然拒绝）
+    id: 'xiaohongshu',
+    label: '小红书',
+    hosts: ['xiaohongshu.com', 'xhslink.com'],
+    patterns: [
+      /https?:\/\/xhslink\.com\/[0-9A-Za-z_-]+/i,
+      /https?:\/\/(?:www\.)?xiaohongshu\.com\/explore\/[0-9a-f]{16,32}/i,
+      /https?:\/\/(?:www\.)?xiaohongshu\.com\/discovery\/item\/[0-9a-f]{16,32}/i
+    ]
+  },
+  {
+    // YouTube 在国内要代理才能真的取到流；能识别 ≠ 能下载（文档里写清了）
+    id: 'youtube',
+    label: 'YouTube',
+    hosts: ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+    patterns: [
+      /https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/watch\?v=[0-9A-Za-z_-]{11}/i,
+      /https?:\/\/(?:www\.)?youtube\.com\/shorts\/[0-9A-Za-z_-]{11}/i,
+      /https?:\/\/(?:www\.)?youtube\.com\/live\/[0-9A-Za-z_-]{11}/i,
+      /https?:\/\/youtu\.be\/[0-9A-Za-z_-]{11}/i,
+      /https?:\/\/(?:www\.)?youtube-nocookie\.com\/embed\/[0-9A-Za-z_-]{11}/i
     ]
   }
 ];

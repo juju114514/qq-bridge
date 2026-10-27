@@ -53,12 +53,38 @@ check('抖音：短链 / video / iesdouyin 分享页都能认出来', () => {
   }
 });
 
+check('快手 / 小红书 / YouTube：视频形态能认，主页/播放列表不认', () => {
+  const yes = [
+    ['https://v.kuaishou.com/AbCdEf', 'kuaishou'],
+    ['https://www.kuaishou.com/short-video/3xf8abc123', 'kuaishou'],
+    ['https://xhslink.com/a/bCDeFg', 'xiaohongshu'],
+    ['https://www.xiaohongshu.com/explore/65f0a1b2c3d4e5f60718293a', 'xiaohongshu'],
+    ['https://www.youtube.com/watch?v=BaW_jenozKc', 'youtube'],
+    ['https://youtu.be/BaW_jenozKc', 'youtube'],
+    ['https://www.youtube.com/shorts/BaW_jenozKc', 'youtube'],
+    ['https://m.youtube.com/watch?v=BaW_jenozKc', 'youtube'],
+  ];
+  for (const [url, site] of yes) {
+    assert.equal(detectVideoLinks(url)[0]?.site, site, `没认出 ${url}`);
+  }
+  const no = [
+    'https://www.kuaishou.com/profile/3xabc',           // 主页
+    'https://www.xiaohongshu.com/user/profile/5f0a1b',  // 主页
+    'https://www.youtube.com/playlist?list=PL123',      // 播放列表
+    'https://www.youtube.com/@channel',                 // 频道
+  ];
+  for (const url of no) {
+    assert.equal(detectVideoLinks(url).length, 0, `不该认出来：${url}`);
+  }
+});
+
 check('非视频链接 / 假域名 / 专栏页一律不认', () => {
   for (const text of [
     'https://example.com/video/1',
     'https://evil-bilibili.com/video/BV1xx411c7mD',
     'https://www.bilibili.com/read/cv123456',
     'https://b23.tv.evil.com/x',
+    'https://evil-youtube.com/watch?v=BaW_jenozKc',
   ]) {
     assert.equal(detectVideoLinks(text).length, 0, `不该认出来：${text}`);
   }
@@ -79,6 +105,12 @@ check('isAllowedVideoUrl：只放行白名单站点 + 必须是 http(s)', () => 
     'https://v.douyin.com/iRNBho6/',
   ];
   for (const url of allow) assert.equal(isAllowedVideoUrl(url), true, `应放行 ${url}`);
+  const allowMore = [
+    'https://v.kuaishou.com/AbCdEf',
+    'https://xhslink.com/a/bCDeFg',
+    'https://youtu.be/BaW_jenozKc',
+  ];
+  for (const url of allowMore) assert.equal(isAllowedVideoUrl(url), true, `应放行 ${url}`);
   const deny = [
     'https://evil-bilibili.com/video/BV1xx411c7mD',
     'http://127.0.0.1:3100/api/status',
@@ -95,7 +127,7 @@ check('站点表可裁剪（sites 参数），且 id 与中文名对得上', () 
   const url = 'https://v.douyin.com/iRNBho6/';
   assert.equal(isAllowedVideoUrl(url, { sites: ['bilibili'] }), false, '只开 B站时抖音要被拒');
   assert.equal(isAllowedVideoUrl(url, { sites: ['douyin'] }), true);
-  assert.deepEqual(VIDEO_SITES.map((s) => s.id), ['bilibili', 'douyin']);
+  assert.deepEqual(VIDEO_SITES.map((s) => s.id), ['bilibili', 'douyin', 'kuaishou', 'xiaohongshu', 'youtube']);
 });
 
 // ── 3. 接线 ───────────────────────────────────────────────────────────────
@@ -133,6 +165,9 @@ check('失败原因会翻译成人话（抖音主页/直播/图文 → 不是视
   assert.match(explainYtDlpError(write('ERROR: Sign in to confirm you are not a bot')), /登录态/);
   assert.match(explainYtDlpError(write('ERROR: HTTP Error 403: Forbidden')), /拒绝|风控/);
   assert.match(explainYtDlpError(write('ERROR: video is members-only')), /会员|权限/);
+  assert.match(explainYtDlpError(write('ERROR: [XiaoHongShu] abc: No video formats found!')), /没有视频/,
+    '小红书图文笔记应翻译成"没有视频"');
+  assert.match(explainYtDlpError(write('ERROR: [youtube] abc: This video is unavailable')), /不可用/);
   assert.equal(explainYtDlpError(write('')), '', '空日志不该编原因');
   for (const f of tmps) { try { fs.unlinkSync(f); } catch { /* ignore */ } }
 });
@@ -152,7 +187,7 @@ check('配置项齐全（links 可整体关掉）', () => {
   for (const k of ['enabled', 'maxSeconds', 'maxBytes', 'timeoutMs', 'maxHeight', 'sites']) {
     assert.ok(k in links, `links 缺 ${k}`);
   }
-  assert.deepEqual(links.sites, ['bilibili', 'douyin']);
+  assert.deepEqual(links.sites, ['bilibili', 'douyin', 'kuaishou', 'xiaohongshu', 'youtube']);
 });
 
 console.log('');

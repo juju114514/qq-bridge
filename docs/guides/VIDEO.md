@@ -116,15 +116,21 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 } } } }
 ```
 
-支持的链接形态（都在 `test-video-link.mjs` 里钉着）：
+支持的链接形态与**实际能下载**的能力（都在 `test-video-link.mjs` 里钉着）：
 
-| 站点 | 形态 |
-| --- | --- |
-| B站 | `bilibili.com/video/BV…`、`bilibili.com/video/av…`、`bilibili.com/bangumi/play/ep…`、`b23.tv/…`、`bili2233.cn/…` |
-| 抖音 | `v.douyin.com/…`、`douyin.com/video/<id>`、`douyin.com/note/<id>`、`iesdouyin.com/share/video/<id>` |
+| 站点 | 认得的形态 | yt-dlp extractor | 实测 |
+| --- | --- | --- | --- |
+| **B站** | `/video/BV…`、`/video/av…`、`/bangumi/play/ep\|ss…`、`b23.tv/…`、`bili2233.cn/…` | ✅ BiliBili | ✅ 10.8s / 196KB 故事板 |
+| **抖音** | `v.douyin.com/…`、`/video/<id>`、`/note/<id>`、`iesdouyin.com/share/video/<id>` | ✅ Douyin | ⚠️ 只支持**视频**分享；主页/直播/图文会明确回「不是视频」 |
+| **快手** | `v.kuaishou.com/…`、`/short-video/<id>`、`/f/<id>`、`chenzhongtech.com/fw/photo/<id>` | ❌ **没有专用 extractor** | ⚠️ 只能走 generic，成功率看页面里有没有直链；失败会提示改发文件 |
+| **小红书** | `xhslink.com/…`、`/explore/<id>`、`/discovery/item/<id>` | ✅ XiaoHongShu | ⚠️ 多数笔记要 **cookies**；图文笔记会回「没有视频」 |
+| **YouTube** | `/watch?v=<11位>`、`youtu.be/<11位>`、`/shorts/<11位>`、`/live/<11位>`、`nocookie/embed/<11位>` | ✅ youtube | ✅ 23s / 0.5MB（国内需代理才能真取流） |
 
-**不支持**的站点（YouTube、小红书、快手……）会被明确拒绝；要加站点就改 `video-link.js`
-的 `VIDEO_SITES`（正则 + 域名，两处都要），然后补一条测试。
+**认不出来的一律拒**：主页、播放列表、频道、专栏/图文页、假域名（`evil-youtube.com` 之类）。
+要加站点就改 `src/video-link.js` 的 `VIDEO_SITES`（域名 + 正则**两处**），再补一条测试。
+
+> ⚠️ **"能识别" ≠ "能下载"**：识别只看 URL 形态（纯函数，零网络）；真正下载靠 yt-dlp 的 extractor
+> + 站点风控 + 你的 cookies/代理。失败原因会被翻成人话（见下表），不会只丢一句 `退出码 1`。
 
 ## 四、模型怎么用
 
@@ -167,6 +173,9 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 | 抖音报「不是视频（主页/直播/图文）」 | 抖音分享链接有四种：**视频** / 主页 / 直播 / 图文。后三种 yt-dlp 都不支持（实测主页与直播都是 `Unsupported URL`） | 让用户发**视频**分享链接，或直接发视频文件 |
 | 抖音/ B站 报「需要登录态」 | 会员视频、部分高画质、风控 | 配 `links.cookiesFromBrowser: "edge"`，yt-dlp 会复用浏览器登录态 |
 | 报「被站点拒绝（风控/版权）」 | 站点级限制 | 换源，或让用户发视频文件 |
+| 报「视频不可用（可能已删除/区域限制/需要登录）」 | YouTube 对部分视频要求登录确认/地区限制 | 配 `cookiesFromBrowser`；或换源 |
+| 报「这个链接里没有视频（可能是图文笔记）」 | 小红书图文笔记只有图片 | 让用户发视频版，或直接发图 |
+| 快手的链接一直失败 | **yt-dlp 没有 kuaishou 专用 extractor** | 让用户直接发视频文件（或贴 B站/抖音/YouTube 版本）；这是上游限制，不是本仓库的 bug |
 | 时间戳没烧上 | `drawtext` 找不到字体（Linux/无字体包） | Windows 用 `fontfile='C\:/Windows/Fonts/consola.ttf'`；Linux 装 DejaVu 后改路径 |
 | 视频下载把内存吃满 | 直接用 `safeFetchBuffer`（整段进内存） | 用 `safeDownloadToFile` 流式写盘 |
 | 内网/回环地址被拒 | 这是**故意的** SSRF 防护 | 别用 `http://127.0.0.1` 测；要本地测就先临时改成 file:// 读（还是走同一条 CLI 逻辑） |

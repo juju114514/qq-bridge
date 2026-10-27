@@ -290,7 +290,10 @@
           "cookiesFromBrowser": "",
           "sites": [
             "bilibili",
-            "douyin"
+            "douyin",
+            "kuaishou",
+            "xiaohongshu",
+            "youtube"
           ],
           "_说明": "ytdlpPath 留空则从 PATH 找；Windows 可写进这里（本机路径不要提交到仓库）"
         }

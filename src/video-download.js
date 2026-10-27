@@ -63,6 +63,8 @@ export function explainYtDlpError(errFile) {
   try { text = fs.readFileSync(errFile, 'utf8'); } catch { return ''; }
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const tail = lines.slice(-6).join('\n');
+  if (/No video formats found/i.test(tail)) return '这个链接里没有视频（可能是图文笔记/纯图片）';
+  if (/This video is unavailable|Video unavailable/i.test(tail)) return '视频不可用（可能已删除/区域限制/需要登录）';
   if (/Unsupported URL/i.test(tail)) return '这个链接不是视频（可能是主页/直播/图文/已删除）';
   if (/needs? to log ?in|login required|cookies|Sign in to confirm/i.test(tail)) return '需要登录态（可在 socialV2.media.video.links.cookiesFromBrowser 填 edge/chrome）';
   if (/Private video|members-only|VIP|premium|会员/i.test(tail)) return '该视频需要会员/权限';
