@@ -110,6 +110,12 @@ npm install --foreground-scripts
 
 判断标准：**只要退出码是 0 就没问题**。真出错时 npm 会打印 `ELIFECYCLE` / `ERR!`。
 
+> **2026-10-27 真实踩过**：`scripts.postinstall` 的内联脚本被写成 mojibake **且少了一个右引号**，
+> `node -e` 直接 SyntaxError → `npm install` 在 postinstall 阶段失败 → **全新机器根本装不上**。
+> 症状是 `npm ERR! code ELIFECYCLE` + `SyntaxError: Invalid or unexpected token`。
+> 现在 `test-packaging.mjs` 会**真跑一遍**每个 `node -e` 脚本（引号配对 + 无乱码 + 退出码 0 三查），
+> 这类错不会再溜过去。
+
 ### A8. `npm` 本身不存在（`npm : 无法将"npm"项识别为`）
 
 **原因**：精简版/绿色版 Node 只带 `node.exe`；或 npm 目录没进 PATH。

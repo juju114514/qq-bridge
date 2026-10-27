@@ -55,7 +55,7 @@
     "probe:settings": "node scripts/probe-020-settings.mjs",
     "probe:heartbeat": "node scripts/probe-snowluma-heartbeat.mjs",
     "scan:tool-names": "node scripts/scan-dsh-tool-names.mjs",
-    "postinstall": "node -e \"console.log('[qq-bridge] 渚濊禆宸插氨缁紙涓嶅啀淇ˉ浠讳綍绗笁鏂瑰寘锛?)\"",
+    "postinstall": "node -e \"console.log('[qq-bridge] 依赖已就绪（不再修补任何第三方包）')\"",
     "privacy-scan": "node scripts/privacy-scan.mjs",
     "diagnose:acl": "node scripts/diagnose-acl.mjs",
     "harden-acl": "node scripts/harden-state-acl.mjs",

@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -169,6 +170,32 @@ check('assets/README.md 说明了 deepseek娘.png 的归属', () => {
   assert.match(text, /deepseek娘\.png/, 'assets/README.md 没提 deepseek娘.png');
   assert.match(text, /DeepSeek/, 'assets/README.md 没写权利方');
   assert.match(text, /不覆盖|不声称任何授权/, 'assets/README.md 没说清 MIT 不覆盖它');
+});
+
+// ── 回归：postinstall 这类 `node -e "…"` 脚本必须是**合法 JS** ─────────────
+// 踩过的坑（2026-10-27）：scripts.postinstall 里的中文被写成 mojibake，还**少了一个右引号**，
+// `node -e` 直接 SyntaxError → `npm install` 在 postinstall 阶段失败 → 全新机器根本装不上。
+// 这种错 `node --check package.json` 查不出来（JSON 本身合法），只能真跑一次。
+check('package.json 里每个 node -e 脚本都能真正执行（引号配对 + 无乱码）', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const inline = Object.entries(pkg.scripts ?? {}).filter(([, cmd]) => /^node -e "/.test(String(cmd)));
+  assert.ok(inline.length >= 1, '应当至少有一个 node -e 内联脚本（postinstall）');
+  for (const [name, cmd] of inline) {
+    const inner = String(cmd).replace(/^node -e "/, '').replace(/"$/, '');
+    assert.equal((inner.match(/'/g) ?? []).length % 2, 0, `${name}: 单引号不配对（内层脚本非法）`);
+    assert.doesNotMatch(inner, /[\ue000-\uf8ff]/, `${name}: 含私用区字符（UTF-8 被当 GBK 读过的痕迹）`);
+    const run = spawnSync(process.execPath, ['-e', inner], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(run.status, 0, `${name}: 执行失败\n${run.stderr}`);
+  }
+});
+
+check('postinstall 的输出能正常打印（npm install 时看得见）', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const cmd = String(pkg.scripts?.postinstall ?? '');
+  const inner = cmd.replace(/^node -e "/, '').replace(/"$/, '');
+  const run = spawnSync(process.execPath, ['-e', inner], { encoding: 'utf8', timeout: 30000 });
+  assert.equal(run.status, 0);
+  assert.match(run.stdout, /\[qq-bridge\]/, '应打印带 [qq-bridge] 前缀的一行提示');
 });
 
 console.log('');

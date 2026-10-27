@@ -243,6 +243,18 @@ DSH 的图片入口只吃静态图，所以视频必须是**降维**而不是"�
 `qq_open_video` 走 `POST /api/socialV2/video-link`，与消息附件那条路共用同一套故事板+转写。
 `socialV2.media.video.enabled=false` 时行为与改动前完全一致（视频只显示 `[视频]`）。
 
+### 四之六、安装期的内联脚本（`npm run postinstall` 这类）
+
+`package.json` 里凡是用 `node -e "…"` 写的内联脚本，都属于**安装期代码**：它坏了，
+`npm install` 会在 postinstall 阶段直接失败，用户看到的是 `ELIFECYCLE` —— 而 `node --check package.json`
+查不出来（JSON 本身合法）。
+
+所以契约是三条，缺一不可（`scripts/test-packaging.mjs` 每次真跑一遍）：
+
+1. **引号配对**（内层脚本里单引号数量必须是偶数）
+2. **不含私用区字符**（`U+E000–U+F8FF` 是 UTF-8 被当 GBK 读过的典型痕迹）
+3. **真执行退出码为 0**，且 postinstall 的输出要带 `[qq-bridge]` 前缀（用户在 npm 日志里能认出来）
+
 ## 五、失败特征表（症状 → 根因）
 
 | 症状 | 最可能根因 | 怎么确认 / 怎么修 |

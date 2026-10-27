@@ -66,6 +66,7 @@ node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能�
 | `npm install` 卡住/超时 | 长时间无输出 | [A3](../TROUBLESHOOTING.md#a3-npm-install-卡住或超时) | ✅ |
 | 装完启动报 `Cannot find package 'js-yaml'` | 依赖没装全 | [A4](../TROUBLESHOOTING.md#a4-err_module_not_found-cannot-find-package-js-yaml) | ✅ |
 | **看到 postinstall 输出一行提示，以为报错** | `[qq-bridge] 依赖已就绪（不再修补任何第三方包）` | 见下方「本次新增」 | ❌→✅ |
+| **`npm install` 在 postinstall 阶段报 SyntaxError** | `npm ERR! code ELIFECYCLE` + `Invalid or unexpected token`（package.json 内联脚本坏了） | [TROUBLESHOOTING A5b](../TROUBLESHOOTING.md#a5b-npm-install-末尾打印-qq-bridge-依赖已就绪不再修补任何第三方包)；这是仓库自身的 bug，已用 `test-packaging` 钉住 | ✅ 2026-10-27 |
 | npm 镜像/证书问题 | `SELF_SIGNED_CERT_IN_CHAIN` | 归入 A3（网络类） | ⚠️ |
 | `npm audit` 报漏洞 | 一堆 advisory | [P6](../TROUBLESHOOTING.md#p6-依赖漏洞npm-audit) | ✅ |
 
