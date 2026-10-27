@@ -206,9 +206,9 @@ if ($slVer) {
 
 # ── 5. 依赖版本 ────────────────────────────────────────────────────────────
 $nm = Join-Path $Root 'node_modules'
+# @snowluma/sdk 与 @snowluma/mcp 已于 2026-10-27 移除（改用自带的 src/onebot-ws.js），
+# 因此不再检查它们的版本，也不再检查「sdk 补丁」—— 那是旧依赖才需要的东西。
 $deps = [ordered]@{
-  '@snowluma/sdk'                  = 'snowlumaSdk'
-  '@snowluma/mcp'                  = 'snowlumaSdk'
   '@deepseek-ai/dsh-host-apiproxy' = 'dshHostApiproxy'
   '@deepseek-ai/schemastery'       = 'schemastery'
 }
@@ -224,25 +224,19 @@ foreach ($name in $deps.Keys) {
   else { Ok $name $v }
 }
 
-# ── 6. sdk 补丁是否已打（相对导入是否都带扩展名）──────────────────────────
-# 补丁做的事：把 dist 里 `from './x'` 改写成 `from './x.js'`（纯 Node ESM 才能解析）。
-# 所以检测方式就是：扫 dist 下 .js，看还有没有「裸的相对导入」。
-$needPatch = @()
-foreach ($pkg in '@snowluma\sdk','@snowluma\mcp') {
-  $dist = Join-Path $nm (Join-Path $pkg 'dist')
-  if (-not (Test-Path $dist)) { continue }
-  $bad = 0
-  Get-ChildItem $dist -Recurse -Filter '*.js' -File -ErrorAction SilentlyContinue | ForEach-Object {
-    $src = [IO.File]::ReadAllText($_.FullName)
-    if ($src -match "from\s+'\.[^']*[^s']'") { $bad++ }
-  }
-  if ($bad -gt 0) { $needPatch += ("{0}（{1} 个文件）" -f $pkg, $bad) }
-}
-if ($needPatch.Count -gt 0) {
-  No 'sdk 补丁' ("未打补丁：" + ($needPatch -join '、') + " → 跑 npm install（postinstall 会自动补）")
-  Info '没打补丁时症状：ERR_MODULE_NOT_FOUND / 启动即崩'
+# ── 6. OneBot 客户端：自带实现是否就位（不再需要任何第三方补丁）─────────────
+# 历史：旧版依赖 @snowluma/sdk，因为它发布的 dist 里相对导入缺 .js 扩展名，需要 postinstall
+# 打补丁才能被纯 Node ESM 解析。现在协议层是本仓库的 src/onebot-ws.js（Node 内置 WebSocket），
+# 所以这里检查两件事：文件在、且没有把 @snowluma/* 依赖又加回来。
+$onebotWs = Join-Path $Root 'src\onebot-ws.js'
+if (-not (Test-Path $onebotWs)) {
+  No 'OneBot 客户端' '缺 src/onebot-ws.js（自带实现，不该被删）'
 } else {
-  Ok 'sdk 补丁' '已打（dist 内相对导入都带扩展名）'
+  Ok 'OneBot 客户端' 'src/onebot-ws.js（自带，无第三方补丁）'
+}
+foreach ($pkg in '@snowluma\sdk','@snowluma\mcp') {
+  $p = Join-Path $nm (Join-Path $pkg 'package.json')
+  if (Test-Path $p) { Wo "$pkg" '仍在 node_modules 里（已不依赖，可 npm prune 掉）' }
 }
 
 # ── 汇总 ───────────────────────────────────────────────────────────────────

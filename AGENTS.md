@@ -3,6 +3,15 @@
 > 给 **AI coding agent** 的入口文件。人类看 [README.md](README.md)。
 > 你（AI）被要求"装这个项目 / 修这个项目"时，**先读本文件**，再按需读链接。
 
+## 两件必须先读的事
+
+1. **兼容与适配**：环境/版本/协议对不上时，按 [COMPAT.md](COMPAT.md) 的「硬契约 + 适配步骤」改，
+   不要自由发挥。机器可读的矩阵在 [compat.json](compat.json)。
+   > 这个仓库要跑在**别人的机器**上（不同 Node / DSH 版本 / 不同 OneBot 实现）。
+   > `node scripts/test-compat.mjs` 会检查「COMPAT.md 写的契约」与代码是否一致。
+2. **换机器**：迁移清单见 [docs/guides/MIGRATION.md](docs/guides/MIGRATION.md)（DPAPI 备份跨机不可解密、
+   sessions 必须清空、DSH 端口与预设要重配）。
+
 ## 这是什么
 
 `qq-bridge` 是一个 **QQ ↔ DeepSeek Harness（DSH）** 的桥接：

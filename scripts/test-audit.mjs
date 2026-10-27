@@ -86,6 +86,9 @@ const tests = [
   //   示例配置混进本机值 / DPAPI 备份跨机不可解密 / 迁移清单缺失）。
   //   这类问题不会让任何功能测试变红，只会在用户换机那天一次性爆出来。
   'test-portability.mjs',
+  // 兼容契约的「文档 ↔ 代码」一致性：COMPAT.md / compat.json 里声明的 OneBot 动作、
+  //   平台能力、已移除的依赖，必须与代码真实情况一致（别人照着文档适配，写错就是坑）。
+  'test-compat.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

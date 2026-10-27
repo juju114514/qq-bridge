@@ -1,24 +1,129 @@
 {
-  "$comment": "本文件记录「这套代码在什么环境下验证过」。scripts/check-versions.ps1 会拿它和真实环境比对，不一致就告警。",
+  "$comment": "本文件是**机器可读**的兼容矩阵 + 契约清单。scripts/check-versions.ps1 用它和真实环境比对；scripts/test-compat.mjs 用它保证「文档里写的契约」与代码一致。人类/AI 的完整版见 COMPAT.md。",
   "bridge": "0.2.1-r1",
+  "updatedAt": "2026-10-27",
   "testedWith": {
     "node": "24.21.0",
     "dsh": "0.2.1-rc.2",
     "snowluma": "2.1.1",
-    "snowlumaSdk": "1.14.22",
     "schemastery": "3.18.5",
-    "dshHostApiproxy": "0.1.1-rc.2"
+    "dshHostApiproxy": "0.1.1-rc.2",
+    "os": ["Windows 10/11 (x64)", "Linux (systemd)"]
   },
   "requires": {
     "node": ">=22.13.0",
     "dsh": ">=0.2.0",
-    "snowluma": ">=1.14.0",
-    "snowlumaSdk": ">=1.14.20"
+    "snowluma": ">=1.14.0"
+  },
+  "notDependsOn": [
+    "@snowluma/sdk",
+    "@snowluma/mcp"
+  ],
+  "contracts": {
+    "$comment": "这些是**硬契约**：换实现/换机器时只有这张表里的东西不能变。其余（内部模块划分、文件布局）都可改。",
+    "nodeGlobals": {
+      "WebSocket": ">=22 内置；本项目自带的 src/onebot-ws.js 依赖它，不引入 ws 包"
+    },
+    "onebotTransport": {
+      "ws": "ws://<host>:3001/?access_token=<token>",
+      "http": "http://<host>:3000/<action>  (Authorization: Bearer <token>)",
+      "actionEnvelope": "{ action, params, echo }",
+      "responseEnvelope": "{ status: 'ok'|'failed', retcode: 0, data, echo }",
+      "eventEnvelope": "带 post_type 的下发帧"
+    },
+    "onebotActions": [
+      "add_custom_face",
+      "comment_qzone",
+      "fetch_custom_face_detail",
+      "fetch_face_entity",
+      "get_forward_msg",
+      "get_group_member_info",
+      "get_group_member_list",
+      "get_image",
+      "get_login_info",
+      "get_msg",
+      "get_qzone_feeds",
+      "get_qzone_msg_list",
+      "get_status",
+      "get_version_info",
+      "group_poke",
+      "like_qzone",
+      "modify_custom_face",
+      "send_group_forward_msg",
+      "send_group_msg",
+      "send_like",
+      "send_msg",
+      "send_poke",
+      "send_private_forward_msg",
+      "send_private_msg",
+      "send_qzone_msg",
+      "unlike_qzone"
+    ],
+    "onebotEvents": {
+      "post_type=message": "message_type=private|group；字段：user_id/group_id/raw_message/message/sender/self_id",
+      "post_type=message_sent": "自己发出的消息回显（同样按 message 事件处理）",
+      "post_type=notice/notify": "拍一拍等提醒（poke 子类型）",
+      "post_type=notice/bot_status": "账号上下线；sub_type=online|offline，user_id 必须是 number",
+      "post_type=meta_event/heartbeat": "心跳，用于判活（不做业务逻辑）",
+      "post_type=request": "加群/加好友请求（本项目只旁路统计，不自动同意）"
+    },
+    "configKeys": [
+      "ownerQQ",
+      "consolePort",
+      "consoleToken",
+      "sessionCwd",
+      "paths.tools",
+      "dsh.baseUrl",
+      "dsh.provider",
+      "dsh.model",
+      "dsh.authToken",
+      "snowluma.wsUrl",
+      "snowluma.httpUrl",
+      "snowluma.accessToken",
+      "allow.groups",
+      "allow.private",
+      "role.defaultName",
+      "role.maxInjectChars",
+      "socialV2.enabled",
+      "socialV2.tools",
+      "socialV2.send",
+      "socialV2.wake",
+      "socialV2.wait",
+      "socialV2.voice"
+    ],
+    "envVars": [
+      "DSH_HOME",
+      "DSH_LAUNCH_TOKEN",
+      "QQBOT_ROOT",
+      "QQBOT_TOOLS",
+      "QQBOT_DATA",
+      "QQBOT_LOGS",
+      "QQBOT_SAY_SCRIPT",
+      "QQBOT_SING_SCRIPT",
+      "QQBOT_SONG_SCRIPT",
+      "DEEPSEEK_API_KEY"
+    ]
+  },
+  "platforms": {
+    "windows": {
+      "ok": ["聊天", "表情", "图片", "语音（需 PowerShell 脚本）", "点歌/唱歌（需 PowerShell）", "空间", "控制台"],
+      "stateAcl": "icacls 移除继承，只留 当前用户/SYSTEM/Administrators",
+      "launcher": "install.ps1 / verify.ps1 / scripts/maintain.ps1"
+    },
+    "linux": {
+      "ok": ["聊天", "表情", "图片", "空间", "控制台"],
+      "notAvailable": ["语音", "点歌", "唱歌"],
+      "notAvailableReason": "这些功能 spawn powershell.exe；接口会直接返回「依赖 Windows PowerShell」，需用 QQBOT_*_SCRIPT 指向平台脚本",
+      "stateAcl": "chmod 700",
+      "launcher": "deploy/install-server.sh + systemd"
+    }
   },
   "notes": [
     "DSH 0.2.0 起 inbox 投影路径变过一次；0.2.1 起 system prompt 只注册 provider/model 两个变量（{{cwd}} 会 fail loud）。",
-    "SnowLuma 的 HTTP(3000) 与 WS(3001) 使用两个不同 accessToken。",
-    "@snowluma/sdk 需要仓库 postinstall 打补丁（patch-snowluma-sdk.mjs），版本不一致时先 npm install。",
+    "SnowLuma 的 HTTP(3000) 与 WS(3001) 使用两个不同 accessToken；首次连接常见 1006，自愈会刷新 token 再连上。",
+    "**不再依赖 @snowluma/sdk / @snowluma/mcp**：OneBot 客户端是本仓库的 src/onebot-ws.js（Node 内置 WebSocket）。因此不存在 postinstall 补丁，也不修改任何第三方包。",
+    "DSH 的监听端口每次重启可能变化：config.json 的 dsh.baseUrl 必须跟着改（Windows 用 launcher/sync-dsh-port.ps1）。",
+    "state/sessions.json 里的 DSH sessionId 是机器相关的，换机器后应清空；DPAPI 备份跨机不可解密（见 docs/guides/MIGRATION.md）。",
     "上游 fork 与本仓库的 preset 结构不同时，DSH 端需要重新安装 preset（见 SETUP.md）。"
   ]
 }
