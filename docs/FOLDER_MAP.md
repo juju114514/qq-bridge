@@ -69,6 +69,8 @@ DSH/                         ← 工作区根（不是仓库根）
 | `test-first-run.mjs` | 上面两个脚本的契约测试（结构 + DryRun 行为 + 两条硬边界；shell 版另有 bash -n 与 LF/无 BOM 断言） | 保留 |
 | `make-social-preview.py` | 生成 `assets/social-preview.png`（GitHub 分享缩略图 1280×640）：抠背景 + 深色排版。需要 Pillow（只用于这个脚本，桥接运行不需要） | 保留（换文案/配色时重跑） |
 | `ocr-image.ps1` | **Windows 自带 OCR**（`Windows.Media.Ocr`）识别一张图里的文字：结果写 JSON 到 `-Out`（不走 stdout，沙箱下 pipe 会 EPERM），带行级坐标与语言标签 | 保留（长图省钱路径） |
+| `verify-video-live.ps1` | **真机验证视频理解**：给 `-Key` + `-MessageId`（或 seq），打 `/api/socialV2/video`，打印状态/耗时/条目/说明，`-Out` 可存故事板 jpg；自动读控制台令牌与会话 agentToken | 保留（排查「视频读不了」的第一步） |
+| `make-video-storyboard-sample.py` | 生成文档配图 `assets/video-storyboard-sample.jpg`（**合成** 3×3 故事板，避免把真实画面带进仓库） | 保留 |
 | `test-video-frames.mjs` | 视频故事板契约：布局/宽度上限/真 ffmpeg 抽帧/probeVideo/音轨/接线/ASR 不许 spawn | 保留 |
 | `test-ocr.mjs` | OCR 契约：空格归一律、降级不抛异常、真 OCR 跑一张素材、三处接线（bridge/api/MCP） | 保留 |
 | `test-long-image.mjs` | 长图切片契约（长宽比≥2.4 才切、短边 1000、重叠、片数≤6、说明带「第 i/n 片」；有 ffmpeg 时真切一张 1080×6000） | 保留 |

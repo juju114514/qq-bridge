@@ -3,6 +3,12 @@
 > 模型**看不了视频**。DSH 的图片入口只吃静态图，所以「识别视频」在工程上的唯一解法是
 > **降维**：均匀抽几帧拼成一张图（故事板），再把音轨转成文字。别指望"把视频传给模型"。
 
+![视频故事板示例](../../assets/video-storyboard-sample.jpg)
+
+<sub>上面是**合成的**示例图（`scripts/make-video-storyboard-sample.py` 生成），用来说明版式：
+3×3、每格左上角时间戳、行优先 左上→右下。真实故事板由 ffmpeg `drawtext` 烧时间戳，样式一致；
+配图不用真实截图，是为了避免把别人的画面带进仓库。</sub>
+
 ---
 
 ## 一、结论先看（能力边界）
@@ -131,8 +137,17 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 ## 六、测试
 
 ```bash
+# 离线回归（不需要桥接/QQ）：布局 + 真抽帧 + 接线契约
 node scripts/test-video-frames.mjs
+
+# 真机验证（对着活的桥接跑，验某一条真实消息）
+powershell -File scripts\verify-video-live.ps1 -Key "private:123456789" -MessageId 31 -Out D:\tmp\board.jpg
 ```
+
+`verify-video-live.ps1` 做的事：自动读 `state/console-token` 与会话 `agentToken` →
+打 `/api/socialV2/video` → 打印 HTTP/耗时/条目/说明（含转写或"没有转写的原因"）→
+`-Out` 时把故事板存成 jpg 供人眼确认。退出码 0/1/2 = 成功 / 服务端报错 / 环境问题。
+`-MessageId` 既可以是 `messageId`，也可以是本地 `seq`（两者都能解析）。
 
 | 断言 | 内容 |
 | --- | --- |
@@ -141,6 +156,7 @@ node scripts/test-video-frames.mjs
 | **真跑** | ffmpeg 合成 6 秒测试视频 → `probeVideo` 读对时长/尺寸/有无音轨 → 故事板 JPEG ≤1MB → 音轨 wav 有内容且 cleanup 生效 |
 | 接线 | bridge 认 `video` 段、走 `videoToModelParts`、ASR 不可用要写原因、有独立端点 |
 | 边界 | ASR 客户端**不许 spawn 进程**（只探测）；`enabled:false` 能整体关掉 |
+| 导入完整性 | bridge 用到的跨模块函数必须真的 import（漏 `fs` / `probeVideo` 曾把桥接打死） |
 
 ---
 

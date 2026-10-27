@@ -5,6 +5,7 @@
 | 文件 | 用途 | 权利方 | 本仓库的立场 |
 | --- | --- | --- | --- |
 | `deepseek娘.png` | `GET /api/socialV2/self-image` —— 让模型"看到自己长什么样"（AI 形象） | DeepSeek 的鲸鱼形象：著作权与商标归 **DeepSeek（杭州深度求索）** | 仅作**个人自用示例**。本仓库的 MIT **不覆盖**这张图；不声称任何授权，也不用于商业用途 |
+| `video-storyboard-sample.jpg` | [docs/guides/VIDEO.md](../docs/guides/VIDEO.md) 的版式配图 | **本仓库自制**（`scripts/make-video-storyboard-sample.py` 生成，纯合成） | MIT 覆盖，可自由使用 |
 | `social-preview.png` | GitHub「Social preview」（1280×640）：分享链接时的缩略图 | 同上 —— 它**派生自** `deepseek娘.png`（抠背景 + 排版），归属与限制与上面一行完全一致 | 同样不落 MIT；生成脚本是 `scripts/make-social-preview.py`，想换形象就覆盖后重跑 |
 
 ## social-preview.png 怎么重做
