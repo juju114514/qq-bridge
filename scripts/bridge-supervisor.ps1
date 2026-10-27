@@ -19,6 +19,14 @@
     2) 起 `node src\bridge.js`（cwd = 仓库根）
     3) 桥接首连大概率报一次 1006，随后自愈 token 连上 —— 这是正常路径
 
+  SnowLuma 等待策略（2026-10-27 改）：
+    · 前 -WaitSnowlumaSeconds 秒（默认 600）每 3 秒快探一次
+    · 超时后**不再退出**，转入慢速轮询（-SnowlumaPollSeconds，默认 60 秒一次），
+      一旦 SnowLuma 起来就立刻启动桥接
+    · 想恢复旧行为（超时即放弃）：-SnowlumaPollSeconds 0
+    为什么改：开机自启时 SnowLuma 往往还没扫码登录，旧行为等 600 秒就 exit 4，
+    之后没有任何东西会再拉起守护 —— 表现为「开机后机器人一直不回，手动跑一次才好」。
+
   退出码：
     0  正常收尾（-Stop 生效 / 检测到已有实例 / 子进程正常退出且无需重启）
     1  连续快速崩溃超过上限，守护放弃（避免无限重启掩盖真问题）
@@ -47,6 +55,8 @@ param(
   [string]$Node = '',
   [switch]$Foreground,
   [int]$WaitSnowlumaSec = 600,
+  # 快速等待窗口用完后，每隔多少秒慢探一次；0 = 不轮询（旧行为：超时即 exit 4）
+  [int]$SnowlumaPollSeconds = 60,
   [int]$MaxFastCrashes = 5,
   [int]$FastCrashSeconds = 60
 )
@@ -152,8 +162,21 @@ function Wait-Snowluma([int]$Seconds) {
     }
     Start-Sleep -Seconds 3
   }
-  Say 'FAIL' "等了 $Seconds 秒 SnowLuma 仍未就绪。先把 SnowLuma 起来并登录（WebUI :5099），再重跑本守护。"
-  return $false
+  if ($SnowlumaPollSeconds -le 0) {
+    Say 'FAIL' "等了 $Seconds 秒 SnowLuma 仍未就绪。先把 SnowLuma 起来并登录（WebUI :5099），再重跑本守护。"
+    return $false
+  }
+  # 慢速轮询：开机自启时 SnowLuma 往往还没登录，等完就走等于把机器人永久撂下。
+  # 这里不放弃，一直等着；SnowLuma 一就绪立刻返回，让桥接起来。
+  Say 'WAIT' "等了 $Seconds 秒仍未就绪，转入慢速轮询（每 $SnowlumaPollSeconds 秒探一次）。SnowLuma 一就绪就启动桥接；要停就 -Stop 或 Ctrl+C。"
+  while ($true) {
+    if (Test-Path $StopFile) { return $false }
+    if ((Test-TcpPort 3000) -and (Test-TcpPort 3001)) {
+      Say 'OK' 'SnowLuma 已就绪，继续启动桥接'
+      return $true
+    }
+    Start-Sleep -Seconds $SnowlumaPollSeconds
+  }
 }
 
 if (-not (Wait-Snowluma $WaitSnowlumaSec)) {

@@ -44,6 +44,19 @@ check('两个脚本都存在且是 UTF-8 带 BOM（PS 5.1 读中文必需）', (
 });
 
 // ── 2. 设计不变量 L6：绝不代启/代停 SnowLuma ──────────────────────────────
+check('SnowLuma 等待策略：快探后转慢速轮询，不放弃（2026-10-27 修）', () => {
+  const text = read('scripts/bridge-supervisor.ps1');
+  // 踩过的坑：开机自启时 SnowLuma 还没登录，旧实现等 600 秒就 exit 4，
+  // 之后没有任何东西会再拉起守护 → 表现是「开机后机器人一直不回」。
+  assert.match(text, /\$SnowlumaPollSeconds\s*=\s*60/, '应有慢速轮询间隔参数（默认 60 秒）');
+  assert.match(text, /转入慢速轮询/, '超时后必须转慢速轮询，而不是直接退出');
+  assert.match(text, /while \(\$true\)[\s\S]{0,400}Test-TcpPort 3000/, '慢速轮询里要探测端口，就绪后继续');
+  // 显式要求旧行为时才允许 exit 4
+  assert.match(text, /if \(\$SnowlumaPollSeconds -le 0\)[\s\S]{0,300}return \$false/, 'SnowlumaPollSeconds=0 时才退回"超时即放弃"');
+  // L6 仍然成立：轮询里只能探测，不能启动
+  assert.doesNotMatch(text, /Start-Process[^\n]*snowluma/i, '慢速轮询也不能启动 SnowLuma');
+});
+
 check('守护脚本不启动、不停止 SnowLuma（只允许探测端口）', () => {
   const text = read(SUPERVISOR);
   // 允许出现"snowluma"这个词（注释/探测/提示），但不允许把它当可执行目标

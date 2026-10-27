@@ -39,6 +39,20 @@ cd D:\deepseek工作区\qq-bridge
   [OK]   SnowLuma   :3000/:3001 在听
 ```
 
+## 二·五、等 SnowLuma 的策略（默认会一直等）
+
+开机时 SnowLuma 常常比你晚几分钟才被扫码登录。守护的处理分两段：
+
+| 阶段 | 行为 |
+| --- | --- |
+| 前 `-WaitSnowlumaSeconds` 秒（默认 **600**） | 每 3 秒快探 `:3000`/`:3001` |
+| 超时之后 | **不退出**，转慢速轮询（`-SnowlumaPollSeconds`，默认 **60 秒**一次），一就绪立刻启动桥接 |
+| 想恢复旧行为 | `-SnowlumaPollSeconds 0`（超时即 `exit 4`） |
+
+> 为什么改：旧实现等 600 秒就 `exit 4`，而守护是由**启动文件夹的 vbs**拉起的，没人会重试 →
+> 现象是「开机后机器人一直不回，手动跑一次 `start-bridge.ps1` 才好」，日志里只有一行 `[FAIL]`。
+> 现在它会在后台静静等你登录完 SnowLuma。（仍然**只探测端口**，绝不代启 —— 设计不变量 L6。）
+
 ## 三、退出码契约（脚本之间靠它沟通）
 
 | 码 | 含义 | 谁产生 |
@@ -124,7 +138,7 @@ SnowLuma / jobs 那两段可以留着（它们不归本守护管）。
 | --- | --- | --- |
 | `-Status` 显示桥接未运行 | `state\logs\supervisor.log` 尾部 | 看是放弃重启（code=1）还是端口被占（2） |
 | 守护反复重启 | `state\logs\bridge.err.log` | 多半是 config 错 / Node 版本低 / 端口占用 |
-| `退出码 4` | SnowLuma 端口 | 先去把 SnowLuma 起来并登录 |
+| `退出码 4` | SnowLuma 端口**且**显式关掉了轮询（`-SnowlumaPollSeconds 0`） | 先去把 SnowLuma 起来并登录 |
 | `退出码 3` | `state\supervisor.lock` | 已经有守护在跑，`-Status` 看一眼即可；确实要重启就 `-Stop` |
 | 端口 3100 被别的进程占 | `Get-NetTCPConnection -LocalPort 3100` | 那个进程就是旧桥接，先 `-Stop` 再起 |
 | 重启后机器人不说话 | `state\bridge.log`：有没有「DSH 已就绪」 | 没有就是 DSH 端口变了，改 `config.dsh.baseUrl` |

@@ -113,9 +113,18 @@ await checkAsync('DryRun 在真实仓库上成功且不改动 config.json', asyn
   const cfg = path.join(root, 'config.json');
   const hadCfg = fs.existsSync(cfg);
   const before = hadCfg ? fs.readFileSync(cfg) : null;
-  const out = execFileSync(exe, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, SCRIPT), '-DryRun'], {
-    cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000,
-  });
+  // 注意：这条**不能**断言退出码为 0 —— 真实仓库的体检结果取决于机器当前状态
+  // （DSH 端口有没有变、SnowLuma 在不在跑）。这台机器上 DSH 换过端口，preflight 就会 FAIL。
+  // 测的是「DryRun 不改动 config.json」，不是「环境是健康的」。
+  let out = '';
+  try {
+    out = execFileSync(exe, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, SCRIPT), '-DryRun'], {
+      cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000,
+    });
+  } catch (error) {
+    out = String(error.stdout ?? '') + String(error.stderr ?? '');
+    // 退出码非 0 是允许的（体检有 FAIL 时 DryRun 也会如实退 1）
+  }
   assert.match(out, /DryRun/, '应进入 DryRun 模式');
   assert.match(out, /步骤 1\/5/, '应打印步骤 1');
   const after = fs.existsSync(cfg) ? fs.readFileSync(cfg) : null;

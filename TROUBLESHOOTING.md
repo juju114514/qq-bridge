@@ -203,6 +203,34 @@ node src\bridge.js
 
 ## C. 连 DSH
 
+### B5. 开机后机器人一直不回，日志里是 `[WAIT]/[FAIL] SnowLuma 还没起来`
+
+**现象**：`state\logs\supervisor.log` 里有
+
+```
+[supervisor] [WAIT] SnowLuma 还没起来（:3000/:3001）。等它就绪，最多 600 秒…
+[supervisor] [FAIL] 等了 600 秒 SnowLuma 仍未就绪。先把 SnowLuma 起来并登录…
+```
+
+**原因**：SnowLuma 没在跑（它是第三方程序，本项目**不代启** —— 设计不变量 L6），
+而旧版守护等满 600 秒就 `exit 4`，偏偏它是由启动文件夹的 vbs 拉起的、没人重试 →
+于是机器人一直不回，直到你手动跑一次。
+
+**处置**：
+
+1. 启动 SnowLuma 并扫码登录（WebUI `:5099`）。确认这两个端口在听：
+
+   ```powershell
+   Test-NetConnection 127.0.0.1 -Port 3000 -InformationLevel Quiet
+   Test-NetConnection 127.0.0.1 -Port 3001 -InformationLevel Quiet
+   ```
+
+2. 如果守护已经退了，重新拉起：`powershell -File .\start-bridge.ps1`
+3. **2026-10-27 起不需要这么麻烦了**：守护超时后不再退出，而是每 60 秒慢探一次，
+   SnowLuma 一登录就自动启动桥接（`-SnowlumaPollSeconds 0` 可恢复旧行为）
+4. DSH 端口在 SnowLuma 起来之前也可能变过 —— 顺手核对 `config.json` 的 `dsh.baseUrl`
+   与 DSH 实际监听端口（本例：54694 → 65452，见 C1/C2）
+
 ### C1. 控制台 `dshReady=false`
 
 **原因**（按概率）：
