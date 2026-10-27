@@ -141,7 +141,13 @@ export async function downloadVideoLink(url, opts = {}) {
     '--max-filesize', String(maxBytes),
     '-o', outTpl
   ];
-  if (opts.cookiesFromBrowser) baseArgs.push('--cookies-from-browser', String(opts.cookiesFromBrowser));
+  // 两条路：① 直接给 cookies.txt（最稳，不受浏览器加密/锁库影响）
+  //         ② 从浏览器读（--cookies-from-browser，Chrome/Edge 127+ 可能因 app-bound 加密失败）
+  if (opts.cookiesFile && fs.existsSync(String(opts.cookiesFile))) {
+    baseArgs.push('--cookies', String(opts.cookiesFile));
+  } else if (opts.cookiesFromBrowser) {
+    baseArgs.push('--cookies-from-browser', String(opts.cookiesFromBrowser));
+  }
 
   // 只要看前 N 秒：实测 B 站 84MB/8s → 1.5MB/3s。省流量也省磁盘。
   // 有些站不支持分段下载（yt-dlp 会报错），那就退回整段。

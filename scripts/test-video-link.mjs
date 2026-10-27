@@ -148,6 +148,8 @@ check('yt-dlp 下载：默认只取前 N 秒，失败退回整段', () => {
   assert.match(dl, /isAllowedVideoUrl/, '下载前再判一次白名单（双保险）');
   // 不许把任意 URL 直接拼进命令：必须走 args 数组 + '--' 分隔
   assert.match(dl, /'--', clean/);
+  assert.match(dl, /--cookies'/, '必须支持 --cookies <file>（浏览器 app-bound 加密时唯一的活路）');
+  assert.match(dl, /cookiesFile && fs\.existsSync/, 'cookies 文件优先于 cookiesFromBrowser');
 });
 
 check('失败原因会翻译成人话（抖音主页/直播/图文 → 不是视频）', async () => {
@@ -184,7 +186,7 @@ check('配置项齐全（links 可整体关掉）', () => {
   const cfg = JSON.parse(read('config.example.json'));
   const links = cfg?.socialV2?.media?.video?.links;
   assert.ok(links, '缺 socialV2.media.video.links');
-  for (const k of ['enabled', 'maxSeconds', 'maxBytes', 'timeoutMs', 'maxHeight', 'sites']) {
+  for (const k of ['enabled', 'maxSeconds', 'maxBytes', 'timeoutMs', 'maxHeight', 'sites', 'cookiesPath', 'cookiesFromBrowser']) {
     assert.ok(k in links, `links 缺 ${k}`);
   }
   assert.deepEqual(links.sites, ['bilibili', 'douyin', 'kuaishou', 'xiaohongshu', 'youtube']);

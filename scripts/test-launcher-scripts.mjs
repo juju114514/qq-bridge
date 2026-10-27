@@ -212,6 +212,29 @@ check('MIGRATION.md 提到新机器用哪个入口启动', () => {
     '迁移清单应说明新机器怎么启动');
 });
 
+// ── 回归：.ps1 必须**恰好一个** BOM ───────────────────────────────────────
+// 踩过的坑（2026-10-28）：用脚本给已有 BOM 的 .ps1 再补一次 BOM，变成 EF BB BF EF BB BF，
+// PowerShell 5.1 于是把首行 `#Requires` 解析坏掉，连 param() 块都报「赋值表达式无效」。
+check('所有 .ps1 都恰好一个 UTF-8 BOM（不能是双 BOM）', () => {
+  const dirs = ['scripts', '.'];
+  const found = [];
+  for (const dir of dirs) {
+    const abs = dir === '.' ? root : path.join(root, dir);
+    for (const name of fs.readdirSync(abs)) {
+      if (!/\.ps1$/i.test(name)) continue;
+      found.push(path.join(abs, name));
+    }
+  }
+  assert.ok(found.length >= 3, `应扫到多个 .ps1，实际 ${found.length}`);
+  for (const file of found) {
+    const head = fs.readFileSync(file).subarray(0, 6);
+    const isBom = head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF;
+    const isDouble = isBom && head[3] === 0xEF && head[4] === 0xBB && head[5] === 0xBF;
+    assert.ok(isBom, `${path.relative(root, file)} 缺 BOM（PowerShell 5.1 会把中文读成乱码）`);
+    assert.ok(!isDouble, `${path.relative(root, file)} 是**双 BOM**，会让首行 #Requires 解析失败`);
+  }
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else {

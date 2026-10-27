@@ -288,6 +288,7 @@
           "timeoutMs": 180000,
           "maxHeight": 720,
           "cookiesFromBrowser": "",
+          "cookiesPath": "",
           "sites": [
             "bilibili",
             "douyin",
@@ -295,7 +296,8 @@
             "xiaohongshu",
             "youtube"
           ],
-          "_说明": "ytdlpPath 留空则从 PATH 找；Windows 可写进这里（本机路径不要提交到仓库）"
+          "_说明": "ytdlpPath 留空则从 PATH 找；Windows 可写进这里（本机路径不要提交到仓库）",
+          "_cookies说明": "cookiesPath 指向导出的 cookies.txt（优先级高于 cookiesFromBrowser）；Chrome/Edge 127+ 的 app-bound 加密会让 --cookies-from-browser 失败，这条路更稳"
         }
       }
     },

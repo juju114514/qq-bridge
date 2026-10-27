@@ -6117,6 +6117,7 @@ async function main() {
           timeoutMs: Math.max(10000, Number(l.timeoutMs) || 180000),
           maxHeight: Math.max(240, Math.min(1080, Number(l.maxHeight) || 720)),
           cookiesFromBrowser: l.cookiesFromBrowser || '',
+          cookiesPath: l.cookiesPath || '',
           sites: Array.isArray(l.sites) && l.sites.length ? l.sites.map(String) : ['bilibili', 'douyin']
         };
       })()
@@ -6234,6 +6235,7 @@ async function main() {
       timeoutMs: videoLinkConfig().timeoutMs,
       maxHeight: videoLinkConfig().maxHeight,
       cookiesFromBrowser: videoLinkConfig().cookiesFromBrowser,
+      cookiesFile: videoLinkConfig().cookiesPath,
       sites: videoLinkConfig().sites
     });
     if (!dl.ok) return { ok: false, error: dl.error };
