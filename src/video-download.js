@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { isAllowedVideoUrl } from './video-link.js';
+import { resolveDouyinPlayUrl, extractAwemeId } from './douyin-resolve.js';
 
 const VIDEO_EXT = /\.(mp4|mkv|webm|flv|mov|m4v|ts)$/i;
 
@@ -74,6 +75,55 @@ export function explainYtDlpError(errFile) {
   return firstError ? firstError.slice(0, 160) : '';
 }
 
+/**
+ * 抖音专用：用分享页的 play_addr 直接下载（不经过 yt-dlp）。
+ * 成功返回和 yt-dlp 分支同形状的对象，调用方无需区分。
+ */
+async function tryDouyinResolver(url, dir, opts) {
+  const resolved = await resolveDouyinPlayUrl(url, {
+    cookiesFile: opts.cookiesFile,
+    timeoutMs: Math.min(30000, Number(opts.timeoutMs) || 25000)
+  });
+  if (!resolved.ok) return resolved;
+  const dest = path.join(dir, `douyin-${extractAwemeId(url) || 'video'}.mp4`);
+  try {
+    const got = await downloadDirect(resolved.playUrl, dest, {
+      maxBytes: Math.max(1024 * 1024, Number(opts.maxBytes) || 200 * 1024 * 1024),
+      timeoutMs: Math.max(10000, Number(opts.timeoutMs) || 180000)
+    });
+    return { ok: true, file: got.file, bytes: got.bytes, partial: false, source: 'douyin-share-page' };
+  } catch (error) {
+    return { ok: false, error: `播放地址下载失败：${error?.message ?? error}` };
+  }
+}
+
+/** 直链下载（跟随重定向）。抖音播放地址会 302 到 CDN，所以手动跟几跳。 */
+async function downloadDirect(rawUrl, dest, opts) {
+  let current = String(rawUrl);
+  for (let hop = 0; hop < 5; hop += 1) {
+    const res = await fetch(current, {
+      headers: { 'user-agent': 'Mozilla/5.0', 'referer': 'https://www.douyin.com/' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(opts.timeoutMs)
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const next = res.headers.get('location');
+      if (!next) throw new Error(`重定向缺少 Location（${res.status}）`);
+      current = new URL(next, current).toString();
+      continue;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const lengthHeader = Number(res.headers.get('content-length') || 0);
+    if (lengthHeader > opts.maxBytes) throw new Error(`文件超过上限（${Math.round(lengthHeader / 1024 / 1024)}MB）`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > opts.maxBytes) throw new Error(`文件超过上限（${Math.round(buf.length / 1024 / 1024)}MB）`);
+    if (buf.length < 50 * 1024) throw new Error(`内容太小（${buf.length}B），疑似错误页`);
+    fs.writeFileSync(dest, buf);
+    return { file: dest, bytes: buf.length };
+  }
+  throw new Error('重定向次数过多');
+}
+
 function cleanDir(dir) {
   try {
     for (const name of fs.readdirSync(dir)) fs.rmSync(path.join(dir, name), { force: true, recursive: true });
@@ -128,6 +178,18 @@ export async function downloadVideoLink(url, opts = {}) {
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-vlink-'));
   const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ } };
+  // 抖音先走专用解析器（yt-dlp 的 Douyin extractor 需要 a_bogus 签名，未登录/无签名一律 403，
+  // 实测即使导入了 cookies 也只会得到「Fresh cookies needed」）。
+  const host = (() => { try { return new URL(clean).hostname.toLowerCase(); } catch { return ''; } })();
+  const isDouyin = host === 'douyin.com' || host.endsWith('.douyin.com');
+  if (isDouyin && opts.cookiesFile) {
+    const got = await tryDouyinResolver(clean, dir, opts);
+    // 关键：必须挂上 cleanup，否则调用方拿到的临时目录永远删不掉（踩过：r.cleanup is not a function）
+    if (got.ok) { got.cleanup = cleanup; got.partial = false; return got; }
+    // 解析器失败就把原因记下来，等 yt-dlp 也失败时一起给出（否则用户只看到第二层的错）
+    opts.__douyinError = got.error;
+  }
+
   const exe = resolveYtDlp(opts);
   const maxHeight = Math.max(240, Math.min(1080, Number(opts.maxHeight) || 720));
   const maxBytes = Math.max(1024 * 1024, Number(opts.maxBytes) || 200 * 1024 * 1024);
@@ -162,7 +224,8 @@ export async function downloadVideoLink(url, opts = {}) {
   if (!run.ok) {
     const friendly = explainYtDlpError(errFile);
     cleanup();
-    return { ok: false, error: friendly || run.error };
+    const base = friendly || run.error;
+    return { ok: false, error: opts.__douyinError ? `${base}（抖音解析也失败：${opts.__douyinError}）` : base };
   }
   let file = null;
   try {

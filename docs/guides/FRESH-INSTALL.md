@@ -189,6 +189,27 @@ node scripts/verify-adaptation.mjs             # 或 npm run verify:adaptation�
 
 ---
 
+## 阶段 7：如果你的入口是「把仓库链接复制给 AI，让它自己装」
+
+README 和视频里常见那句话是「直接复制给 DeepSeek 让她安装，后面跟着引导就行」。
+这条路能走通，但**卡点几乎都集中在这三处**（我们照着走了一遍）：
+
+| 卡点 | 现象 | 一句话解法 |
+| --- | --- | --- |
+| **1. AI 只看得到 git 仓库，看不到你的环境** | 它直接 `npm install`，然后卡在 `better-sqlite3` 编译（没有 VS Build Tools）或 Node 版本太老 | 先跑 `node -v`（**要 ≥ 22.12**）再动手；编译失败先用 `scripts/first-run.ps1` |
+| **2. SnowLuma 不在仓库里** | 仓库是"桥接"，QQ 协议端是 SnowLuma；AI 装完桥接仍连不上，会以为装错了 | 先装 SnowLuma 并登录，确认 `:3000/:3001` 在听。桥接只**探测**、不替你启动或安装（L6 约束） |
+| **3. DSH 没装 / 端口不是默认** | 桥接起来了但 `dshReady=false`，消息进来没人处理 | 先装 DSH 并拿到会话 token；端口漂移用 `dsh.baseUrl` 显式写死（踩过 54694 → 65452） |
+
+给 AI 的**三行前置检查**（复制这段比复制整句更省事）：
+
+```
+1) node -v 必须是 v22.12+（低版本 better-sqlite3 会编译失败）
+2) SnowLuma 已登录且 :3000 有响应（curl http://127.0.0.1:3000/get_login_info）
+3) DSH 在跑，且 config.json 的 dsh.baseUrl 指向真实端口
+```
+
+三条都过了再 `npm install`，成功率会高得多。
+
 ## 一句话总结
 
 > 全新机器上真正会拦人的只有四件事：**Node 版本 / npm 在不在 / DSH 与 SnowLuma 装没装好 /

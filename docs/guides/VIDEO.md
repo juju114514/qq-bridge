@@ -132,6 +132,42 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 > ⚠️ **"能识别" ≠ "能下载"**：识别只看 URL 形态（纯函数，零网络）；真正下载靠 yt-dlp 的 extractor
 > + 站点风控 + 你的 cookies/代理。失败原因会被翻成人话（见下表），不会只丢一句 `退出码 1`。
 
+### 三·三、抖音为什么要单独一个解析器（2026-10-28 实测）
+
+yt-dlp 的 Douyin extractor 是这么取数据的：
+
+```
+GET https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=<id>
+→ 需要 a_bogus 签名（extractor 源码里就写着 TODO: verification challenge）
+→ 无签名 → 403 → extractor 抛 "Fresh cookies (not necessarily logged in) are needed"
+```
+
+**登录也没用**：实测带上从 Edge 导出的 68 条 cookie 直接打这个接口，仍然 403。
+
+所以桥接对抖音走另一条路（`src/douyin-resolve.js`）：
+
+```
+v.douyin.com 短链 → 跟一次重定向拿到 aweme_id
+  → GET www.iesdouyin.com/share/video/<id>/  （iPhone UA + 你的 cookies）
+  → 页面 HTML 里内嵌着 "play_addr":{"url_list":[...]}（`\u002F` 转义）
+  → playwm → play（去水印）→ 直链下载（302 到 CDN，手动跟 5 跳）
+```
+
+| 项 | 值 |
+| --- | --- |
+| 实测 | 97 秒 / **6.2MB**，从发起解析到拿到文件约 5 秒 |
+| 前置 | `socialV2.media.video.links.cookiesPath` 指向一份抖音 cookies.txt（浏览器扩展导出） |
+| cookie 只挑域名 | `cookieHeaderFor()` 只保留 `douyin.com` 域，别的站凭据不会跟着发出去 |
+| 失败回退 | 解析器失败 → 自动退回 yt-dlp，并把两边的错误一起报出来 |
+
+导出 cookies 的最短路径：
+
+```powershell
+# 1) Edge/Chrome 装扩展「Get cookies.txt LOCALLY」，在 douyin.com 上 Export
+# 2) 一条命令接上（自动找 Download 里最新的那份）
+powershell -File scripts\set-video-cookies.ps1
+```
+
 ## 四、模型怎么用
 
 两个工具：
@@ -172,7 +208,8 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 | 链接明明能打开，却说"看不了" | 站点不在白名单（YouTube/小红书/快手…），或链接是专栏/图文页而非视频页 | 只支持 B站/抖音；要扩站点改 `video-link.js` 的 `VIDEO_SITES` |
 | 抖音报「不是视频（主页/直播/图文）」 | 抖音分享链接有四种：**视频** / 主页 / 直播 / 图文。后三种 yt-dlp 都不支持（实测主页与直播都是 `Unsupported URL`） | 让用户发**视频**分享链接，或直接发视频文件 |
 | 抖音/ B站 报「需要登录态」 | 会员视频、部分高画质、风控 | 配 `links.cookiesFromBrowser: "edge"`，yt-dlp 会复用浏览器登录态 |
-| **抖音视频链接一律报「需要登录态」**（2026-10-28 实测） | yt-dlp 的 Douyin extractor 要 **fresh cookies**：`Fresh cookies (not necessarily logged in) are needed`。本机两条路都不通：Edge `Could not copy Chrome cookie database`（浏览器占用）、Chrome `Failed to decrypt with DPAPI`（127+ 的 app-bound 加密） | ① 装 **Firefox** 登录抖音后 `cookiesFromBrowser: "firefox"`；② 自己导出 cookies.txt；③ **直接发视频文件**（最省事） |
+| 抖音报「需要登录态」 | yt-dlp 的 Douyin extractor 走 `aweme/v1/web/aweme/detail/`，需要 **a_bogus 签名**，无签名一律 403 —— 即使登录了也一样 | **已内置绕行**：桥接对抖音改用**分享页解析器**（见下一节），只要给了 `links.cookiesPath` 就能下；真的失败时才回退 yt-dlp |
+| 抖音解析器报「分享页里没有 play_addr」 | cookies 过期 / 视频已删 / 页面结构变了 | 重新导出 cookies；或直接发视频文件 |
 | 报「被站点拒绝（风控/版权）」 | 站点级限制 | 换源，或让用户发视频文件 |
 | 报「视频不可用（可能已删除/区域限制/需要登录）」 | YouTube 对部分视频要求登录确认/地区限制 | 配 `cookiesFromBrowser`；或换源 |
 | 报「这个链接里没有视频（可能是图文笔记）」 | 小红书图文笔记只有图片 | 让用户发视频版，或直接发图 |

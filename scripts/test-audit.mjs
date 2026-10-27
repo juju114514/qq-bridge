@@ -110,6 +110,8 @@ const tests = [
   'test-video-frames.mjs',
   // 视频链接识别：B站/抖音白名单 + 只下前 N 秒 + 接线。
   'test-video-link.mjs',
+  // 抖音专用解析器：取 id / cookie 域名过滤 / 去水印 / 分享页解析 / 接线。
+  'test-video-resolve.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
