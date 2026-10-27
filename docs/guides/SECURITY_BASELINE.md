@@ -170,7 +170,7 @@ node --check src/bridge.js  # 语法门禁（大文件改动后必跑）
 - [x] SSRF：scheme、URL 凭据、私有 IP、重定向、超时、大小限制（11 项）
 - [x] 桥接 `200 + {ok:false}` 会被 MCP 当作失败上报（不产生静默假成功）
 - [x] 旧只读工具在非 `closed-agent` 模式下 fail-closed
-- [x] `state/` ACL 助手：非阻断、防递归、`start.bat` 纯 ASCII+CRLF 且先于桥接调用（**结构级断言**）
+- [x] `state/` ACL 助手：非阻断、防递归，且由桥接启动路径（`start-bridge.ps1` → `node src/bridge.js`）在桥接真正监听前调用（**结构级断言**）
 - [ ] **`state/` ACL 的真实 icacls/UAC 行为**：需在普通终端手动复跑 `node scripts/harden-state-acl.mjs` 确认（沙箱/CI 里改 ACL 会被拒，无法自动化）
 
 ---

@@ -173,7 +173,7 @@ sudo ./deploy/verify-server.sh
 
 | 能力 | Windows | Linux（本方案） |
 | --- | --- | --- |
-| 进程管理 | `start.bat` / 计划任务 | **systemd**（自动重启、开机自启、日志进 journald） |
+| 进程管理 | `start-bridge.ps1` + `scripts/bridge-supervisor.ps1`（或计划任务） | **systemd**（自动重启、开机自启、日志进 journald） |
 | 备份加密 | DPAPI（绑用户+机器） | **GPG**（可跨机解密）或直接放加密卷 |
 | 权限硬化 | `icacls` | `chown qqbridge` + `chmod 700 state` |
 | 端口探测 | `Get-NetTCPConnection` | `/dev/tcp` 探测 |
@@ -291,7 +291,7 @@ sudo systemctl restart qq-bridge
 
 | 现象 | 处理 |
 | --- | --- |
-| `npm install` 报 `patch-snowluma-sdk` 失败 | 用 `npm install --foreground-scripts` 看输出；或手动 `node scripts/patch-snowluma-sdk.mjs` |
+| `npm install` 报 `node is not recognized` | npm 的 postinstall 找不到 node：把 node 目录加进本次会话 PATH 重试 |
 | 服务起来但 `dshReady=false` | DSH 没登录 / 端口不对（`config.json` 的 `dsh.baseUrl`）；DSH 重启会换端口，需同步改 |
 | `snowluma.good=false` | QQ 掉线：去 SnowLuma 重新扫码 |
 | `journalctl` 里 `EACCES state/` | 属主不对：`sudo chown -R qqbridge:qqbridge /opt/qq-bridge` |

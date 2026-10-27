@@ -11,7 +11,7 @@
 
 ```bash
 node --version                 # 必须 >= 22.13（内置 WebSocket 从 22 起）
-node scripts/test-audit.mjs    # 39 套回归；全绿说明「代码自身」没问题
+node scripts/test-audit.mjs    # 43 套回归；全绿说明「代码自身」没问题
 node scripts/test-portability.mjs  # 6 项：换机器会不会废
 ```
 
@@ -132,6 +132,24 @@ roles/<任意文件名>.md
 6. 最后人工抽测：发一条、收一条、表情、拍一拍（见 MIGRATION.md 第五节）
 ```
 
+## 四之二、自检套件：哪一套在保护什么
+
+改代码前后跑 `node scripts/test-audit.mjs`（43 套）。它不只跑功能，还跑"只有特定条件下才炸"
+的回归。单独跑某一套也可以：
+
+| 套件 | 保护什么 | 什么时候必须单独跑 |
+| --- | --- | --- |
+| `test-audit.mjs` | 全量入口（43 套） | 任何改动之后 |
+| `test-onebot-ws.mjs` | echo 配对、事件分发、超时、断线重连（手写协议层） | 动 `src/onebot-ws.js` |
+| `test-http-layer.mjs` | 硬化头、请求体限额、**前导关每条拒绝**、路由表顺序 | 动 `src/http/*` |
+| `test-role-id.mjs` | front matter、**改文件名 id 不变**、注入不含元数据 | 动角色卡/`role-card.js` |
+| `test-launcher-scripts.mjs` | L6（不代启 SnowLuma）、退出码齐全、`.ps1` BOM | 动启动器/守护 |
+| `test-portability.mjs` | 硬编码盘符、示例配置本机值、平台闸门 | 加任何新路径/新可执行 |
+| `test-compat.mjs` | `compat.json` 动作清单 ↔ 代码、平台能力 ↔ 闸门 | 加接口/加动作/改平台行为 |
+| `test-packaging.mjs` | 单一锁文件、LICENSE 纯净、**归属完整性**（角色卡/素材） | 加依赖/加素材 |
+| `test-console.mjs` | 控制台真机冒烟（打 `127.0.0.1:3100`） | **不在审计里**，手动：`node scripts/test-console.mjs` |
+| `live-full-test.ps1` | **全功能自测（54 项，会真发消息）**：只读接口 + 守卫 + 人格 CRUD + 真实 QQ 动作 + 媒体 | 改完功能、上线前手工跑：`powershell -File scripts\live-full-test.ps1`（`-MaxSends` 控发送量） |
+
 ## 五、失败特征表（症状 → 根因）
 
 | 症状 | 最可能根因 | 怎么确认 / 怎么修 |
@@ -152,7 +170,8 @@ roles/<任意文件名>.md
 2. **不要重新引入 `@snowluma/*` 依赖** —— 移除它们是为了让「不依赖、不修改、不分发」成立（见 [`docs/design/decisions/0002`](docs/design/decisions/0002-drop-snowluma-npm-deps.md)）。测试 `test-compat.mjs` 会拦。
 3. **不要把机器相关的值写进代码或示例配置**：`test-portability.mjs` 会拦盘符、本机端口、真实 QQ 号。
 4. **不要在 `LICENSE` 里追加说明**：GitHub 会因此判成 `NOASSERTION`（说明放 `NOTICE.md`）。
-5. **不要跳过审计**：39 套里有一半是"只在特定条件下才炸"的回归（额度回滚、租约、BOM、归属完整性）。
+5. **不要跳过审计**：43 套里有一半是"只在特定条件下才炸"的回归（额度回滚、租约、BOM、
+   归属完整性、启动器契约、HTTP 前导关）。
 
 ## 七、把这份手册变得更准
 

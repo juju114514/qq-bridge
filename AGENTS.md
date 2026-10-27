@@ -25,6 +25,22 @@
 `SnowLuma` 是第三方程序，必须用户自己启动并登录 —— 守护**只探测** `:3000/:3001`，
 不代启、不代停（设计不变量 L6）。完整契约见 [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)。
 
+## 当前状态快照（2026-10-27）
+
+| 项 | 值 |
+| --- | --- |
+| 入口 | Windows：`start-bridge.ps1`（[LAUNCHER.md](docs/guides/LAUNCHER.md)）；Linux：`deploy/install-server.sh` + systemd |
+| 自检（离线） | `node scripts/test-audit.mjs` → **43 套**；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
+| 自测（活的） | `powershell -File scripts\live-full-test.ps1` → **54 项**（只发 ownerQQ 私聊；`-MaxSends` 限流；会自动处理「AI 暂停」与 agentToken） |
+| 代码结构 | `src/bridge.js`（约 10,940 行，主循环 + 唤醒状态机）、`src/api/*`（14 个域 handler）、`src/http/*`（响应/请求体/前导关/路由表） |
+| 人格 | 身份在文件 front matter：`roles/<任意文件名>.md` 里 `id:` + `name:`。state 只存 id，**改名不影响绑定**（`test-role-id.mjs` 钉住） |
+| 协议层 | 自带 `src/onebot-ws.js`（Node 内置 WebSocket）；**不依赖 `@snowluma/*`**，也不修改任何第三方包 |
+| 契约 | [COMPAT.md](COMPAT.md)（人读）+ [compat.json](compat.json)（机器读），`test-compat.mjs` 保证两者与代码一致 |
+
+> ⚠️ 最容易误判的一件事：**AI 可能处于「暂停」状态**（`socialV2.paused=true`）。
+> 此时所有 v2 工具都会 403「AI 已暂停」，群里也不会回话。先查
+> `GET /api/socialV2/activity` 的 `paused`，别去翻代码。
+
 ## 这是什么
 
 `qq-bridge` 是一个 **QQ ↔ DeepSeek Harness（DSH）** 的桥接：
@@ -83,6 +99,14 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 | [docs/](docs/README.md) | 深层实现（DSH 协议适配、控制台测试等） |
 
 ## 硬性规则（违反会出事故）
+
+0. **不要绕过 `start-bridge.ps1` 长跑 `node src\bridge.js`**，也不要在守护里加
+   「顺便启动 SnowLuma」（`test-launcher-scripts.mjs` 会拦）。这两条都是为了单实例与
+   许可边界（设计不变量 L6）。
+1. **角色卡的身份是文件里的 `id:`，不是文件名**。改名只改 `name:`；state 里只存 id。
+   改 `id:` 等于换了一张卡（绑定会断）。
+2. **HTTP 前导关只在一处**：`src/http/prelude.js`。加新接口时不要自己写鉴权分支，
+   而是确认它在 prelude 的白名单/闸门里被正确覆盖。
 
 1. **不要把 `config.json` / `state/` / `logs/` 提交进 git**（已 gitignore，别手动 `git add -f`）
 2. **不要替用户填别人的 QQ 号 / token**；`ownerQQ` 必须是用户自己的号

@@ -78,7 +78,7 @@ Start:
 npm start
 ```
 
-Or double-click `start.bat` on Windows (guard mode with auto-restart).
+On Windows run `.\start-bridge.ps1` (supervisor mode: auto-restart with backoff, single-instance).
 
 ## DSH Setup on Another Device
 

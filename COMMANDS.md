@@ -95,7 +95,7 @@
 
 ```powershell
 # 启动（带自动重启）
-start.bat
+.\start-bridge.ps1
 
 # 只看桥接状态
 curl http://127.0.0.1:3100/api/status

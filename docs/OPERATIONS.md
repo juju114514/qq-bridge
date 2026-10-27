@@ -319,7 +319,9 @@ icacls state /inheritance:r /grant:r "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)
 
 ### postinstall 会执行代码
 
-本仓库的 `package.json` 有 **postinstall**（`patch-snowluma-sdk.mjs`），`npm install` 时会自动跑。
+本仓库的 `package.json` 有 **postinstall**，但 2026-10-27 起它**只打印一行提示**
+（`@snowluma/*` 依赖已移除，`patch-snowluma-sdk.mjs` 已删除，仓库不再修补任何第三方包）。
+历史上下文：2026-10-27 之前 `npm install` 时会自动跑。
 这是必要步骤（要补 `@snowluma/sdk` 的兼容），但也意味着：
 
 - **不要**在不可信的分支上跑 `npm install`

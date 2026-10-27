@@ -106,6 +106,14 @@
 ## 事故与兜底
 
 - 群友诱导 agent 时，preset 的工具限制和目标白名单是主要硬边界。发送工具仍可能造成白名单内的误发；敏感信息正则属于启发式审计，不能识别任意秘密或保证“最多只发一条”。账号和会话隔离仍需结合实际运行模式使用。
-- 想彻底关闭机器人：停止桥接进程（start.bat 窗口 Ctrl+C）或 SnowLuma。
+- 想彻底关闭机器人：`start-bridge.ps1 -Stop`（守护与桥接一起停），SnowLuma 要另外关。
+
+## 设计不变量
+
+| 编号 | 不变量 | 为什么 | 谁在守 |
+| --- | --- | --- | --- |
+| L6 | **不代装、不代启、不代停 SnowLuma**（只允许探测端口 + 读它的配置发现 token） | 它是第三方程序；许可争议的边界就在这里（见 `NOTICE.md` 与 `docs/design/decisions/`） | `scripts/test-launcher-scripts.mjs`（禁止 `launch-*.bat` / `snowluma/index.mjs` 出现） |
+| L7 | **角色卡身份在文件 front matter 里**（`id:`），state 只存 id | 文件名兼任身份时，改名/换机器会让绑定全断（同类 bug 踩过三次） | `scripts/test-role-id.mjs` |
+| L8 | **所有出站消息都要过桥接的额度/脱敏/白名单**，模型不得直连 QQ | 模型被诱导也刷不了屏、越不了权 | `src/http/prelude.js` + 发送层 |
 - 修改白名单/角色/owner 后保存即热更新（控制台写入 config.json / state/*.json 后即时生效）；修改 preset（权威源在 `dsh/agent-presets/`，改完跑 `node scripts/build-agent-preset-patches.mjs` 重新生成 bundle patch）后重启 DSH 生效。
 - ⚠️ 桥接只能运行一个实例：消息异常时先检查任务管理器里是否有多余的 `node ...bridge.js`。

@@ -21,16 +21,18 @@ DSH/                         ← 工作区根（不是仓库根）
 
 | 目录 | 作用 | 能不能删/动 |
 | --- | --- | --- |
-| `src/` | **桥接内核**：主程序、DSH 客户端、三个 MCP server、黑话/表情/语音共享库 | 不能动。`bridge.js` 是主程序（约 10,400 行，QSH 计划拆分）；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**。**目录里只应有 `.js`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
+| `src/` | **桥接内核**：主程序、DSH 客户端、三个 MCP server、黑话/表情/语音共享库。2026-10 起又分出 `src/api/`（14 个域 handler）与 `src/http/`（响应/请求体/前导关/路由表） | 不能动。`bridge.js` 是主程序（约 10,940 行，QSH 计划拆分）；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**。**目录里只应有 `.js`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
 | `scripts/` | 调试 / 测试 / 一次性运维脚本（见第二节命名约定） | 测试脚本不能删；`cleanup-*` / `fix-*` / `patch-*` / `diag-*` 多为历史遗留 |
 | `dsh/` | 要装进 DSH 的东西：`agent-presets/qq-chat`、`agent-presets/qq-chat-v2`（preset 的**权威源**，含工具白名单 `qq-tool-restrict.mjs` 的 re-export 壳）。DSH 0.1.7 起 preset 以 bundle patch 形式安装，patch 由 `scripts/build-agent-preset-patches.mjs` 从这里的源生成到 `plugins/qq-agent-presets/presets/` | 改 preset 会影响所有人设行为；改完必须重新生成 patch |
 | `plugins/` | DSH 插件：`qq-mode-console`（暴露 `qq-mode` 设置命名空间；**只有 host 半**，浏览器 UI 卡片未实现）、`qq-agent-presets`（生成两个 preset 行 + 携带唯一的 `qq-tool-restrict` 权威实现） | 改了要重装/重启 DSH |
 | `public/` | 浏览器静态资源：`console.html`（桥接自带控制台，127.0.0.1:3100） | 目录里只应有这一个文件；历史备份 `console.html.bak` 已移出仓库 |
-| `roles/` | 人格卡（`小鲸鱼.md` / `傲娇助手.md` / `README.md`）：控制台「人格与角色」页可编辑，保存即生效 | 用户内容，别乱动 |
-| `assets/` | 仓库用图片等资源（`deepseek娘.png`；`project-intro.mp4` 已改为 Release 附件、不入库） | 别加体积大的二进制 |
+| `roles/` | 人格卡，**身份在文件的 front matter 里**（`id:` / `name:`，见 [roles/README.md](../roles/README.md) 与 [roles/ATTRIBUTION.md](../roles/ATTRIBUTION.md)）：控制台「人格与角色」页可编辑，保存即生效。文件名只是存放位置，随便改 | 用户内容，别乱动；**改 `id:` 等于换了一张卡** |
+| `assets/` | 仓库用图片等资源（`deepseek娘.png` + 归属说明 [assets/README.md](../assets/README.md)；`project-intro.mp4` 已改为 Release 附件、不入库） | 别加体积大的二进制；第三方素材必须写归属 |
 | `audio/` | **语音库**（用户的真实音频）。桥接的 AI 语音工具只能发这里的文件；独立 `voice-tool` 默认也指向这里 | **用户文件，绝不删除/移动** |
 | `state/` | **运行时数据**（会话映射、模式、角色、黑话库、日志、锁、令牌）。`.gitignore` 排除 | **用户数据，绝不删除/移动** |
 | `docs/` | 全部文档，按用途分子目录（见第三节） | 见第三节 |
+| `start-bridge.ps1` | **Windows 唯一人工启动入口**：起守护 → 守护起桥接；支持 `-Stop` / `-Status` / `-InstallStartup`。契约见 [guides/LAUNCHER.md](guides/LAUNCHER.md) | 不要绕过它直接长跑 `node src\bridge.js` |
+| `COMPAT.md` / `compat.json` | 兼容与适配手册（人读）+ 机器可读契约（动作/事件/配置键/平台能力）。`scripts/test-compat.mjs` 保证两者与代码一致 | 改协议/加动作必须同步这两份 |
 | `node_modules/` `.npm-cache/` | 依赖与 npm 缓存 | 忽略 |
 | `config.json` | 运行配置（真实配置**不入库**）；模板是 `config.example.json` | 值属于用户，别改 |
 
@@ -54,8 +56,17 @@ DSH/                         ← 工作区根（不是仓库根）
 | `scan-dsh-tool-names.mjs` + `dsh-tool-names.mjs` | **工具名对账**：从已安装的 DSH 包里抽真实工具名，与 QQ 守卫的 restrict 名单双向求差（防拼错假名静默失效 / 防新版本新增能力漏隐藏）。抽取实现只有 `dsh-tool-names.mjs` 一份，`test-preset-local-tools.mjs` 与 `scan-dsh-tool-names.mjs` 共用 | 保留（每次升级 DSH 后跑一次） |
 | `probe-snowluma-heartbeat.mjs` | 只读探针：连 SnowLuma 的 OneBot WS，等一个 `meta_event/heartbeat`，打印载荷里的 `status.online` / **`status.good`**。桥接的上游健康主信号就是这个字段——它存不存在、拼写对不对只能拿**真实运行时**验证（SDK 不校验 data 载荷，取错字段不会报错）。不发消息、不建会话 | 保留（`npm run probe:heartbeat`） |
 | `voice-tool-locator.mjs` | 「发语音」独立工具（在仓库上一级 `../voice-tool/`）的位置解析 + 「它不在本仓库」时的统一跳过口径；支持 `QQ_BRIDGE_VOICE_TOOL_DIR` 覆盖 | 保留（被 6 个测试引用） |
-| `audit-bridge-harness.mjs` | 虚拟网关 + 沙箱化的桥接行为审计脚手架（被 `test-audit-bridge.mjs` 使用） | 保留 |
-| `harden-state-acl.mjs` | 收紧 `state/` 目录权限（Windows 上 `mode 0o600` 是空操作，必须动 ACL）。直接试 → 失败提权重试 → 仍失败则打印可复制命令；**任何路径都以 0 退出，绝不阻断启动**。被 `start.bat` 调用 | 保留（`start.bat` 依赖） |
+| `audit-bridge-harness.mjs` | 虚拟网关 + 沙箱化的桥接行为审计脚手架（被 `test-audit-bridge.mjs` 使用）；会注入 `src/api/*`、`src/http/*`、`src/role-card.js` | 保留 |
+| `bridge-supervisor.ps1` | **Windows 进程守护**：单实例锁、退避重启、退出码分类（0/1/2/3/4/5）、`ExitCode` 归一化。**只守护 `node src\bridge.js`，不代启 SnowLuma** | 保留；改它要同步更新契约块与 `test-launcher-scripts.mjs` |
+| `test-launcher-scripts.mjs` | 启动器/守护的**结构契约测试**（不真跑进程）：L6 不代启 SnowLuma、退出码齐全、`.ps1` 必须带 BOM、文档互链 | 保留 |
+| `test-http-layer.mjs` | HTTP 层单测：响应头、请求体限额/超时、前导关**每条拒绝**、路由表链顺序 | 保留 |
+| `test-role-id.mjs` | 角色卡 id 化回归：front matter 解析、**改文件名 id 不变**、注入不含元数据、`POST /api/role` 必须用解析器 | 保留 |
+| `test-compat.mjs` | 兼容契约一致性：`compat.json` 的动作清单 ↔ 代码实际使用（双向）、平台能力表 ↔ 平台闸门 | 保留 |
+| `test-portability.mjs` | 换机器审计：硬编码盘符、示例配置里的本机值、`powershell.exe` 前的平台闸门、迁移清单完整性 | 保留 |
+| `migrate-roles-to-ids.mjs` | 一次性迁移（幂等）：给老角色卡补 front matter，并把 `state/` 里以旧显示名记录的绑定改写成 id。默认 dry-run，`--apply` 才写 | 保留（老仓库升级用） |
+| `route-list-all.mjs` | 路由清单（`bridge.js` + `src/api/*` + `src/http/*`）。注：`route-inventory.mjs` 只扫 `bridge.js`，重构后它会漏报 | 保留（对账用） |
+| `live-full-test.ps1` | **全功能自测（对着活的桥接跑）**：54 项 —— 只读接口、守卫、人格 CRUD、真实 QQ 动作、媒体/外部。约束写进脚本头：只发 `ownerQQ` 私聊、只做可逆写、跳过破坏性接口、`-MaxSends` 限流、自动处理「AI 暂停」与 agentToken | 保留（改完代码手工跑一次） |
+| `harden-state-acl.mjs` | 收紧 `state/` 目录权限（Windows 上 `mode 0o600` 是空操作，必须动 ACL）。直接试 → 失败提权重试 → 仍失败则打印可复制命令；**任何路径都以 0 退出，绝不阻断启动**。被 `start-bridge.ps1` → 桥接启动路径调用 | 保留（`start.bat` 依赖） |
 | `diagnose-acl.mjs` | 只读盘点：列出仓库里所有被**切断 ACL 继承**的路径，分「有意收紧（`state/`、`config.json`）」与「非预期收紧」两类，并对后者打印恢复继承的命令。背景见 [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) §2.6：DSH 沙箱的写权限只靠继承下发能力 SID，切断继承 ⇒ 沙箱里写不进去。**必须在无沙箱终端跑**（沙箱禁止以管道 stdio 拉起 icacls） | 保留（`npm run diagnose:acl`） |
 | `dsh-modules.mjs` | 小工具：按路径加载 DSH 安装内的模块 | 保留 |
 | `check-onebot-status.mjs` | 手工排查：查 OneBot 连通性 | 保留（运维常用） |
@@ -115,7 +126,7 @@ docs/
 | `scripts/patch-web-mcp-timeout.mjs` | 给 DSH 的 web MCP 配置打超时补丁；属对**外部 DSH 安装**的一次性改动，重启/升级 DSH 后语义就变了 |
 | `scripts/probe-015.mjs` | **v0.2.0 已删除**：针对 DSH **0.1.5** 的探针，结论早已被 verifier 取代，且它走的是 0.1.5 的点号协议路径。同一用途改由 `scripts/probe-020-protocol.mjs`（`npm run probe:protocol`）承担 | 已删除 |
 | `scripts/probe-rpc-compat.mjs` / `probe-models.mjs` / `probe-workspace.mjs` / `probe-events.mjs` / `probe-tools.mjs` | 协议/能力探针：问完「DSH 现在长什么样」用处就小了。**v0.2.0 已修好**：它们的鉴权过去各自复制「从 guard 日志抓 launch token」，那条路在 DSH 0.1.7 起就死了（一律 401），现统一走 `probe-auth.mjs` 的离线铸造 Cookie；工作区也改到系统临时目录（`state/` 的 ACL 被收紧，沙箱里写不进去）。挂在 `npm run probe:*` 上，按需重跑 | 保留 |
-| `scripts/test-onebot-connection.mjs` / `test-mcp-*.mjs`（`test-mcp-exec` / `-host` / `-safe` / `-web-search`） | **不在** `test-audit.mjs` 的清单里，属手工排查脚本而非回归套件；功能上被 `check-onebot-status.mjs` / `test-audit-security-mcp.mjs` 覆盖 |
+| `scripts/test-onebot-connection.mjs` / `test-mcp-*.mjs`（`-host` / `-safe` / `-web-search`；`test-mcp-exec` 已随 `@snowluma/mcp` 依赖一起删除） | **不在** `test-audit.mjs` 的清单里，属手工排查脚本而非回归套件；功能上被 `check-onebot-status.mjs` / `test-audit-security-mcp.mjs` 覆盖 |
 
 处理建议（**没有执行**，等确认）：确认无用后整批移到一个不影响 `npm run test:audit` 的位置
 （例如 `scripts/legacy/`），或直接删除——它们都不在 `package.json` 脚本里，也没有被 `test-audit.mjs` 引用，

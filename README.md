@@ -342,22 +342,38 @@ node scripts/setup-dsh.mjs
    `wsUrl` 是 OneBot **WebSocket** 端口，`httpUrl` 是 OneBot **HTTP API** 端口（不要填成同一个 WS 端口，否则 MCP 工具会报 HTTP 426）。
 
 6. **启动桥接**
-   ```bash
-   npm start          # 前台运行（崩溃不自动重启）
+
+   Windows（推荐，带守护）：
+   ```powershell
+   .\start-bridge.ps1          # 起守护 → 守护起桥接；崩了自动拉起
    ```
+
+   任意平台（前台裸跑，没有守护，只适合调试）：
+   ```bash
+   npm start
+   ```
+
    看到 `SnowLuma 已连接` 即成功；然后 QQ 上给机器人账号发条消息测试。
-   Windows 想要「崩溃自动重启」请改用 `start.bat`（见下节）。
+   Linux 上生产请用 systemd（见 [docs/guides/SERVER.md](docs/guides/SERVER.md)）。
 
 ## 运行与运维
 
-```bash
-npm start          # 或双击 start.bat（守护模式：崩溃自动重启，关闭窗口即停止）
+```powershell
+.\start-bridge.ps1            # 一键启动（守护托管：崩溃自动拉起、单实例、退避重启）
+.\start-bridge.ps1 -Status    # 看谁在跑、端口、SnowLuma、DSH
+.\start-bridge.ps1 -Stop      # 优雅停止
+.\start-bridge.ps1 -InstallStartup   # 登录自动起（计划任务，失败则退到启动文件夹）
 ```
 
 **⚠️ 重要**：
 - **桥接只能运行一个实例**（有单实例锁，重复启动会被拒绝并提示"已有实例在运行"）
-- **用 start.bat 启动**（守护模式），窗口别关——桥接崩溃会在 5 秒后自动拉起
-- 桥接异常/消息无反应时：双击 `restart.bat`（自动杀旧实例 → 清理锁 → 重新启动守护）
+- **用 `start-bridge.ps1` 启动**：它起的是 `scripts/bridge-supervisor.ps1`（守护），
+  崩溃后按 5/10/20/40/60 秒退避重启，连败 5 次才放弃。入口契约见
+  [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)
+- 桥接异常/消息无反应时：`.\start-bridge.ps1 -Stop` 然后重新 `-Start`；
+  或直接看 `state\logs\supervisor.log` 与 `state\bridge.log`
+- **SnowLuma 不在守护范围内**：它是第三方程序，必须你自己启动并登录；守护只探测
+  `:3000/:3001`，不会代启（设计不变量 L6）
 - **重启 DSH 通常不需要动桥接**：每 5 秒探活，DSH 不可用期间收到的 QQ 消息在桥接进程内排队（最多 96 条/会话，满后丢最旧项），恢复后尝试补投。桥接进程退出会丢失内存队列；断线期间已经结束的回复暂不保证补发。
 - 修改 `config.json` / `roles/` / `state/current-role.json` 后重启桥接生效；修改 `dsh/agent-presets/`（改完要跑 `node scripts/build-agent-preset-patches.mjs` 重新生成 bundle patch）或 MCP 配置后重启 DSH 生效
 
@@ -371,6 +387,9 @@ npm start          # 或双击 start.bat（守护模式：崩溃自动重启，�
 ```
 
 ## 自测（不需要 SnowLuma / QQ）
+
+> 想连**真的**桥接/QQ 一起测，用 `scripts/live-full-test.ps1`（54 项，只发你自己私聊，
+> 有 `-MaxSends` 限流）。下面这些是不需要任何外部依赖的离线回归。
 
 离线回归（使用临时目录和模拟服务，不读取真实配置、不发 QQ 消息）：
 

@@ -16,9 +16,14 @@
 | [guides/VOICE.md](guides/VOICE.md) | 语音发送全解：独立工具（`voice-tool/` 的图形界面与命令行）、桥接 CLI、AI 工具、控制台面板，以及**工具拆出后的配置解析顺序** | ✅ 2026 整理时已更新（工具移到上一级 `voice-tool/`） |
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
+| [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
+| [guides/MIGRATION.md](guides/MIGRATION.md) | **换一台机器**：哪些能带走 / 哪些必须丢（`sessions.json` 的 sessionId、DPAPI 备份）、新机器必须重做的四件事（DSH 端口与凭据、预设、外部工具路径、白名单）、按顺序检错的七步 | ✅ 2026-10-27 |
 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) | **安全基线与威胁模型**：威胁主体、已实现的边界（准入/工具面/出站/控制台/落盘/网络）、已知残余风险、发布前回归清单、改动检查单 | ✅ **改动安全相关代码前必读**（2026-09-20 新增） |
 
 ## design/ —— 设计与规划（读设计意图用）
+
+> ⚠️ 本目录被 `.gitignore` 排除（见 FOLDER_MAP 第三节）：只在本机可见，公开仓库里是死链。
+> 决策记录在 `design/decisions/`（0001 SnowLuma 许可询问 / 0002 移除 `@snowluma/*` 依赖）。
 
 | 文档 | 一句话说明 | 状态 |
 | --- | --- | --- |

@@ -144,7 +144,7 @@ Stop-Process -Id <PID> -Force
 
 或改 `config.json` 的 `consolePort`。
 
-### B3. 双击 `start.bat` 窗口一闪就没了
+### B3. 运行 `start-bridge.ps1` 窗口一闪就没了
 
 **原因**：启动即报错，窗口关闭看不到。
 
@@ -286,6 +286,29 @@ git checkout -- dsh/agent-presets/
 
 ## E. 能连上但不回话
 
+### E.0 先查「AI 是不是被暂停了」（2026-10 实测踩过，最容易被忽略）
+
+```powershell
+$h = @{ 'X-Console-Token' = (Get-Content .\state\console-token -Raw).Trim() }
+(Invoke-RestMethod 'http://127.0.0.1:3100/api/socialV2/activity' -Headers $h).paused
+```
+
+- `True` ⇒ **群里/私聊都不回话是正常的**：暂停会停掉所有唤醒与 v2 工具调用
+  （日志 `控制台：二代 AI 已暂停（唤醒/等待任务已停止）`，所有 v2 工具返回
+  403「AI 已暂停，当前不允许执行 v2 工具」）。
+- 恢复：控制台「二代 AI」页点继续，或 `POST /api/socialV2/activity {"paused":false}`。
+
+> 为什么值得单列：这个状态**不报错、不写 WARN**，只看 `/api/status` 也看不出来
+> （`dshReady` / `ws.connected` / `accountOnline` 全绿）。真实案例：机器人「沉默」
+> 了一个多小时，排查方向全错在链路上。
+
+### E.0b 再查「是不是模式/白名单挡住了」
+
+`/api/status` 里的 `mode` 必须是 `reserved2`；`allow.groups` 里必须有那个群。
+两者任一不对，表现同样是「连得上但一句话不说」。
+
+
+
 > 这一段是最高频的「机器人不理我」。
 
 ### E1. 先看这三个开关
@@ -355,6 +378,21 @@ Get-Content .\state\social-v2.json -Raw | Select-String 'paused'
 ---
 
 ## F. 人设 / 角色
+
+### F.0 切人格报 400「角色「X」不存在」
+
+2026-10 角色卡改成 **身份在文件里**（front matter 的 `id:`），历史上这里出过两类问题：
+
+| 症状 | 原因 | 处置 |
+| --- | --- | --- |
+| `角色「小鲸鱼已测试」不存在` | 旧代码用 `sanitizeRoleName` 洗掉全角括号再拼文件名 | 已修（`POST /api/role` 走 `resolveExistingRole`）；确认代码是你当前的版本 |
+| 切成功了但「不像那个人」 | state 里存的是显示名而不是 id → 注入时解析不到 | 跑 `node scripts/migrate-roles-to-ids.mjs --apply`，然后 `GET /api/status` 看 `roleId` 是否有值 |
+| 改了文件名后绑定失效 | 文件里没有 `id:`，只能退回按文件名哈希 | 给卡补 front matter（`id:` + `name:`），再迁移一次 state |
+
+判断依据：`GET /api/status` 同时给 `role`（显示名）与 `roleId`（id）。
+`roleId` 为空 = state 里存的是名字，需要迁移。
+
+
 
 ### F1. 第一次说话没弹「选人设」菜单
 
@@ -616,7 +654,7 @@ node scripts/test-audit.mjs
 
 **原因**：上下文/消息快照累积。
 
-**解决**：调小 `socialV2.context.recentLimit` / `contextWindow`；定期重启（`restart.bat`）。
+**解决**：调小 `socialV2.context.recentLimit` / `contextWindow`；定期重启（`.\start-bridge.ps1 -Stop` 再 `-Start`）。
 
 ### K2. DSH 每轮都很慢
 
@@ -1049,12 +1087,14 @@ Remove-Item state\*.log.1, logs\*.log.1 -ErrorAction SilentlyContinue
 # 1) 看最后发生了什么
 Get-Content state\bridge.log -Tail 60
 # 2) 起回来
-.\start.bat
+.\start-bridge.ps1
 # 3) 体检
 powershell -ExecutionPolicy Bypass -File .\verify.ps1
 ```
 
-**要自动拉起**：用计划任务（登录时启动 + 失败重启），或自己写个看门狗脚本循环调用 `start.bat`。
+**要自动拉起**：用 `start-bridge.ps1 -InstallStartup`（计划任务 / 启动文件夹），或直接用
+`start-bridge.ps1` —— 它的守护本身就会退避重启（不需要再写看门狗）。契约见
+[docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)。
 
 ### P4. 配置值被「静默收敛」，你以为生效了其实没有
 
@@ -1331,7 +1371,9 @@ icacls state
 git fetch --tags; git tag --sort=-creatordate | Select-Object -First 5
 ```
 
-`npm install` 会执行 postinstall（`patch-snowluma-sdk.mjs`），属于必要步骤但也是供应链风险面 ——
+`npm install` 会执行 postinstall，但**现在它只打印一行提示**：`@snowluma/*` 依赖已于 2026-10-27
+移除（改用自带 `src/onebot-ws.js`），仓库不再修补任何第三方包。曾经的 `patch-snowluma-sdk.mjs`
+是供应链风险面，现已随依赖一并删除 ——
 不要在不可信分支上装依赖。详见 [OPERATIONS.md#供应链](docs/OPERATIONS.md#供应链)。
 
 ---
