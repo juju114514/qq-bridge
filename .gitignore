@@ -12,6 +12,8 @@ assets/*
 !assets/deepseek娘.png
 !assets/README.md
 !assets/social-preview.png
+# 文档里引用的配图也必须进仓库，否则 GitHub 上是死链
+!assets/video-storyboard-sample.jpg
 public/*
 !public/console.html
 _snowluma-catalog.json

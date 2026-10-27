@@ -140,6 +140,9 @@ check('归属声明与分享图不被 .gitignore 吃掉（assets/README.md 必�
   const gi = read('.gitignore');
   assert.match(gi, /^!assets\/README\.md$/m, '.gitignore 缺 !assets/README.md 例外：归属声明会进不了仓库');
   assert.match(gi, /^!assets\/social-preview\.png$/m, '.gitignore 缺 !assets/social-preview.png 例外');
+  // 文档里 <img>/![] 引用到的资源必须能进仓库，否则公开页面上是死链
+  assert.match(gi, /^!assets\/video-storyboard-sample\.jpg$/m, '.gitignore 缺 video-storyboard-sample.jpg 例外（VIDEO.md 引用了它）');
+  assert.ok(fs.existsSync(path.join(root, 'assets', 'video-storyboard-sample.jpg')), '缺 assets/video-storyboard-sample.jpg');
   assert.ok(fs.existsSync(path.join(root, 'assets', 'README.md')), '缺 assets/README.md');
   const doc = fs.readFileSync(path.join(root, 'assets', 'README.md'), 'utf8');
   assert.match(doc, /deepseek娘\.png/, '归属表要覆盖 deepseek娘.png');
