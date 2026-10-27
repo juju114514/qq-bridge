@@ -172,6 +172,7 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 | 链接明明能打开，却说"看不了" | 站点不在白名单（YouTube/小红书/快手…），或链接是专栏/图文页而非视频页 | 只支持 B站/抖音；要扩站点改 `video-link.js` 的 `VIDEO_SITES` |
 | 抖音报「不是视频（主页/直播/图文）」 | 抖音分享链接有四种：**视频** / 主页 / 直播 / 图文。后三种 yt-dlp 都不支持（实测主页与直播都是 `Unsupported URL`） | 让用户发**视频**分享链接，或直接发视频文件 |
 | 抖音/ B站 报「需要登录态」 | 会员视频、部分高画质、风控 | 配 `links.cookiesFromBrowser: "edge"`，yt-dlp 会复用浏览器登录态 |
+| **抖音视频链接一律报「需要登录态」**（2026-10-28 实测） | yt-dlp 的 Douyin extractor 要 **fresh cookies**：`Fresh cookies (not necessarily logged in) are needed`。本机两条路都不通：Edge `Could not copy Chrome cookie database`（浏览器占用）、Chrome `Failed to decrypt with DPAPI`（127+ 的 app-bound 加密） | ① 装 **Firefox** 登录抖音后 `cookiesFromBrowser: "firefox"`；② 自己导出 cookies.txt；③ **直接发视频文件**（最省事） |
 | 报「被站点拒绝（风控/版权）」 | 站点级限制 | 换源，或让用户发视频文件 |
 | 报「视频不可用（可能已删除/区域限制/需要登录）」 | YouTube 对部分视频要求登录确认/地区限制 | 配 `cookiesFromBrowser`；或换源 |
 | 报「这个链接里没有视频（可能是图文笔记）」 | 小红书图文笔记只有图片 | 让用户发视频版，或直接发图 |
