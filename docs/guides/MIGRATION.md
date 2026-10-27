@@ -47,7 +47,8 @@
 | # | 事情 | 怎么做 |
 | --- | --- | --- |
 | 1 | **DSH 地址与端口** | DSH 的监听端口每个进程都可能不同（实测从 3080 漂到随机高位端口）。装好后把它写进 `config.json` 的 `dsh.baseUrl`，或用仓库里的 `launcher/sync-dsh-port.ps1` 自动同步 |
-| 2 | **DSH 凭据** | 桥接默认用 `$DSH_HOME/.credentials.yaml` 的签名密钥离线铸造 cookie。新机器上 DSH 必须先**登录一次**；Linux 换用户跑时按 [SERVER.md](SERVER.md#降权之后必须补的那份访问dsh-凭据) 给最小授权（`setfacl` 读密钥），并把 `DSH_HOME` 写进 systemd unit |
+| 2 | **DSH 预设与凭据** | 预设（`qq-chat` / `qq-chat-v2`）装在 **DSH 自己的 home** 里，不在本仓库：新机器上要跑一次 `node scripts/setup-dsh.mjs <preset>`。凭据见下一列 |
+| 2b | **DSH 凭据** | 桥接默认用 `$DSH_HOME/.credentials.yaml` 的签名密钥离线铸造 cookie。新机器上 DSH 必须先**登录一次**；Linux 换用户跑时按 [SERVER.md](SERVER.md#降权之后必须补的那份访问dsh-凭据) 给最小授权（`setfacl` 读密钥），并把 `DSH_HOME` 写进 systemd unit |
 | 3 | **外部工具路径** | `say` / `sing` / `song` 依赖外部脚本（`speak.ps1`/`sing.ps1`/`song.ps1` + ffmpeg）。新机器上要么放到 `config.paths.tools` 指向的目录，要么用 `QQBOT_SAY_SCRIPT` / `QQBOT_SING_SCRIPT` / `QQBOT_SONG_SCRIPT` 指过去。**这些脚本依赖 Windows PowerShell**：非 Windows 上接口会直接返回「依赖 Windows PowerShell」，不会静默失败 |
 | 4 | **访问白名单** | `allow.groups` / `allow.private` / `ownerQQ` 一定要重新核对——换了群/换了号却沿用旧白名单，会出现"机器人对空群说话"或"该回的不回" |
 

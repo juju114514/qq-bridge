@@ -3135,13 +3135,27 @@ async function main() {
       }
     }
   };
+  // 记录上一次的 DSH 失败原因，只在**错误形态变化**时打日志：
+  // 换机器后最常见的故障就是「config 里的 dsh.baseUrl 还是旧端口」，可叹的是
+  // 原实现把异常吞进 `catch {}`，用户只看到「DSH 不可用（重启中？）」——方向完全错了。
+  let dshFailLogged = '';
   const checkDsh = async () => {
     let ok = false;
+    let failReason = '';
     try {
       await api.settings.describe({});
       ok = true;
-    } catch {}
+    } catch (error) {
+      failReason = String(error?.message ?? error ?? 'unknown');
+    }
+    if (!ok && failReason !== dshFailLogged) {
+      dshFailLogged = failReason;
+      log(`⚠️ 连不上 DSH（${cfg.dsh.baseUrl}）：${failReason}`);
+      log('   换过机器/重装过 DSH 时端口通常变了：把实际端口写进 config.json 的 dsh.baseUrl 后重启桥接；');
+      log('   Windows 可跑 launcher/sync-dsh-port.ps1；Linux 与迁移步骤见 docs/guides/MIGRATION.md');
+    }
     if (ok) {
+      dshFailLogged = '';
       await refreshMode();
       // DSH 起来后拉一次 preset 清单；DSH 重启（dshReady 由 false 变 true）时再拉一次。
       if (!dshReady || dshPresetIds.length === 0) {
