@@ -134,6 +134,19 @@ check('文档与启动日志都如实提示「非 DeepSeek provider 未验证」
   assert.match(bridge, /未经本仓库验证/, '启动日志要如实标注未验证');
 });
 
+check('归属声明与分享图不被 .gitignore 吃掉（assets/README.md 必须真的在仓库里）', () => {
+  // 踩过的坑：.gitignore 里 `assets/*` 只放行了 deepseek娘.png，于是 assets/README.md
+  // 这份**归属声明**一直只存在于本地、从没进过公开仓库 —— 而它是许可承诺的一部分。
+  const gi = read('.gitignore');
+  assert.match(gi, /^!assets\/README\.md$/m, '.gitignore 缺 !assets/README.md 例外：归属声明会进不了仓库');
+  assert.match(gi, /^!assets\/social-preview\.png$/m, '.gitignore 缺 !assets/social-preview.png 例外');
+  assert.ok(fs.existsSync(path.join(root, 'assets', 'README.md')), '缺 assets/README.md');
+  const doc = fs.readFileSync(path.join(root, 'assets', 'README.md'), 'utf8');
+  assert.match(doc, /deepseek娘\.png/, '归属表要覆盖 deepseek娘.png');
+  assert.match(doc, /social-preview\.png/, '归属表要覆盖 social-preview.png（派生素材同样受限制）');
+  assert.match(doc, /MIT/, '必须写明 MIT 不覆盖这张图');
+});
+
 // ── 5. AI 入口必须能找到这份手册 ───────────────────────────────────────────
 check('AGENTS.md 指向 COMPAT.md', () => {
   const agents = read('AGENTS.md');

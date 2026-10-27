@@ -5,8 +5,13 @@ state/
 logs/
 *.log
 audio/
+# 素材默认不入库（用户会换成自己的图），但这两件必须进：
+#   · README.md        —— 归属声明，是许可承诺的一部分，不能只存在于本地
+#   · social-preview.png —— GitHub 分享缩略图（1280×640），没有它仓库链接是白板
 assets/*
 !assets/deepseek娘.png
+!assets/README.md
+!assets/social-preview.png
 public/*
 !public/console.html
 _snowluma-catalog.json
