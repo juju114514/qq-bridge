@@ -150,3 +150,13 @@ else {
   console.error(`  ${failures} 项失败`);
   process.exitCode = 1;
 }
+
+check('POST /api/role 走解析器，且写入 state 的是 id（回归：控制台切人格曾经全废）', () => {
+  // 实测过的 bug：该接口还在用 `sanitizeRoleName(body.role)` + 拼 `roles/<name>.md`。
+  // 现有 4 张卡的名字全带全角括号，sanitize 会洗成 `小鲸鱼已测试` → 必然 400；
+  // 就算碰巧命中，写进 state 的也是洗过的名字，注入时解析不到 → 人格静默失效。
+  const rolesJs = fs.readFileSync(path.join(root, 'src', 'api', 'roles.js'), 'utf8');
+  assert.match(rolesJs, /resolveExistingRole\(body\.role\)/, 'POST /api/role 必须用 resolveExistingRole 解析');
+  assert.doesNotMatch(rolesJs, /sanitizeRoleName\(body\.role\)/, '不能再用 sanitizeRoleName 洗角色名');
+  assert.match(rolesJs, /writeRoleState\(id, rs\.mode\)/, '写 state 的必须是 id');
+});

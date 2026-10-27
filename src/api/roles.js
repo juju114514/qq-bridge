@@ -55,14 +55,19 @@ export function createRolesHandler(deps) {
       const body = await readBody();
       const rs = readRoleState();
       if (body.role && typeof body.role === 'string') {
-        const name = sanitizeRoleName(body.role);
-        if (!fs.existsSync(path.join(ROOT, 'roles', name + '.md'))) {
-          sendJson({ ok: false, error: `角色「${name}」不存在（roles/${name}.md）` }, 400);
+        // 身份是 id（2026-10 起）。这里必须走解析器，接受 id / 显示名 / 唯一前缀：
+        // 不能再用 `sanitizeRoleName` + 拼文件名 —— 它只保留 [\w 中文 -]，而现有 4 张卡
+        // 的名字全带全角括号，会被洗成 `小鲸鱼已测试` → 必然 400（控制台切人格全废）；
+        // 就算碰巧命中，写进 state 的也是洗过的名字，后续注入解析不到 → 人格静默失效。
+        const id = resolveExistingRole(body.role);
+        if (!id || !roleExists(id)) {
+          const names = roleSummaries().map((r) => r.name).join('、') || '（无）';
+          sendJson({ ok: false, error: `角色「${body.role}」不存在。现有：${names}` }, 400);
           return true;
         }
-        writeRoleState(name, rs.mode);
-        log(`控制台：角色已设置为 ${name}`);
-        sendJson({ ok: true, role: name });
+        writeRoleState(id, rs.mode);
+        log(`控制台：角色已设置为 ${roleName(id)}（id=${id}）`);
+        sendJson({ ok: true, role: roleName(id), id });
       } else {
         writeRoleState(null, rs.mode);
         log('控制台：角色已清除');
