@@ -279,7 +279,21 @@
         "asrUrl": "http://127.0.0.1:5111",
         "asrTimeoutMs": 120000,
         "transcriptMaxChars": 1200,
-        "_说明": "视频理解：抽 frame 帧拼 cols 格故事板 + 音轨转写。asrUrl 指向 asr_server.py（不在则降级只看画面）"
+        "_说明": "视频理解：抽 frame 帧拼 cols 格故事板 + 音轨转写。asrUrl 指向 asr_server.py（不在则降级只看画面）",
+        "links": {
+          "enabled": true,
+          "ytdlpPath": "",
+          "maxSeconds": 180,
+          "maxBytes": 209715200,
+          "timeoutMs": 180000,
+          "maxHeight": 720,
+          "cookiesFromBrowser": "",
+          "sites": [
+            "bilibili",
+            "douyin"
+          ],
+          "_说明": "ytdlpPath 留空则从 PATH 找；Windows 可写进这里（本机路径不要提交到仓库）"
+        }
       }
     },
     "privateLimit": {

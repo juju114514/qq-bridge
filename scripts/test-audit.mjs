@@ -108,6 +108,8 @@ const tests = [
   'test-ocr.mjs',
   // 视频理解：故事板布局 / ffprobe 探元数据 / 真抽帧 / ASR 降级 / 接线契约。
   'test-video-frames.mjs',
+  // 视频链接识别：B站/抖音白名单 + 只下前 N 秒 + 接线。
+  'test-video-link.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

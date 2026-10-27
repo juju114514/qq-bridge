@@ -344,6 +344,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_guide: 'sendPoke',
   qq_get_message_images: 'getImages',
   qq_get_message_video: 'getImages',
+  qq_open_video: 'getImages',
   qq_get_forward_msg: 'getForwardMsg',
   qq_list_stickers: 'listStickers',
   qq_get_sticker_image: 'getStickerImage',
@@ -1070,6 +1071,43 @@ server.tool(
     }
   }
 );
+
+// ── 视频链接工具：B站/抖音链接 → 下载前 N 秒 → 故事板 + 转写 ───────────────
+if (cfg.socialV2?.tools?.getImages !== false) {
+  server.tool(
+    'qq_open_video',
+    '看一个**视频链接**（B站 / 抖音）：桥接用 yt-dlp 只下前 180 秒，抽 9 帧拼成故事板 + 音轨转写。'
+    + '当用户贴出 bilibili.com/video/BV…、b23.tv/…、v.douyin.com/…、douyin.com/video/… 这类链接、'
+    + '说"看看这个视频"时调用。**不支持的站点会被拒绝**（只白名单 B站/抖音）。'
+    + '只想知道说了什么（口播/讲解）传 mode=transcript，省掉抽帧。',
+    {
+      url: z.string().describe('视频链接（B站视频页/番剧、b23.tv 短链、抖音分享链接）'),
+      mode: z.enum(['storyboard', 'transcript']).optional()
+        .describe('storyboard（默认）：故事板 + 转写；transcript：只要转写文字'),
+      token: z.string().optional().describe('二代会话令牌（reserved2 下必填，见唤醒提示中的【会话令牌】）')
+    },
+    async ({ url, mode, token }) => {
+      try {
+        const data = await agentApi('/api/socialV2/video-link', {
+          method: 'POST',
+          headers: token ? { 'x-agent-token': token } : {},
+          body: JSON.stringify({ url, mode: mode || 'storyboard' }),
+          timeoutMs: 300000
+        });
+        if (!data?.ok) {
+          return { content: [{ type: 'text', text: `看不了这个链接：${data?.error || '未知错误'}` }] };
+        }
+        if (data.text) return { content: [{ type: 'text', text: data.text }] };
+        const content = [];
+        if (data.note) content.push({ type: 'text', text: String(data.note) });
+        content.push({ type: 'image', mimeType: data.mimeType, data: data.data });
+        return { content };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `读取视频链接失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
 
 // ── 视频理解工具：视频 → 一张故事板（9 帧拼图，带时间戳）+ 声音转写 ────────
 if (cfg.socialV2?.tools?.getImages !== false) {

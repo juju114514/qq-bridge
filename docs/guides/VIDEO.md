@@ -80,9 +80,62 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 
 ---
 
+## 三·二、链接识别：B 站 / 抖音（不用发视频文件）
+
+用户常常只贴一个链接（B 站视频页、`b23.tv` 短链、抖音分享文案里的 `v.douyin.com`）。
+这条路**不依赖 QQ 的媒体段**，直接由模型把链接交给桥接：
+
+```
+模型看到用户消息里的链接 → 调 qq_open_video(url, mode)
+  → 桥接校验白名单（只 B站/抖音）→ yt-dlp 只下前 180 秒 → 走同一套「故事板 + 转写」
+```
+
+**安全边界（重要）**：只放行白名单站点。否则"看视频"会变成一个任意 URL 下载器
+（内网地址、任意站点都能被这个动作触发下载）。判定在 `src/video-link.js`，
+`downloadVideoLink()` 里还会**再判一次**（双保险），URL 一律走 `--` 分隔传参，不拼 shell。
+
+**实测收益（同一 B 站视频）**：
+
+| 方式 | 耗时 | 体积 |
+| --- | --- | --- |
+| `yt-dlp` 整段 | 8s | 84 MB |
+| **`--download-sections *0-180`** | **3~4s** | **1.5~7.7 MB** |
+
+配置：
+
+```jsonc
+"socialV2": { "media": { "video": { "links": {
+  "enabled": true,
+  "ytdlpPath": "D:\\QQBot\\tts\\Scripts\\yt-dlp.exe",  // 留空则走 PATH
+  "maxSeconds": 180,        // 只分析前 N 秒
+  "maxBytes": 209715200,    // 200MB 上限
+  "timeoutMs": 180000,
+  "maxHeight": 720,         // 分辨率上限（故事板只要 420px/格，720p 足够）
+  "cookiesFromBrowser": "", // 填 chrome/edge 可复用登录态（高画质/会员视频需要）
+  "sites": ["bilibili", "douyin"]
+} } } }
+```
+
+支持的链接形态（都在 `test-video-link.mjs` 里钉着）：
+
+| 站点 | 形态 |
+| --- | --- |
+| B站 | `bilibili.com/video/BV…`、`bilibili.com/video/av…`、`bilibili.com/bangumi/play/ep…`、`b23.tv/…`、`bili2233.cn/…` |
+| 抖音 | `v.douyin.com/…`、`douyin.com/video/<id>`、`douyin.com/note/<id>`、`iesdouyin.com/share/video/<id>` |
+
+**不支持**的站点（YouTube、小红书、快手……）会被明确拒绝；要加站点就改 `video-link.js`
+的 `VIDEO_SITES`（正则 + 域名，两处都要），然后补一条测试。
+
 ## 四、模型怎么用
 
-工具：**`qq_get_message_video`**（参数 `key` / `messageId` / `mode` / `token`）
+两个工具：
+
+| 工具 | 输入 | 用在哪 |
+| --- | --- | --- |
+| `qq_get_message_video` | 会话 `key` + `messageId`（或 seq） | 用户**发了个视频文件** |
+| `qq_open_video` | `url`（B站/抖音链接） | 用户**贴了个链接** |
+
+共同参数 `mode`：`storyboard`（默认，故事板 + 转写）/ `transcript`（只要文字）。
 
 | mode | 交付 | 适合 |
 | --- | --- | --- |
@@ -110,6 +163,10 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 | **视频被当成图片、模型啥也拿不到** | **QQ 实测：视频不是 `video` 段，而是 `image` 段**，`file` 是 `<hash>.mp4`、`url` 指向 `multimedia.nt.qq.com.cn` | 按**扩展名**兜底识别（`mp4/mov/m4v/webm/mkv/flv/avi/3gp`）→ 归成 `kind:'video'`；消费侧也再兜一次（历史消息里 kind 还是 image） |
 | 请求直接 500 / 桥接崩了 | 只在运行期才炸的 `ReferenceError`：漏 `import fs`、漏 `import probeVideo`、变量名写成 `modelVideoLimits` | 静态断言兜底：`test-video-frames.mjs` 检查 bridge 的 import 行里包含所有用到的跨模块函数 |
 | 转写栏是空的，既没文字也没原因 | ASR **成功但没识别出人声**（静音/纯音乐/纯画面录屏），代码把空结果静默丢了 | 空结果也要写「ASR 没识别到人声（静音/纯音乐/只有画面）」——有痕迹模型才知道不是漏了 |
+| 链接明明能打开，却说"看不了" | 站点不在白名单（YouTube/小红书/快手…），或链接是专栏/图文页而非视频页 | 只支持 B站/抖音；要扩站点改 `video-link.js` 的 `VIDEO_SITES` |
+| 抖音报「不是视频（主页/直播/图文）」 | 抖音分享链接有四种：**视频** / 主页 / 直播 / 图文。后三种 yt-dlp 都不支持（实测主页与直播都是 `Unsupported URL`） | 让用户发**视频**分享链接，或直接发视频文件 |
+| 抖音/ B站 报「需要登录态」 | 会员视频、部分高画质、风控 | 配 `links.cookiesFromBrowser: "edge"`，yt-dlp 会复用浏览器登录态 |
+| 报「被站点拒绝（风控/版权）」 | 站点级限制 | 换源，或让用户发视频文件 |
 | 时间戳没烧上 | `drawtext` 找不到字体（Linux/无字体包） | Windows 用 `fontfile='C\:/Windows/Fonts/consola.ttf'`；Linux 装 DejaVu 后改路径 |
 | 视频下载把内存吃满 | 直接用 `safeFetchBuffer`（整段进内存） | 用 `safeDownloadToFile` 流式写盘 |
 | 内网/回环地址被拒 | 这是**故意的** SSRF 防护 | 别用 `http://127.0.0.1` 测；要本地测就先临时改成 file:// 读（还是走同一条 CLI 逻辑） |

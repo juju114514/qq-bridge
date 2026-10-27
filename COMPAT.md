@@ -237,6 +237,10 @@ DSH 的图片入口只吃静态图，所以视频必须是**降维**而不是"�
 | 转写 | `extractVideoAudio` → `POST :5111/transcribe` | ASR **只探测不代启动**；不可用必须降级成"只有画面"并写明原因 |
 
 交付形态：`qq_get_message_video` 的 `mode=storyboard`（1 张拼图 + 转写）/ `mode=transcript`（只要文字）。
+
+**链接这条路（B站/抖音）**多两道闸：① 站点**白名单**（`src/video-link.js`，非白名单一律拒——
+否则"看视频"就成了任意 URL 下载器）；② **只下前 N 秒**（`--download-sections`，实测 84MB/8s → 1.5MB/3s）。
+`qq_open_video` 走 `POST /api/socialV2/video-link`，与消息附件那条路共用同一套故事板+转写。
 `socialV2.media.video.enabled=false` 时行为与改动前完全一致（视频只显示 `[视频]`）。
 
 ## 五、失败特征表（症状 → 根因）

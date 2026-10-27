@@ -34,6 +34,8 @@ import { safeFetchBuffer, safeDownloadToFile, looksLikeImageBuffer } from './saf
 import { normalizeImageForModel, normalizeVideoForModel, probeVideo, extractVideoAudio } from './media-normalize.js';
 import { ocrAvailable, ocrImage } from './ocr.js';
 import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcribe.js';
+import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js';
+import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
@@ -5330,6 +5332,36 @@ async function main() {
           return;
         }
 
+        // 视频**链接**（B站/抖音）：模型把用户贴的链接交过来，桥接用 yt-dlp 下载前 N 秒再分析。
+        // 与消息附件那条路分开：这条不依赖 QQ 媒体段，但要过站点白名单。
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/video-link') {
+          const body = await readJsonBody(req);
+          const linkUrl = String(body?.url ?? '').trim();
+          const mode = body?.mode === 'transcript' ? 'transcript' : 'storyboard';
+          if (!linkUrl) { writeJson(res, { ok: false, error: 'url 不能为空' }, 400); return; }
+          if (req.headers['x-agent-token'] && !v2ToolEnabled('getImages')) {
+            writeJson(res, { ok: false, error: '工具未启用：qq_open_video' }, 403);
+            return;
+          }
+          try {
+            const got = await videoLinkToModelParts(linkUrl, mode);
+            if (!got.ok) { writeJson(res, { ok: false, url: linkUrl, mode, error: got.error }); return; }
+            if (got.textOnly) { writeJson(res, { ok: true, url: linkUrl, mode, text: got.textOnly }); return; }
+            writeJson(res, {
+              ok: true,
+              url: linkUrl,
+              mode,
+              mimeType: got.board.mimeType,
+              data: got.board.buffer.toString('base64'),
+              note: got.note
+            });
+          } catch (error) {
+            log(`视频链接分析失败 ${linkUrl}: ${error?.message ?? error}`);
+            writeJson(res, { ok: false, url: linkUrl, error: `视频链接分析失败：${error?.message ?? error}` }, 500);
+          }
+          return;
+        }
+
         // 视频走同一个处理器：findMessageMedia 现在也会带出 kind:'video'，
         // 处理器内部按 mode（storyboard/transcript）决定交付形态。
         // 单独开一个路径只是为了让 MCP 工具名和语义对得上。
@@ -6073,9 +6105,25 @@ async function main() {
       asr: v.asr !== false,
       asrUrl: v.asrUrl || '',
       asrTimeoutMs: Math.max(5000, Number(v.asrTimeoutMs) || 120000),
-      transcriptMaxChars: Math.max(120, Number(v.transcriptMaxChars) || 1200)
+      transcriptMaxChars: Math.max(120, Number(v.transcriptMaxChars) || 1200),
+      // 链接识别（B站/抖音）：yt-dlp 下载 → 走同一条故事板+转写管线
+      links: (() => {
+        const l = v.links ?? {};
+        return {
+          enabled: l.enabled !== false,
+          ytdlpPath: l.ytdlpPath || '',
+          maxSeconds: Math.max(5, Math.min(600, Number(l.maxSeconds) || 180)),
+          maxBytes: Math.max(1024 * 1024, Number(l.maxBytes) || 200 * 1024 * 1024),
+          timeoutMs: Math.max(10000, Number(l.timeoutMs) || 180000),
+          maxHeight: Math.max(240, Math.min(1080, Number(l.maxHeight) || 720)),
+          cookiesFromBrowser: l.cookiesFromBrowser || '',
+          sites: Array.isArray(l.sites) && l.sites.length ? l.sites.map(String) : ['bilibili', 'douyin']
+        };
+      })()
     };
   })();
+
+  function videoLinkConfig() { return modelVideoConfig.links; }
 
   /** 下载视频到临时文件并读元数据；调用方负责 cleanup。 */
   async function fetchVideoFile(media, index) {
@@ -6102,57 +6150,102 @@ async function main() {
    * 视频 → 「一张故事板 + 一段转写」。
    * mode: storyboard（默认）/ transcript（只要文字）
    */
+  /**
+   * 分析一个**本地视频文件** → 「故事板 + 转写」（两条路共用：消息里的视频 / 链接下载的视频）。
+   * @returns {Promise<{ok:boolean, board?:object, note?:string, textOnly?:string, error?:string}>}
+   */
+  async function analyzeVideoFile(file, mode, label, metaOverride = null) {
+    const meta = metaOverride || (await probeVideo(file));
+    if (!meta.ok) return { ok: false, error: meta.error };
+    const dur = meta.durationSec > 0 ? meta.durationSec : 0;
+    let transcript = '';
+    let asrNote = '';
+    if (modelVideoConfig.asr && meta.hasAudio) {
+      const aud = await extractVideoAudio(file, {
+        ffmpegPath: modelMediaLimits.ffmpegPath,
+        videoMaxSeconds: modelMediaLimits.videoMaxSeconds
+      });
+      if (aud.ok) {
+        const tr = await transcribeFile(aud.file, { baseUrl: modelVideoConfig.asrUrl, timeoutMs: modelVideoConfig.asrTimeoutMs });
+        aud.cleanup?.();
+        if (tr.ok) {
+          transcript = tr.text;
+          // ASR 成功但一个字都没识别出来（静音/纯音乐/纯画面录屏）：
+          // 必须留下痕迹，否则交付里既没有转写也没有原因，模型会以为"漏了"。
+          if (!String(transcript).trim()) asrNote = 'ASR 没识别到人声（静音/纯音乐/只有画面）';
+        } else asrNote = tr.error;
+      } else {
+        asrNote = aud.error;
+      }
+    } else if (modelVideoConfig.asr && !meta.hasAudio) {
+      asrNote = '视频没有音轨';
+    }
+    const transcriptText = formatTranscript(transcript, { durationSec: dur, maxChars: modelVideoConfig.transcriptMaxChars });
+    if (mode === 'transcript') {
+      return {
+        ok: true,
+        textOnly: transcriptText
+          ? `${label}（${dur.toFixed(0)}s）转写：\n${transcriptText}`
+          : `${label}（${dur.toFixed(0)}s）没有可转写的人声${asrNote ? `（${asrNote}）` : ''}`
+      };
+    }
+    const board = await normalizeVideoForModel(file, {
+      ...modelMediaLimits,
+      durationSec: dur,
+      width: meta.width,
+      height: meta.height
+    });
+    if (!board.ok) return { ok: false, error: board.error };
+    const notes = [board.note];
+    if (transcriptText) notes.push(`声音转写：${transcriptText}`);
+    else if (asrNote) notes.push(`（没有声音转写：${asrNote}）`);
+    return { ok: true, board, note: notes.join('\n') };
+  }
+
+  /** 消息里的视频附件 → 下载 → 分析。 */
   async function videoToModelParts(media, index, mode) {
     const label = `视频${index}`;
     const got = await fetchVideoFile(media, index);
     if (!got.ok) return { ok: false, error: got.error };
     try {
-      const { meta } = got;
-      const dur = meta.durationSec > 0 ? meta.durationSec : Number(media.durationSec) || 0;
-      let transcript = '';
-      let asrNote = '';
-      if (modelVideoConfig.asr && meta.hasAudio) {
-        const aud = await extractVideoAudio(got.file, {
-          ffmpegPath: modelMediaLimits.ffmpegPath,
-          videoMaxSeconds: modelMediaLimits.videoMaxSeconds
-        });
-        if (aud.ok) {
-          const tr = await transcribeFile(aud.file, { baseUrl: modelVideoConfig.asrUrl, timeoutMs: modelVideoConfig.asrTimeoutMs });
-          aud.cleanup?.();
-          if (tr.ok) {
-            transcript = tr.text;
-            // ASR 成功但一个字都没识别出来（静音/纯音乐/纯画面录屏）：
-            // 必须留下痕迹，否则交付里既没有转写也没有原因，模型会以为"漏了"。
-            if (!String(transcript).trim()) asrNote = 'ASR 没识别到人声（静音/纯音乐/只有画面）';
-          } else asrNote = tr.error;
-        } else {
-          asrNote = aud.error;
-        }
-      } else if (modelVideoConfig.asr && !meta.hasAudio) {
-        asrNote = '视频没有音轨';
-      }
-      const transcriptText = formatTranscript(transcript, { durationSec: dur, maxChars: modelVideoConfig.transcriptMaxChars });
-      if (mode === 'transcript') {
-        return {
-          ok: true,
-          textOnly: transcriptText
-            ? `${label}（${dur.toFixed(0)}s）转写：\n${transcriptText}`
-            : `${label}（${dur.toFixed(0)}s）没有可转写的人声${asrNote ? `（${asrNote}）` : ''}`
-        };
-      }
-      const board = await normalizeVideoForModel(got.file, {
-        ...modelMediaLimits,
-        durationSec: dur,
-        width: meta.width,
-        height: meta.height
-      });
-      if (!board.ok) return { ok: false, error: board.error };
-      const notes = [board.note];
-      if (transcriptText) notes.push(`声音转写：${transcriptText}`);
-      else if (asrNote) notes.push(`（没有声音转写：${asrNote}）`);
-      return { ok: true, board, note: notes.join('\n') };
+      return await analyzeVideoFile(got.file, mode, label, got.meta);
     } finally {
       got.cleanup();
+    }
+  }
+
+  /**
+   * 视频**链接**（B 站 / 抖音）→ yt-dlp 下载前 N 秒 → 分析。
+   * 安全边界：只接受 video-link.js 白名单里的站点，别的 URL 一律拒（模型不能指挥本机下载任意地址）。
+   */
+  async function videoLinkToModelParts(rawUrl, mode) {
+    const url = String(rawUrl ?? '').trim();
+    if (!videoLinkConfig().enabled) return { ok: false, error: '链接识别未开启（socialV2.media.video.links.enabled=false）' };
+    if (!isAllowedVideoUrl(url, { sites: videoLinkConfig().sites })) {
+      return { ok: false, error: '只支持 B 站 / 抖音的视频链接（其他站点一律不下载）' };
+    }
+    if (!ytDlpAvailable({ ytdlpPath: videoLinkConfig().ytdlpPath })) {
+      return { ok: false, error: '找不到 yt-dlp：装一份，或在 socialV2.media.video.links.ytdlpPath 里指定路径' };
+    }
+    const dl = await downloadVideoLink(url, {
+      ytdlpPath: videoLinkConfig().ytdlpPath,
+      maxSeconds: videoLinkConfig().maxSeconds,
+      maxBytes: videoLinkConfig().maxBytes,
+      timeoutMs: videoLinkConfig().timeoutMs,
+      maxHeight: videoLinkConfig().maxHeight,
+      cookiesFromBrowser: videoLinkConfig().cookiesFromBrowser,
+      sites: videoLinkConfig().sites
+    });
+    if (!dl.ok) return { ok: false, error: dl.error };
+    try {
+      const label = `${siteLabel(detectVideoLinks(url, { sites: videoLinkConfig().sites })[0]?.site ?? '') || '视频'}链接`;
+      const got = await analyzeVideoFile(dl.file, mode, label);
+      if (got.ok && dl.partial) {
+        got.note = `${got.note}\n（只取了视频前 ${videoLinkConfig().maxSeconds} 秒做分析）`;
+      }
+      return got;
+    } finally {
+      dl.cleanup?.();
     }
   }
 
