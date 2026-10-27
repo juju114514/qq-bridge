@@ -113,7 +113,7 @@ roles/<任意文件名>.md
 | 平台 | 入口 | 说明 |
 | --- | --- | --- |
 | Windows | `.\start-bridge.ps1` | 起守护 → 起桥接；崩溃自动拉起、单实例、退避重启。启动器**不代启 SnowLuma**（只探测 `:3000/:3001`）。契约见 [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md) |
-| Linux | `deploy/install-server.sh` + systemd | `systemctl start qq-bridge`；unit 见 `deploy/qq-bridge.service` |
+| Linux | `deploy/first-run.sh`（首次准备）→ `deploy/install-server.sh` + systemd | `systemctl start qq-bridge`；unit 见 `deploy/qq-bridge.service` |
 
 不要绕过入口直接长跑 `node src\bridge.js`：那样没有单实例保护、崩了没人拉起。
 退出码契约（0/1/2/3/4/5）在 LAUNCHER.md，改启动逻辑必须同步更新那张表。

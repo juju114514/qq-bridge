@@ -17,7 +17,7 @@
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
-| [guides/FRESH-INSTALL.md](guides/FRESH-INSTALL.md) | **全新机器安装**（入口：`.\scripts\first-run.ps1` 一条命令，或 `node scripts/preflight.mjs` 只体检）：按阶段（系统准备→取代码→装依赖→配置→装 DSH/SnowLuma→首次启动→首次对话）列出会踩的坑，每条标「有没有对应排查」；含本次补的 4 个缺口（没有 npm / PowerShell 执行策略 / preset 没装 / postinstall 提示不是错误）。入口命令 `node scripts/preflight.mjs` | ✅ 2026-10-27 |
+| [guides/FRESH-INSTALL.md](guides/FRESH-INSTALL.md) | **全新机器安装**（入口：Windows `.\scripts\first-run.ps1` / Linux `./deploy/first-run.sh`，或 `node scripts/preflight.mjs` 只体检）：按阶段（系统准备→取代码→装依赖→配置→装 DSH/SnowLuma→首次启动→首次对话）列出会踩的坑，每条标「有没有对应排查」；含本次补的 4 个缺口（没有 npm / PowerShell 执行策略 / preset 没装 / postinstall 提示不是错误）。入口命令 `node scripts/preflight.mjs` | ✅ 2026-10-27 |
 | [guides/MODELS.md](guides/MODELS.md) | **模型接入**：DeepSeek 官方（✅ 已测试）与 OpenAI / GPT 等兼容 provider（⚠️ **已接入但未测试**）。含架构（桥接只透传给 DSH）、接入步骤、**已知缺口表**（计价兜底估算 / 档位词表 / 工具协议 / 多模态 / 人格表现）、接入后的验证清单 | ✅ 2026-10-27 |
 | [guides/MIGRATION.md](guides/MIGRATION.md) | **换一台机器**：哪些能带走 / 哪些必须丢（`sessions.json` 的 sessionId、DPAPI 备份）、新机器必须重做的四件事（DSH 端口与凭据、预设、外部工具路径、白名单）、按顺序检错的七步 | ✅ 2026-10-27 |
 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) | **安全基线与威胁模型**：威胁主体、已实现的边界（准入/工具面/出站/控制台/落盘/网络）、已知残余风险、发布前回归清单、改动检查单 | ✅ **改动安全相关代码前必读**（2026-09-20 新增） |

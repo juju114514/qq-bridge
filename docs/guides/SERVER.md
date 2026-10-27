@@ -174,6 +174,7 @@ sudo ./deploy/verify-server.sh
 | 能力 | Windows | Linux（本方案） |
 | --- | --- | --- |
 | 进程管理 | `start-bridge.ps1` + `scripts/bridge-supervisor.ps1`（或计划任务） | **systemd**（自动重启、开机自启、日志进 journald） |
+| 首次准备 | `scripts\first-run.ps1` | **`deploy/first-run.sh`**（体检→依赖→配置→preset→可选启动；与 Windows 版同逻辑同退出码） |
 | 备份加密 | DPAPI（绑用户+机器） | **GPG**（可跨机解密）或直接放加密卷 |
 | 权限硬化 | `icacls` | `chown qqbridge` + `chmod 700 state` |
 | 端口探测 | `Get-NetTCPConnection` | `/dev/tcp` 探测 |

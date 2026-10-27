@@ -155,6 +155,111 @@ await checkAsync('空仓库里 DryRun 以非 0 退出，且不会偷偷创建 co
 
 function firstRunName() { return 'first-run.ps1'; }
 
+// ── 5. shell 版（Linux/macOS）：同样的五步与两条硬边界 ─────────────────────
+const SH = 'deploy/first-run.sh';
+
+check('deploy/first-run.sh 存在、LF 换行、无 BOM、shebang 正确', () => {
+  const p = path.join(root, SH);
+  assert.ok(fs.existsSync(p), `缺 ${SH}`);
+  const buf = fs.readFileSync(p);
+  assert.notDeepEqual([...buf.slice(0, 3)], [0xef, 0xbb, 0xbf], '.sh 不要 BOM（bash 会把 BOM 当命令）');
+  const text = buf.toString('utf8');
+  assert.ok(text.startsWith('#!/usr/bin/env bash'), 'shebang 必须是 #!/usr/bin/env bash');
+  assert.ok(!text.includes('\r\n'), '.sh 必须是 LF（CRLF 会让 bash 报 $\\r: command not found）');
+});
+
+check('shell 版：五步齐全 + 全套参数 + 两条硬边界', () => {
+  const text = read(SH);
+  for (const n of ['步骤 1/5', '步骤 2/5', '步骤 3/5', '步骤 4/5', '步骤 5/5']) {
+    assert.ok(text.includes(n), `缺 ${n}`);
+  }
+  for (const flag of ['--dry-run', '--skip-npm', '--skip-preset', '--start', '--non-interactive', '--root', '--node']) {
+    assert.ok(text.includes(flag), `缺参数 ${flag}`);
+  }
+  assert.match(text, /preflight\.mjs/, '步骤 1 必须调用 preflight');
+  assert.match(text, /setup-dsh\.mjs/, '步骤 4 必须调用 setup-dsh');
+  // 硬边界 1：不代启 SnowLuma
+  for (const re of [/snowluma[^\n]*index\.mjs/i, /launcher\.(bat|cmd)/i, /launch-qq-bot/i]) {
+    assert.doesNotMatch(text, re, `出现操作 SnowLuma 的代码：${re}`);
+  }
+  assert.match(text, /不代启|SnowLuma 必须自己启动/, '必须提示 SnowLuma 自行启动');
+  // 硬边界 2：不覆盖已有 config.json
+  assert.match(text, /if \[\[ -f "\$CFG" \]\]/, '缺「config.json 已存在」判断');
+  assert.match(text, /不做任何覆盖/, '必须显式声明不覆盖');
+  // 失败要给文档锚点
+  const anchors = (text.match(/TROUBLESHOOTING\.md#/g) ?? []).length;
+  assert.ok(anchors >= 5, `文档锚点太少（${anchors} 个）`);
+});
+
+// 找可用 bash，并判断它是 Git Bash（认 D:/x）还是 WSL（认 /mnt/d/x）。
+// 踩过：Windows 的 PATH 里 `bash` 往往是 WSL 的 /bin/bash，它读不了 D:/... 路径，
+// 于是 `bash -n D:/xxx` 直接报 No such file —— 看起来像脚本不存在，其实是路径方言不对。
+function findBash() {
+  const candidates = [
+    'D:/Git/bin/bash.exe',
+    'D:/Git/usr/bin/bash.exe',
+    'C:/Program Files/Git/bin/bash.exe',
+    'C:/Program Files/Git/usr/bin/bash.exe',
+    'bash',
+    '/bin/bash',
+  ];
+  for (const exe of candidates) {
+    try {
+      const ostype = execFileSync(exe, ['-c', 'echo $OSTYPE'], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      const wsl = /linux-gnu|wsl/i.test(ostype) && !/msys|cygwin/i.test(ostype);
+      return { exe, wsl };
+    } catch { /* 下一个 */ }
+  }
+  return null;
+}
+/** Git Bash 认 `D:/x`；WSL 认 `/mnt/d/x`。 */
+function forBash(bash, p) {
+  const win = p.replace(/\\/g, '/');
+  if (!bash.wsl) return win;
+  return win.replace(/^([A-Za-z]):/, (_, d) => `/mnt/${d.toLowerCase()}`);
+}
+
+await checkAsync('shell 版：bash -n 通过（有 bash 才跑）', async () => {
+  const bash = findBash();
+  if (!bash) { console.log('       （环境里没有 bash，跳过）'); return; }
+  try {
+    execFileSync(bash.exe, ['-n', forBash(bash, path.join(root, SH))], { stdio: 'pipe', timeout: 30000 });
+  } catch (error) {
+    assert.fail(`bash -n 失败：${String(error.stderr ?? error.message).slice(0, 300)}`);
+  }
+});
+
+await checkAsync('shell 版：空仓库 dry-run 非 0 退出且不创建 config.json（有 bash+node 才跑）', async () => {
+  const bash = findBash();
+  if (!bash) { console.log('       （环境里没有 bash，跳过）'); return; }
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-firstrun-sh-'));
+  try {
+    for (const dir of ['src', 'scripts', 'deploy']) fs.mkdirSync(path.join(tmp, dir), { recursive: true });
+    fs.copyFileSync(path.join(root, 'src', 'bridge.js'), path.join(tmp, 'src', 'bridge.js'));
+    fs.copyFileSync(path.join(root, 'scripts', 'preflight.mjs'), path.join(tmp, 'scripts', 'preflight.mjs'));
+    fs.copyFileSync(path.join(root, SH), path.join(tmp, SH));
+    fs.copyFileSync(path.join(root, 'package.json'), path.join(tmp, 'package.json'));
+    fs.copyFileSync(path.join(root, 'config.example.json'), path.join(tmp, 'config.example.json'));
+
+    let code = 0;
+    let out = '';
+    try {
+      out = execFileSync(bash.exe, [forBash(bash, path.join(tmp, SH)), '--dry-run', '--node', forBash(bash, process.execPath), '--root', forBash(bash, tmp)], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 180000,
+      });
+    } catch (error) {
+      code = error.status ?? 1;
+      out = String(error.stdout ?? '') + String(error.stderr ?? '');
+    }
+    assert.notEqual(code, 0, '环境不完整时 dry-run 应返回非 0');
+    assert.match(out, /config\.json/, '输出应提到 config.json');
+    assert.equal(fs.existsSync(path.join(tmp, 'config.json')), false, 'dry-run 绝不能创建 config.json');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else {

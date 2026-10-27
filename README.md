@@ -164,8 +164,11 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 ## 全新机器：一条命令走完准备
 
 ```powershell
-.\scripts\first-run.ps1            # 体检 → 装依赖 → 生成 config → 装 DSH preset →（可选）启动
+.\scripts\first-run.ps1            # Windows：体检 → 装依赖 → 生成 config → 装 DSH preset →（可选）启动
 .\scripts\first-run.ps1 -DryRun    # 只看会做什么，不装不改不启动
+
+./deploy/first-run.sh               # Linux/macOS：同样的五步（见 docs/guides/FRESH-INSTALL.md）
+./deploy/first-run.sh --dry-run
 ```
 
 它**只调用权威工具**（`preflight.mjs` / `npm install` / `setup-dsh.mjs` / `start-bridge.ps1`），

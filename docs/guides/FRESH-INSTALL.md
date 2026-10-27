@@ -6,9 +6,22 @@
 **最省事的路径**：一条命令走完准备（幂等，失败了修完可重跑）：
 
 ```powershell
+# Windows
 .\scripts\first-run.ps1            # 体检 → 装依赖 → 生成 config → 装 DSH preset →（可选）启动
 .\scripts\first-run.ps1 -DryRun    # 只看会做什么
 ```
+
+```bash
+# Linux / macOS
+./deploy/first-run.sh               # 同样的五步
+./deploy/first-run.sh --dry-run
+./deploy/first-run.sh --non-interactive --start
+```
+
+两个脚本是**同一套逻辑的两个实现**（Windows PowerShell / POSIX shell），行为对齐：
+同样五步、同样两条硬边界（不覆盖 `config.json`、不代启 SnowLuma）、同样退出码
+（0 完成 / 1 某步失败 / 2 环境不满足 / 3 用户放弃）。测试 `scripts/test-first-run.mjs`
+同时钉住两份实现。
 
 它按顺序调用 `preflight.mjs` → `npm install` → 复制 `config.example.json` → `setup-dsh.mjs`
 → `start-bridge.ps1`，任一步失败就停并给出文档锚点。两条保证：**不覆盖已有 `config.json`**、
