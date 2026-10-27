@@ -286,5 +286,27 @@
   },
   "guard": {
     "dailyCostLimitCNY": 5
+  },
+  "launcher": {
+    "autoStartDeps": false,
+    "deps": [
+      {
+        "name": "SnowLuma",
+        "command": "",
+        "args": "index.mjs",
+        "cwd": "",
+        "ports": [
+          3000,
+          3001
+        ],
+        "waitMs": 300000
+      },
+      {
+        "name": "DSH",
+        "command": "",
+        "process": "DeepSeek Harness",
+        "waitMs": 60000
+      }
+    ]
   }
 }

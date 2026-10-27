@@ -48,7 +48,14 @@ param(
   [switch]$InstallStartup,
   [switch]$RemoveStartup,
   [int]$WaitSnowlumaSec = 600,
-  [string]$Node = ''
+  [string]$Node = '',
+  # 启动前**自动拉起依赖**（SnowLuma / DSH）。opt-in：显式给这个开关，或 config.json 的
+  # launcher.autoStartDeps=true。默认关闭 —— 见 RULES.md 的设计不变量 L6'。
+  [switch]$StartDeps,
+  # 结束时停一下，别让窗口一闪就没（双击快捷方式时传 -Pause）
+  [switch]$Pause,
+  # 强制不停（脚本/计划任务用）
+  [switch]$NoPause
 )
 
 $ErrorActionPreference = 'Continue'
@@ -134,7 +141,15 @@ function Show-Status {
   if (Test-TcpPort 5099) { Info 'SnowLuma WebUI :5099 在听（扫码登录用）' }
 
   $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-  if ($task) { Ok '登录自启' "计划任务 $TaskName = $($task.State)" } else { Info "未注册登录自启（需要时装：.\start-bridge.ps1 -InstallStartup）" }
+  if ($task) {
+    Ok '登录自启' "计划任务 $TaskName = $($task.State)"
+  } else {
+    # 兜底安装走的是「启动文件夹里的 vbs」（不需要管理员），这里必须一起认，
+    # 否则明明装好了却报「未注册登录自启」——用户会以为自启没生效。
+    $vbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'qq-bridge-supervisor.vbs'
+    if (Test-Path $vbs) { Ok '登录自启' "启动文件夹：qq-bridge-supervisor.vbs" }
+    else { Info '未注册登录自启（需要时装：.\start-bridge.ps1 -InstallStartup）' }
+  }
   Write-Host ''
 }
 
@@ -254,8 +269,112 @@ function Remove-Startup {
   return 0
 }
 
+# ── 依赖自动启动（opt-in）──────────────────────────────────────────────────
+# 为什么需要：双击桌面快捷方式时，最常卡住的是"SnowLuma 没起来"——桥接守护只探测、不代启，
+# 于是一个窗口挂在那里等，用户看到的就是"启动不起来"。
+#
+# 为什么仍然默认关闭：SnowLuma 是第三方程序（许可边界见 NOTICE.md），代启会带来
+# "它自己也在开机自启 → 起两份"的风险。所以这里做成**显式 opt-in**：
+#   · 命令行 -StartDeps
+#   · 或 config.json 里 launcher.autoStartDeps = true
+# 而且**只启动、不安装、不停止、不改配置**；已经在跑的依赖一律跳过。
+$DependencyDefaults = @(
+  @{
+    name = 'SnowLuma'
+    command = 'D:\QQBot\snowluma\node.exe'
+    args = 'index.mjs'
+    cwd = 'D:\QQBot\snowluma'
+    ports = @(3000, 3001)
+    # 实测首启要 ~180s（含首屏/登录），留一倍余量；不要设太小，否则日志里全是"还没就绪"
+    waitMs = 300000
+  },
+  @{
+    name = 'DSH'
+    command = 'D:\DEEPSEEK\DeepSeek Harness.exe'
+    args = ''
+    cwd = ''
+    process = 'DeepSeek Harness'
+    waitMs = 60000
+  }
+)
+
+function Get-Deps {
+  # 配置优先；没配或配置为空就用内置默认（本机路径）。
+  $list = @()
+  $cfgPath = Join-Path $Root 'config.json'
+  if (Test-Path $cfgPath) {
+    try {
+      $cfg = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+      if ($cfg.launcher -and $cfg.launcher.deps) { $list = @($cfg.launcher.deps) }
+    } catch { }
+  }
+  if (-not $list.Count) { return $DependencyDefaults }
+  return $list
+}
+
+function Test-DepReady($dep) {
+  if ($dep.ports -and @($dep.ports).Count) {
+    foreach ($p in @($dep.ports)) { if (-not (Test-TcpPort ([int]$p))) { return $false } }
+    return $true
+  }
+  if ($dep.process) { return [bool](Get-Process -Name $dep.process -ErrorAction SilentlyContinue) }
+  return $false
+}
+
+function Start-Deps {
+  Write-Host ''
+  Write-Host '  依赖（opt-in 自动启动）' -ForegroundColor Cyan
+  $deps = Get-Deps
+  foreach ($dep in $deps) {
+    $name = [string]$dep.name
+    if (-not $name) { continue }
+    if (Test-DepReady $dep) { Ok $name '已在运行，跳过'; continue }
+    $cmd = [string]$dep.command
+    if (-not $cmd -or -not (Test-Path $cmd)) {
+      Wo $name "找不到可执行文件：$cmd"
+      Info '  └─ 下一步：在 config.json 的 launcher.deps 里改 command，或手动启动它'
+      continue
+    }
+    try {
+      $argList = @()
+      if ($dep.args) { $argList = @([string]$dep.args) }
+      $sp = @{ FilePath = $cmd; ArgumentList = $argList; WindowStyle = 'Hidden'; PassThru = $true }
+      if ($dep.cwd -and (Test-Path ([string]$dep.cwd))) { $sp.WorkingDirectory = [string]$dep.cwd }
+      $proc = Start-Process @sp
+      Info "已启动 $name（pid=$($proc.Id)），等它就绪…"
+    } catch {
+      Wo $name "启动失败：$($_.Exception.Message)"
+      continue
+    }
+    $waitMs = if ([int]$dep.waitMs -gt 0) { [int]$dep.waitMs } else { 60000 }
+    $deadline = (Get-Date).AddMilliseconds($waitMs)
+    $ready = $false
+    while ((Get-Date) -lt $deadline) {
+      if (Test-DepReady $dep) { $ready = $true; break }
+      Start-Sleep -Milliseconds 1500
+    }
+    if ($ready) { Ok $name '已就绪' }
+    else {
+      Wo $name "等了 $([math]::Round($waitMs / 1000))s 还没就绪"
+      Info '  └─ 下一步：SnowLuma 首启可能要扫码登录（WebUI :5099）。守护会继续等（每 60 秒探一次），登录后自动接上'
+    }
+  }
+}
+
+function Wait-Before-Exit {
+  # 双击快捷方式时窗口一闪就没，用户看不到任何信息。
+  # 默认**不停**（脚本/计划任务里调用不能卡住）；只在显式 -Pause 时停，-NoPause 优先。
+  if (-not $Pause -or $NoPause) { return }
+  if (-not [Environment]::UserInteractive) { return }
+  try {
+    Write-Host ''
+    Write-Host '  按任意键关闭…' -ForegroundColor DarkGray
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+  } catch { }
+}
+
 # ── 主流程 ────────────────────────────────────────────────────────────────
-if ($Status) { Show-Status; exit 0 }
+if ($Status) { Show-Status; Wait-Before-Exit; exit 0 }
 if ($Stop) { exit (Stop-All) }
 if ($InstallStartup) { exit (Install-Startup) }
 if ($RemoveStartup) { exit (Remove-Startup) }
@@ -266,10 +385,21 @@ $nodeExe = Find-NodeExe
 if (-not $nodeExe) { No '启动' '找不到 node.exe（装 Node >= 22.13，或设 QQBOT_NODE）'; exit 5 }
 if (-not (Test-Path (Join-Path $Root 'config.json'))) { No '启动' '缺少 config.json（先跑 .\setup.ps1）'; exit 5 }
 
+# 依赖自动启动：显式开关或配置里打开才做（L6'）
+$autoDeps = $StartDeps.IsPresent
+if (-not $autoDeps) {
+  try {
+    $cfgLaunch = (Get-Content (Join-Path $Root 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json).launcher
+    if ($cfgLaunch -and $cfgLaunch.autoStartDeps -eq $true) { $autoDeps = $true }
+  } catch { }
+}
+if ($autoDeps) { Start-Deps }
+
 $supPid = Get-SupervisorPid
 if ($supPid -and (Test-Alive $supPid)) {
   Wo '启动' "已有守护在跑（pid=$supPid），不重复启动"
   Show-Status
+  Wait-Before-Exit
   exit 3
 }
 
@@ -278,7 +408,11 @@ Write-Host ''
 Write-Host '  启动 qq-bridge' -ForegroundColor Cyan
 Info "守护: $Supervisor"
 Info "node: $nodeExe"
-Info "等待 SnowLuma 上限: ${WaitSnowlumaSec}s（本脚本不代启 SnowLuma）"
+if ($autoDeps) {
+  Info "等待 SnowLuma 上限: ${WaitSnowlumaSec}s（-StartDeps 已开启依赖自动启动：只启动，不安装不停止）"
+} else {
+  Info "等待 SnowLuma 上限: ${WaitSnowlumaSec}s（本脚本不代启 SnowLuma；要自动拉起加 -StartDeps）"
+}
 Write-Host ''
 
 if ($Hidden) {
@@ -290,6 +424,7 @@ if ($Hidden) {
   Start-Sleep -Seconds 3
   Show-Status
   Info '守护已在后台运行；看日志：state\logs\supervisor.log、state\logs\bridge.out.log'
+  Wait-Before-Exit
   exit 0
 }
 

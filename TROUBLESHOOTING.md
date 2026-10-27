@@ -225,7 +225,8 @@ node src\bridge.js
    Test-NetConnection 127.0.0.1 -Port 3001 -InformationLevel Quiet
    ```
 
-2. 如果守护已经退了，重新拉起：`powershell -File .\start-bridge.ps1`
+2. 如果守护已经退了，重新拉起：`powershell -File .\start-bridge.ps1 -StartDeps`
+   （`-StartDeps` = 先把 SnowLuma/DSH 拉起来再起守护；默认不开，见 [LAUNCHER.md](docs/guides/LAUNCHER.md) 二·四）
 3. **2026-10-27 起不需要这么麻烦了**：守护超时后不再退出，而是每 60 秒慢探一次，
    SnowLuma 一登录就自动启动桥接（`-SnowlumaPollSeconds 0` 可恢复旧行为）
 4. DSH 端口在 SnowLuma 起来之前也可能变过 —— 顺手核对 `config.json` 的 `dsh.baseUrl`

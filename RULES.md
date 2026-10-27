@@ -112,7 +112,8 @@
 
 | 编号 | 不变量 | 为什么 | 谁在守 |
 | --- | --- | --- | --- |
-| L6 | **不代装、不代启、不代停 SnowLuma**（只允许探测端口 + 读它的配置发现 token） | 它是第三方程序；许可争议的边界就在这里（见 `NOTICE.md` 与 `docs/design/decisions/`） | `scripts/test-launcher-scripts.mjs`（禁止 `launch-*.bat` / `snowluma/index.mjs` 出现） |
+| L6 | **不代装、不代停 SnowLuma；默认也不代启** —— `scripts/bridge-supervisor.ps1` 只探测端口 | 它是第三方程序；许可边界见 `NOTICE.md` 与 `docs/design/decisions/` | `test-launcher-scripts.mjs`（守护里禁止出现启动 SnowLuma 的代码） |
+| L6' | **代启只允许在 launcher 里、且必须显式 opt-in**：`start-bridge.ps1 -StartDeps` 或 `config.json` 的 `launcher.autoStartDeps=true`。仍然**不安装、不停止、不改配置**，已在跑的依赖一律跳过 | 双击桌面快捷方式时最常见的坑就是「SnowLuma 没起来 → 机器人不回」；默认关着是为了避免和它自己的开机自启抢（起两份） | `test-launcher-scripts.mjs`（`-StartDeps` 门禁 + 默认关闭 + 守护零启动代码） |
 | L7 | **角色卡身份在文件 front matter 里**（`id:`），state 只存 id | 文件名兼任身份时，改名/换机器会让绑定全断（同类 bug 踩过三次） | `scripts/test-role-id.mjs` |
 | L8 | **所有出站消息都要过桥接的额度/脱敏/白名单**，模型不得直连 QQ | 模型被诱导也刷不了屏、越不了权 | `src/http/prelude.js` + 发送层 |
 - 修改白名单/角色/owner 后保存即热更新（控制台写入 config.json / state/*.json 后即时生效）；修改 preset（权威源在 `dsh/agent-presets/`，改完跑 `node scripts/build-agent-preset-patches.mjs` 重新生成 bundle patch）后重启 DSH 生效。

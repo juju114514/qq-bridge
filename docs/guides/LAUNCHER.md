@@ -39,6 +39,44 @@ cd D:\deepseek工作区\qq-bridge
   [OK]   SnowLuma   :3000/:3001 在听
 ```
 
+## 二·四、依赖自动启动（`-StartDeps`，默认关闭）
+
+双击桌面快捷方式时最常见的失败是：**SnowLuma 没起来 → 守护一直等 → 机器人不回**，用户看到的
+只是"启动不起来"。所以启动器支持在启动前把依赖拉起来：
+
+```powershell
+.\start-bridge.ps1 -StartDeps          # 启动前先拉起依赖（SnowLuma / DSH），再起守护
+.\start-bridge.ps1 -StartDeps -Pause   # 桌面快捷方式用的形态：结束后停一下，别一闪就没
+.\start-bridge.ps1 -StartDeps -NoPause # 脚本/计划任务用：不停
+```
+
+也可以写进配置，之后双击快捷方式不带参数也生效：
+
+```jsonc
+"launcher": {
+  "autoStartDeps": true,
+  "deps": [
+    { "name": "SnowLuma", "command": "D:\\QQBot\\snowluma\\node.exe", "args": "index.mjs",
+      "cwd": "D:\\QQBot\\snowluma", "ports": [3000, 3001], "waitMs": 300000 },
+    { "name": "DSH", "command": "D:\\DEEPSEEK\\DeepSeek Harness.exe",
+      "process": "DeepSeek Harness", "waitMs": 60000 }
+  ]
+}
+```
+
+行为与边界：
+
+| 项 | 规则 |
+| --- | --- |
+| 已经在跑 | **跳过**（按 `ports` 或 `process` 判断），不会起第二份 |
+| 启动方式 | 独立窗口隐藏启动（`Start-Process -WindowStyle Hidden`），与启动器脱钩 |
+| 等待 | 每个依赖最多等 `waitMs`；超时只 WARN，**守护仍会继续等**（每 60 秒慢探） |
+| 不做什么 | **不安装、不停止、不改它的配置**；找不到可执行文件就 WARN 并跳过（L6'） |
+| 默认 | **关闭** —— 避免和 SnowLuma 自己的开机自启抢；显式 `-StartDeps` 或 `autoStartDeps=true` 才开 |
+
+> 实测：首启 SnowLuma 大约要 180 秒（含首屏/登录），所以默认 `waitMs` 给到 300 秒；
+> 设太小只会在日志里刷"还没就绪"，不会真的更快。
+
 ## 二·五、等 SnowLuma 的策略（默认会一直等）
 
 开机时 SnowLuma 常常比你晚几分钟才被扫码登录。守护的处理分两段：

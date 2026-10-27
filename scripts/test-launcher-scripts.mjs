@@ -57,6 +57,22 @@ check('SnowLuma 等待策略：快探后转慢速轮询，不放弃（2026-10-27
   assert.doesNotMatch(text, /Start-Process[^\n]*snowluma/i, '慢速轮询也不能启动 SnowLuma');
 });
 
+check('依赖自动启动是 opt-in（-StartDeps / launcher.autoStartDeps），且默认关闭', () => {
+  const text = read(LAUNCHER);
+  // 背景：双击桌面快捷方式最常见的失败是「SnowLuma 没起来 → 机器人不回」，
+  // 用户看到的是"启动不起来"。所以 launcher 可以在启动前拉起依赖 —— 但必须显式开。
+  assert.match(text, /\[switch\]\$StartDeps/, '启动器要有 -StartDeps');
+  assert.match(text, /if \(\$autoDeps\) \{ Start-Deps \}/, '依赖启动必须挂在 $autoDeps 门禁下');
+  assert.match(text, /launcher\.autoStartDeps/, '要支持从 config.json 读 autoStartDeps');
+  assert.match(text, /已在运行，跳过/, '已在跑的依赖必须跳过（不能起第二份）');
+  assert.match(text, /不安装、不停止|只启动，不安装不停止/, '必须写明只启动、不安装不停止（L6\'）');
+  // 默认关闭：配置缺省时不应开启
+  assert.match(text, /\$autoDeps = \$StartDeps\.IsPresent/, '默认值必须来自开关（缺省 false）');
+  // 依赖启动只能出现在 launcher，守护里依然一行都不许有
+  const sup = read(SUPERVISOR);
+  assert.doesNotMatch(sup, /Start-Deps|autoStartDeps/, '守护脚本不能自己拉依赖（L6）');
+});
+
 check('守护脚本不启动、不停止 SnowLuma（只允许探测端口）', () => {
   const text = read(SUPERVISOR);
   // 允许出现"snowluma"这个词（注释/探测/提示），但不允许把它当可执行目标
