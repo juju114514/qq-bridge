@@ -21,6 +21,7 @@
 
 | 命令 | 作用 |
 | --- | --- |
+| `node scripts\diag-tools.mjs` | 模型说「没有 qq_open_video / qq_get_message_video」时查到底（桥接/代码/运行三侧） |
 | `/role` | 列出所有角色卡 + 当前用的是哪张 |
 角色卡文件名带测试状态标注，方便挑选：
 

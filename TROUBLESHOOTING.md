@@ -685,15 +685,42 @@ Invoke-RestMethod http://127.0.0.1:5111/health
 | **② 改完代码没重启 DSH** | MCP 的启动日志有汇总行；看不到就说明用的是旧进程 | 重启 DSH（桥接重启**不够**，MCP 进程是 DSH 拉起的） |
 | **③ 版本太旧**（`< 8d18fc6` 才有这两个工具） | `grep -c qq_open_video src/mcp-snowluma-safe.js` | `git pull` 后再装一次 preset |
 
-**怎么一眼确认（推荐）**：
+**一条命令查到底（推荐）**：
 
 ```powershell
-# 桥接侧：这三个工具会不会注册
-curl -H "X-Console-Token: $(Get-Content .\state\console-token -Raw).Trim()" http://127.0.0.1:3100/api/socialV2/tools
+node scripts\diag-tools.mjs
+```
 
-# MCP 侧：启动汇总（DSH 日志或直接手动跑一次）
+它把三条线索一次摊开，并直接给结论：
+
+```
+  ── ① 桥接侧（这三件套会不会注册）
+     getImages = true
+     image qq_get_message_images      registered=true
+     video qq_get_message_video       registered=true
+     link  qq_open_video              registered=true
+     其它被关掉的开关：setStickerRemark
+  ── ② 代码侧（版本里有没有这些工具）
+     ✓ qq_get_message_images / qq_get_message_video / qq_open_video 都在 src/mcp-snowluma-safe.js
+     开关映射 getImages：✓   启动汇总日志：✓
+  ── ③ 运行侧（MCP 自己说注册了什么）
+     [snowluma-safe] 工具注册完成：44 个｜视频/图片：qq_get_message_images ✓  qq_get_message_video ✓  qq_open_video ✓
+  ── 结论：三件套都注册了。如果模型仍看不到：重启 DSH（工具清单是启动快照），再不行就新建会话
+```
+
+退出码：`0` 全注册 / `1` 有缺失（会指出改什么）/ `2` 连不上桥接或环境问题。
+加 `--json` 出机器可读结果，`--skip-mcp` 跳过真跑 MCP（更快）。
+
+**想手动逐条查（同样三条）**：
+
+```powershell
+# ① 桥接侧：这三个工具会不会注册
+curl -H "X-Console-Token: $(Get-Content .\state\console-token -Raw).Trim()" http://127.0.0.1:3100/api/socialV2/tools
+# ② 代码侧：版本里有没有（8d18fc6 起才有）
+findstr /C:"qq_open_video" src\mcp-snowluma-safe.js
+# ③ 运行侧：MCP 自己说注册了什么
 node src\mcp-snowluma-safe.js
-# → [snowluma-safe] 工具注册完成：41 个｜视频/图片：qq_get_message_images ✓  qq_get_message_video ✓  qq_open_video ✓
+# → [snowluma-safe] 工具注册完成：…｜视频/图片：qq_get_message_images ✓  qq_get_message_video ✓  qq_open_video ✓
 # → [snowluma-safe] 按配置关闭（未注册，模型看不到）：qq_set_sticker_remark(setStickerRemark)
 ```
 

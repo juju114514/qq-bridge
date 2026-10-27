@@ -193,6 +193,19 @@ check('工具可见性可诊断：MCP 启动汇总 + /api/socialV2/tools 端点'
   assert.match(bridge, /socialV2\.tools\.getImages=false/, '端点要解释 getImages=false 的后果');
 });
 
+check('一条命令查工具可见性：diag-tools.mjs 存在、文档指向它、三种结论齐备', () => {
+  const script = read('scripts/diag-tools.mjs');
+  assert.match(script, /\/api\/socialV2\/tools/, '要查桥接侧');
+  assert.match(script, /mcp-snowluma-safe\.js/, '要查代码侧/运行侧');
+  assert.match(script, /原因①：socialV2\.tools\.getImages=false/, '要给出原因①的结论');
+  assert.match(script, /原因③：代码里没有这些工具/, '要给出原因③的结论');
+  assert.match(script, /process\.exit\(exitCode\)/, '要用退出码表达结论');
+  const ts = read('TROUBLESHOOTING.md');
+  assert.match(ts, /scripts\\diag-tools\.mjs/, 'TROUBLESHOOTING 要指向它');
+  const fm = read('docs/FOLDER_MAP.md');
+  assert.match(fm, /`diag-tools\.mjs`/, 'FOLDER_MAP 要登记');
+});
+
 check('配置项齐全（links 可整体关掉）', () => {
   const cfg = JSON.parse(read('config.example.json'));
   const links = cfg?.socialV2?.media?.video?.links;

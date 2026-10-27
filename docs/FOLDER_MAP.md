@@ -74,6 +74,7 @@ DSH/                         ← 工作区根（不是仓库根）
 | `douyin-resolve.js` | **抖音专用解析**：短链→aweme_id、分享页 HTML 里抠 `play_addr.url_list`、`playwm→play` 去水印、cookie 按域名过滤。绕开 yt-dlp 的 a_bogus 签名要求 | 保留 |
 | `video-download.js` | 用 yt-dlp 下载链接视频：只取前 N 秒（`--download-sections`，失败退回整段）、限体积/超时、stdio 全 ignore（沙箱下 pipe 会 EPERM） | 保留 |
 | `ocr-image.ps1` | **Windows 自带 OCR**（`Windows.Media.Ocr`）识别一张图里的文字：结果写 JSON 到 `-Out`（不走 stdout，沙箱下 pipe 会 EPERM），带行级坐标与语言标签 | 保留（长图省钱路径） |
+| `diag-tools.mjs` | **工具可见性体检**：桥接侧（`/api/socialV2/tools`）+ 代码侧（版本里有没有这三个工具）+ 运行侧（真启 MCP 读它的注册汇总），最后给结论与退出码 | 保留 |
 | `verify-video-live.ps1` | **真机验证视频理解**：给 `-Key` + `-MessageId`（或 seq），打 `/api/socialV2/video`，打印状态/耗时/条目/说明，`-Out` 可存故事板 jpg；自动读控制台令牌与会话 agentToken | 保留（排查「视频读不了」的第一步） |
 | `make-video-storyboard-sample.py` | 生成文档配图 `assets/video-storyboard-sample.jpg`（**合成** 3×3 故事板，避免把真实画面带进仓库） | 保留 |
 | `scripts/fixtures/video/` | 视频解析的**页面快照**（脱敏）：`douyin-share-page.html`（结构回归）与 `douyin-verify-page.html`（风控页必须优雅返回空） | 保留 |
