@@ -104,6 +104,27 @@ check('一键启动支持 start/stop/status/开机自启 四个动作', () => {
   assert.match(text, /15 秒|AddSeconds\(15\)/, '停止应带等待超时');
 });
 
+check('登录自启：注册后必须回读验证，且兜底不用 .bat（中文路径会被 cmd 代码页吃掉）', () => {
+  const text = read(LAUNCHER);
+  // 1) 注册后回读：Register-ScheduledTask 是非终止错误，不加 Stop + 回读就会"失败还报 OK"
+  assert.match(text, /Register-ScheduledTask[\s\S]{0,400}-ErrorAction Stop/, '注册计划任务必须 -ErrorAction Stop');
+  assert.match(text, /Get-ScheduledTask -TaskName \$TaskName -ErrorAction Stop/, '注册后必须回读任务');
+  // 2) 兜底用 .vbs（UTF-16LE），不用 .bat
+  assert.match(text, /qq-bridge-supervisor\.vbs/, '启动文件夹兜底应写 .vbs');
+  assert.match(text, /-Encoding Unicode/, '.vbs 必须写成 UTF-16LE（中文路径要靠它）');
+  assert.doesNotMatch(text, /qq-bridge-supervisor\.bat['"]\s*-Value/, '不应再把 .bat 作为兜底（编码坑）');
+  // 3) 引号用 Chr(34) 拼，不在 VBS 里做 "" 转义（少一个引号就"未结束的字符串常量"）
+  assert.match(text, /Chr\(34\)/, 'vbs 引号应用 Chr(34) 拼');
+  assert.doesNotMatch(text, /Replace\('"', '""'\)/, '不应再用 "" 转义拼 vbs');
+});
+
+check('文档说明了两种登录自启实现，以及不能和旧 bridge watchdog 共存', () => {
+  const doc = read('docs/guides/LAUNCHER.md');
+  assert.match(doc, /启动文件夹/, '应说明启动文件夹兜底');
+  assert.match(doc, /Chr\(34\)/, '应记录 vbs 引号写法');
+  assert.match(doc, /watchdog-bridge/, '应提醒旧 bridge watchdog 要删掉（否则抢 3100）');
+});
+
 // ── 5. PowerShell 语法（有 PowerShell 才跑）────────────────────────────────
 check('PowerShell 能解析这两个脚本（无 PowerShell 环境时跳过）', () => {
   const candidates = ['pwsh', 'powershell'];
