@@ -6231,15 +6231,23 @@ async function main() {
         const summary = sticker && media.summary ? `:${String(media.summary).slice(0, 20)}` : '';
         const label = sticker ? (summary ? `[表情${summary}]` : `[表情${index}]`) : `[图片${index}]`;
         const prep = img?.buffer ? await toModelMedia(img.buffer, img.mimeType, `${label}`) : null;
-        if (prep?.ok) {
-          if (totalBytes + prep.buffer.length > MAX_MEDIA_BYTES) {
-            parts.push({ type: 'text', text: `${label}（图片总大小超限，已跳过）` });
-            continue;
-          }
-          totalBytes += prep.buffer.length;
-          parts.push({ type: 'text', text: label });
+        // 长图会被切成多片（media-normalize 的 slice 动作）：逐片塞进去，每片带「第 i/n 片」标签，
+        // 否则模型只看到第 1 片就以为图被裁掉了。
+        const pieces = prep?.ok
+          ? (Array.isArray(prep.slices) && prep.slices.length ? prep.slices : [{ buffer: prep.buffer, mimeType: prep.mimeType, note: '' }])
+          : [];
+        if (prep?.ok && pieces.length) {
+          if (prep.note) parts.push({ type: 'text', text: `${label}${pieces.length > 1 ? `（共 ${pieces.length} 片，按顺序看）` : ''}` });
           if (prep.note) parts.push({ type: 'text', text: `（${prep.note}）` });
-          parts.push({ type: 'image', mediaType: prep.mimeType, data: prep.buffer.toString('base64'), name: `qq-${sticker ? 'sticker' : 'image'}-${index}.${(prep.mimeType || 'image/jpeg').split('/')[1]}` });
+          for (const [pieceIndex, piece] of pieces.entries()) {
+            if (totalBytes + piece.buffer.length > MAX_MEDIA_BYTES) {
+              parts.push({ type: 'text', text: `${label}（${pieces.length > 1 ? `第 ${pieceIndex + 1}/${pieces.length} 片` : '图片'}总大小超限，已跳过）` });
+              break;
+            }
+            totalBytes += piece.buffer.length;
+            if (pieces.length > 1) parts.push({ type: 'text', text: piece.note || `第 ${pieceIndex + 1}/${pieces.length} 片` });
+            parts.push({ type: 'image', mediaType: piece.mimeType, data: piece.buffer.toString('base64'), name: `qq-${sticker ? 'sticker' : 'image'}-${index}${pieces.length > 1 ? `-${pieceIndex + 1}of${pieces.length}` : ''}.${(piece.mimeType || 'image/jpeg').split('/')[1]}` });
+          }
         } else if (prep && !prep.ok) {
           parts.push({ type: 'text', text: `${label}（${prep.error}）` });
         } else {
@@ -6297,18 +6305,25 @@ async function main() {
           ...(media.subType ? { subType: String(media.subType) } : {})
         };
         const prep = img?.buffer ? await toModelMedia(img.buffer, img.mimeType, `${noun}${index}`) : null;
-        if (prep?.ok) {
-          if (totalBytes + prep.buffer.length > MAX_MEDIA_BYTES) {
-            out.push({ ...base, text: `（${noun}总大小超限，已跳过）` });
-            continue;
+        const pieces = prep?.ok
+          ? (Array.isArray(prep.slices) && prep.slices.length ? prep.slices : [{ buffer: prep.buffer, mimeType: prep.mimeType, note: '' }])
+          : [];
+        if (prep?.ok && pieces.length) {
+          if (prep.note) out.push({ ...base, kind: base.kind, text: `（${prep.note}）` });
+          for (const [pieceIndex, piece] of pieces.entries()) {
+            if (totalBytes + piece.buffer.length > MAX_MEDIA_BYTES) {
+              out.push({ ...base, text: `（${noun}总大小超限，第 ${pieceIndex + 1}/${pieces.length} 片起已跳过）` });
+              break;
+            }
+            totalBytes += piece.buffer.length;
+            out.push({
+              ...base,
+              mimeType: piece.mimeType,
+              data: piece.buffer.toString('base64'),
+              ...(pieces.length > 1 ? { slice: { index: pieceIndex + 1, count: pieces.length } } : {}),
+              text: piece.note || (prep.note ? `（${prep.note}）` : '')
+            });
           }
-          totalBytes += prep.buffer.length;
-          out.push({
-            ...base,
-            mimeType: prep.mimeType,
-            data: prep.buffer.toString('base64'),
-            text: prep.note ? `（${prep.note}）` : ''
-          });
         } else if (prep && !prep.ok) {
           out.push({ ...base, text: `（${noun}获取失败：${prep.error}）` });
         } else {

@@ -102,6 +102,8 @@ const tests = [
   'test-first-run.mjs',
   // 「会话繁忙」静默失效面：诊断脚本 / status 快照 / 10+30 分钟两道租约 / 文档锚点。
   'test-session-busy.mjs',
+  // 长图切片：长宽比 ≥2.4 走 slice（每片短边 1000、有重叠、片数≤6），普通图仍走 shrink。
+  'test-long-image.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

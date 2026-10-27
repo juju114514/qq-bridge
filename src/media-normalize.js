@@ -48,7 +48,13 @@ export const MEDIA_DEFAULTS = Object.freeze({
   // 每一格的目标宽度（px）：240 一格，3×2 拼图约 736×492，实测 92 KB。
   gifTile: 240,
   // 单张 ffmpeg 调用的硬超时。实测 200 帧 GIF 拼图 269 ms、4K 重编码 < 1 s，25 s 是兜底。
-  timeoutMs: 25000
+  timeoutMs: 25000,
+  // 长图切片（2026-10-27 新增）：长宽比 ≥ sliceAspectMin 的图**不再整体等比缩**，
+  // 而是沿长边切成几片、每片短边保在 sliceShort 上下 —— 整体缩会把 1080×6000 压成
+  // 230×1280，字全糊成一团。详见 planSlices()。
+  sliceAspectMin: 2.4,
+  sliceShort: 1000,
+  maxSlices: 6
 });
 
 /** 硬上限：不管 config 怎么写，都不允许超过 DSH 的实测炸栈线下沿。 */
@@ -253,7 +259,52 @@ export function planNormalization(info, bytes, limits = {}) {
   }
   const longEdge = Math.max(info.width, info.height);
   if (bytes <= maxBytes && longEdge <= maxLongEdge) return null;
+  const shortEdge = Math.min(info.width, info.height);
+  const aspect = shortEdge > 0 ? longEdge / shortEdge : 1;
+  const sliceAspectMin = Number(limits.sliceAspectMin) > 0 ? Number(limits.sliceAspectMin) : MEDIA_DEFAULTS.sliceAspectMin;
+  // 长图：整体等比缩会把长边压到 maxLongEdge，短边跟着塌到只剩一两百像素，字全糊。
+  // 这种情况改成「沿长边切片」，每片短边保在 sliceShort 上下（见 planSlices）。
+  if (aspect >= sliceAspectMin && shortEdge >= 480) {
+    return { action: 'slice', maxBytes, maxLongEdge, bytes, longEdge, shortEdge, aspect, vertical: info.height > info.width };
+  }
   return { action: 'shrink', maxBytes, maxLongEdge, bytes, longEdge };
+}
+
+/**
+ * 长图切片布局（纯函数，不碰 ffmpeg，便于单测）。
+ *
+ * 场景：截图/聊天记录长图常常是 1080×4000、1440×12000 这种。整体等比缩到 longEdge=1280 之后
+ * 短边只剩 100~300 像素，文字彻底看不清 —— 模型的结论就是"图太小看不清"。
+ *
+ * 做法：沿**长边**切，每片短边保持在 sliceShort（默认 1000，接近微信/QQ 截图的原始宽度），
+ * 片高 ≈ 短边 × 1.35（略高于宽，保证一屏信息量又不会太长），相邻片之间留 6% 重叠，
+ * 避免一行字正好被切在缝里。
+ *
+ * @param {{width:number,height:number}} info sniffImage() 的结果
+ * @param {object} limits { sliceShort, maxSlices }
+ * @returns {{vertical:boolean, short:number, strip:number, overlap:number, count:number, total:number}}
+ */
+export function planSlices(info, limits = {}) {
+  const width = Math.max(1, Number(info?.width) || 1);
+  const height = Math.max(1, Number(info?.height) || 1);
+  const vertical = height >= width;
+  const total = vertical ? height : width;
+  const shortSide = vertical ? width : height;
+  const short = clampInt(limits.sliceShort, 480, 1600, MEDIA_DEFAULTS.sliceShort);
+  const maxSlices = clampInt(limits.maxSlices, 2, 10, MEDIA_DEFAULTS.maxSlices);
+  // 片长：先按"短边 × 1.35"取，片数超过上限就加长（宁可每片高一点，也不切出 20 片）。
+  let strip = Math.max(240, Math.round(short * 1.35));
+  strip = Math.max(strip, Math.ceil(total / maxSlices));
+  let overlap = Math.min(60, Math.max(0, Math.round(strip * 0.06)));
+  let step = Math.max(1, strip - overlap);
+  let count = Math.max(1, Math.ceil((total - overlap) / step));
+  // 片数超过上限时把片拉长（而不是切出 7~10 片）：多一片就多一张图的 token 成本。
+  if (count > maxSlices) {
+    step = Math.ceil((total - overlap) / maxSlices);
+    strip = step + overlap;
+    count = Math.max(1, Math.ceil((total - overlap) / step));
+  }
+  return { vertical, short, strip, overlap, count, total, shortSide };
 }
 
 /** 动图拼图布局：帧数 → { cols, rows, fps, sampleFrames }。纯函数。 */
@@ -402,6 +453,62 @@ export async function normalizeImageForModel(buf, mimeType, opts = {}) {
         };
       }
       return { ok: false, error: `动图 ${(bytes / 1024 / 1024).toFixed(2)}MB 无法压缩（${run.ok ? '输出仍超限' : run.error}）` };
+    }
+
+    // action === 'slice'：长图沿长边切片。
+    // 为什么不整体缩：1080×6000 缩到长边 1280 后短边只剩 230 像素，文字彻底糊掉。
+    if (plan.action === 'slice') {
+      const layout = planSlices(info, opts);
+      const slices = [];
+      let lastError = '';
+      for (let i = 0; i < layout.count; i += 1) {
+        const start = Math.max(0, i * (layout.strip - layout.overlap));
+        const remain = layout.total - start;
+        if (remain <= 0) break;
+        const len = Math.min(layout.strip, remain);
+        // 短边缩/放到 layout.short（保留原分辨率信息，宽度统一便于模型对位）
+        const crop = layout.vertical
+          ? `crop=${info.width}:${len}:0:${start},scale=${layout.short}:-2:flags=lanczos`
+          : `crop=${len}:${info.height}:${start}:0,scale=-2:${layout.short}:flags=lanczos`;
+        let saved = null;
+        for (let attempt = 0; attempt < 2 && !saved; attempt += 1) {
+          const outFile = path.join(dir, `slice-${i}.jpg`);
+          const args = ['-v', 'error', '-y', '-i', inFile, '-vf', crop];
+          args.push('-q:v', String(3 + attempt * 3), outFile);
+          const run = await runFfmpeg(ffmpeg, args, { timeoutMs: opts.timeoutMs });
+          if (!run.ok) { lastError = run.error; break; }
+          const out = readIfExists(outFile);
+          if (out && out.length <= maxBytes) saved = out;
+          else lastError = out ? '切片后仍超限' : '切片输出为空';
+        }
+        if (!saved) break;
+        const from = start + 1;
+        const to = start + len;
+        slices.push({
+          buffer: saved,
+          mimeType: 'image/jpeg',
+          note: `第 ${i + 1}/${layout.count} 片（${layout.vertical ? '纵向' : '横向'}，原文 ${from}-${to}px，短边 ${layout.short}）`
+        });
+      }
+      if (slices.length >= 1) {
+        const totalKb = Math.round(slices.reduce((sum, s) => sum + s.buffer.length, 0) / 1024);
+        return {
+          ok: true,
+          buffer: slices[0].buffer,
+          mimeType: 'image/jpeg',
+          slices,
+          note: `长图 ${info.width}×${info.height}（长宽比 ${plan.aspect.toFixed(1)}）已切成 ${slices.length} 片，每片短边 ${layout.short}、相邻重叠 ${layout.overlap}px，共 ${totalKb}KB；按顺序看，拼起来才是完整内容`
+        };
+      }
+      // 切不了（没 ffmpeg / 超时）：退回整体缩，至少给个概览。
+      lastError = lastError || '切片失败';
+      return {
+        ok: bytes <= maxBytes,
+        buffer: bytes <= maxBytes ? buf : undefined,
+        mimeType: mimeType || (info.format === 'jpeg' ? 'image/jpeg' : `image/${info.format}`),
+        note: `长图切片失败（${lastError}），只能给原图概览，细节可能看不清`,
+        ...(bytes <= maxBytes ? {} : { error: `长图 ${(bytes / 1024 / 1024).toFixed(2)}MB 切不开也压不下（${lastError}）` })
+      };
     }
 
     // action === 'shrink'：静态图降采样 + 重编码，最多试三轮（逐步缩小尺寸/降质量）。
