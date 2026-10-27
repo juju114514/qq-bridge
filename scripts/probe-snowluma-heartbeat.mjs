@@ -7,7 +7,7 @@
 //
 // 本探针：只连接、只读取、打印后立刻退出；**不发送任何消息、不创建任何会话**。
 // 用法：node scripts/probe-snowluma-heartbeat.mjs [超时秒数]
-import { SnowLumaWebSocketClient } from '@snowluma/sdk';
+import { OneBotWsClient } from '../src/onebot-ws.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +27,7 @@ if (!disc.ok) {
 }
 console.log(`已发现端点 ${disc.wsUrl}（token ${String(disc.wsToken || disc.token).slice(0, 4)}…，来源 ${disc.source}）`);
 
-const bot = new SnowLumaWebSocketClient({
+const bot = new OneBotWsClient({
   url: disc.wsUrl,
   accessToken: disc.wsToken || disc.token || undefined,
   reconnect: false,

@@ -55,7 +55,7 @@
     "probe:settings": "node scripts/probe-020-settings.mjs",
     "probe:heartbeat": "node scripts/probe-snowluma-heartbeat.mjs",
     "scan:tool-names": "node scripts/scan-dsh-tool-names.mjs",
-    "postinstall": "node scripts/patch-snowluma-sdk.mjs",
+    "postinstall": "node -e \"console.log('[qq-bridge] 渚濊禆宸插氨缁紙涓嶅啀淇ˉ浠讳綍绗笁鏂瑰寘锛?)\"",
     "privacy-scan": "node scripts/privacy-scan.mjs",
     "diagnose:acl": "node scripts/diagnose-acl.mjs",
     "harden-acl": "node scripts/harden-state-acl.mjs",
@@ -69,8 +69,6 @@
     "@deepseek-ai/dsh-host-apiproxy": "0.1.1-rc.2",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@snowluma/mcp": "^1.14.20",
-    "@snowluma/sdk": "^1.14.20",
     "js-yaml": "^4.3.2",
     "zod": "^4.4.3"
   }

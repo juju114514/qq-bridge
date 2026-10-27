@@ -37,31 +37,30 @@ const codeOf = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, '');
 const bridgeCode = codeOf(bridge);
 
-test('SnowLuma 客户端库不低于 bot_status 出现的版本（1.14.17）', () => {
-  // 低于这个版本订阅不到 bot_status：账号掉线/被顶号将没有任何信号。
-  // 只比较 minor.patch 数值，够用且不引入语义化版本库依赖。
-  const num = (v) => {
-    const m = /^[\^~]?(\d+)\.(\d+)\.(\d+)/.exec(String(v ?? ''));
-    return m ? Number(m[1]) * 1e6 + Number(m[2]) * 1e3 + Number(m[3]) : null;
-  };
-  const min = num('1.14.17');
+test('不再依赖 @snowluma/*（改用自带 OneBot 客户端）', () => {
+  // 背景：这两个包的 package.json 声明 `SEE LICENSE IN LICENSE`，但发布的包里**没有 LICENSE
+  // 文件**，许可态不可判定；且它们住在 SnowLuma 仓库的 packages/ 下，按 SnowLuma LICENSE §1
+  // 对 "Software" 的定义受那份非商业许可约束。更要紧的是上游为了让它们能被纯 Node ESM 解析，
+  // 还要 postinstall 去**修改**它们的 dist —— 那是「程序化修改第三方代码」，与 SnowLuma 维护者
+  // 在 K0nd1us/QQ-agent#71 里点名的行为同类。
+  //
+  // 现在改为自带 `src/onebot-ws.js`（公开的 OneBot v11 协议 + Node 内置 WebSocket），于是：
+  //   · 不再依赖 → 许可不明的依赖消失
+  //   · 不再修改 → postinstall 补丁删除
+  //   · 仍然能收到 bot_status（我们自己解析 notice_type=bot_status，见 test-onebot-ws.mjs）
   for (const name of ['@snowluma/sdk', '@snowluma/mcp']) {
-    const declared = num(pkg.dependencies?.[name]);
-    assert.ok(declared !== null, `${name} 必须在 dependencies 里声明`);
-    assert.ok(
-      declared >= min,
-      `${name} 声明为 ${pkg.dependencies[name]}，低于 1.14.17 —— 那样订阅不到 bot_status（账号上下线事件），`
-      + '上游健康会少一个信号。',
-    );
+    assert.equal(pkg.dependencies?.[name], undefined, `${name} 不应再出现在 dependencies 里`);
   }
+  assert.doesNotMatch(String(pkg.scripts?.postinstall ?? ''), /patch-snowluma/, 'postinstall 不应再挂补丁脚本');
+  assert.ok(fs.existsSync(path.join(ROOT, 'src', 'onebot-ws.js')), '应存在自带的 src/onebot-ws.js');
 });
 
-test('客户端库确实可被纯 Node ESM 解析（postinstall 补丁的成果）', async () => {
-  // 上游打包 bug：dist 内相对导入缺 .js 扩展名，纯 Node ESM 解析不了。补丁是让它可 import 的
-  // **唯一**东西，所以「能 import」本身就是补丁生效的证据（与安装顺序无关）。
-  const sdk = await import('@snowluma/sdk');
-  assert.equal(typeof sdk.SnowLumaWebSocketClient, 'function', 'SnowLumaWebSocketClient 应可导入');
-  assert.match(String(pkg.scripts?.postinstall ?? ''), /patch-snowluma-sdk/, 'postinstall 必须仍挂补丁脚本');
+test('自带 OneBot 客户端可被纯 Node ESM 解析（无需任何补丁）', async () => {
+  // 换成自带实现之后，「能 import」不再依赖 postinstall 去改 node_modules —— 这是与
+  // 旧方案最关键的区别：仓库里没有任何"装完顺手改第三方包"的动作。
+  const mod = await import('../src/onebot-ws.js');
+  assert.equal(typeof mod.OneBotWsClient, 'function', 'OneBotWsClient 应可导入');
+  assert.equal(typeof mod.text, 'function', 'text() 应可导入');
 
   // 顺带报告 dist 里是否还有**未修**的相对导入。
   // ⚠️ 这里刻意**只提示不断言**：补丁是就地把扩展名补上的，跑过一次之后自然就"没有需要修的了"，
