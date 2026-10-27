@@ -1,23 +1,92 @@
-> **这是个人增强分支（fork）** —— 在上游 `qq-bridge` 基础上加了攻略模板、点歌/唱歌/说话、斗图、点赞、发动态等能力。
-> 改动清单见 [FORK.md](FORK.md)；上游版权归 Derpyu520 与各位贡献者，本分支同样 MIT（[LICENSE](LICENSE) 是纯 MIT 正文；第三方组件、数据出机清单等合规说明在 [NOTICE.md](NOTICE.md)）。
-> 本仓库不含任何真实账号、群号、令牌或 Cookie。
+# QQ ↔ DeepSeek Harness 桥接
 
-> 常用命令速查：[COMMANDS.md](COMMANDS.md)
->
-> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)、[换机器迁移清单](docs/guides/MIGRATION.md)（96 条）
+> **这是个人增强分支（fork）**：在上游 `qq-bridge` 基础上加了攻略模板、点歌/唱歌/说话、斗图、
+> 点赞、发动态、人格卡、守护进程等能力，改动清单见 [FORK.md](FORK.md)。
+> 上游版权归 Derpyu520 与各位贡献者；本分支同样 **MIT**（[LICENSE](LICENSE) 是纯 MIT 正文，
+> 第三方组件与数据出机清单在 [NOTICE.md](NOTICE.md)）。**仓库不含任何真实账号、群号、令牌或 Cookie。**
 
-## 三步上手（换成你自己的 DeepSeek）
+把 QQ 接进 [DeepSeek Harness](https://github.com/deepseek-ai)（下称 DSH）：群里/私聊的消息变成
+DSH 会话里的用户消息，AI 的回复（分条、表情、语音、拍一拍、点歌）发回 QQ。
 
-1. **装 DeepSeek Harness（DSH）**，用自己的 DeepSeek 账号登录 —— 密钥只存在 DSH 里，本项目不存
-2. **装 SnowLuma**，扫码登录你的 QQ 小号
-3. 在项目目录跑：
+**AI 不直连 QQ** —— 所有出站消息都要过桥接的白名单、额度、脱敏与令牌校验。这是刻意的：
+模型被提示词注入怂恿也刷不了屏、越不了权。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
+```
+QQ ──► SnowLuma（OneBot v11）──► 本桥接 ──► DSH ──► DeepSeek / 其他 provider
+                                   ▲                    │
+                                   └──── AI 用工具回消息 ─┘
 ```
 
-它会自动探测 DSH 端口、读 SnowLuma token、写 `config.json`、启动并验收。
-手动流程见 **[SETUP.md](SETUP.md)**；让 AI 代装见 **[AGENT-INSTALL.md](AGENT-INSTALL.md)**。
+## 它现在能干什么
+
+| 类别 | 能力 |
+| --- | --- |
+| **聊天与人格** | 多会话人格卡（身份存文件里的 `id`，改名不影响绑定）、首次使用引导、`/role` 热切换、按需小节注入 |
+| **群聊拟人** | 分条发送 + 随机间隔、潜水/唤醒状态机（`wakeConfig`）、拍一拍、收藏表情/斗图、黑话学习 |
+| **媒体** | 识图看表情、语音（TTS 现场合成 / 语音库）、唱歌、点歌（网易云）、合并转发、表情包管理 |
+| **控制台** | `127.0.0.1:3100`：人格、黑话、表情库、令牌与花费看板、会话与工作区、安全 |
+| **运维** | 守护进程（崩溃自动拉起、单实例、退避重启）、一键安装/体检、登录自启、换机器迁移清单 |
+| **安全** | 自带 OneBot 客户端（不依赖第三方 SDK）、SSRF 五道闸、出站脱敏、控制台令牌、`state/` ACL |
+| **模型** | `deepseek-official`（✅ 已测试）｜`openai` / GPT 等兼容 provider（⚠️ **已接入、未测试**，见 [MODELS.md](docs/guides/MODELS.md)） |
+
+## 装起来
+
+前提：**DSH 已安装并登录**、**SnowLuma 已启动并扫码登录 QQ 小号**。这两个都是外部程序，仓库里不含，
+本项目**不会代为安装或启动**（设计不变量 L6）。
+
+```powershell
+# Windows
+git clone https://github.com/juju114514/qq-bridge.git
+cd qq-bridge
+.\scripts\first-run.ps1          # 体检 → 装依赖 → 生成 config → 装 DSH preset →（可选）启动
+```
+
+```bash
+# Linux / macOS
+git clone https://github.com/juju114514/qq-bridge.git
+cd qq-bridge
+./deploy/first-run.sh            # 同样的五步
+```
+
+先看会做什么、什么都不改：`.\scripts\first-run.ps1 -DryRun` / `./deploy/first-run.sh --dry-run`。
+只想体检（不装任何东西）：`node scripts/preflight.mjs`。
+
+> `install.ps1`（老的一键安装，带 DSH 端口/SnowLuma token 自动探测）仍然可用；
+> 两者的区别：`first-run` 只编排权威工具、每一步都可单独重跑，失败会直接给出文档锚点。
+
+## 出问题了先看哪
+
+| 症状 | 去哪 |
+| --- | --- |
+| 不知道从哪下手 / 全新机器 | [docs/guides/FRESH-INSTALL.md](docs/guides/FRESH-INSTALL.md)（按阶段列全所有坑） |
+| 具体报错 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（96 条，按 A~S 分段） |
+| 能连上但不回话 | 先查 `GET /api/socialV2/activity` 的 `paused`（[E.0](TROUBLESHOOTING.md)） |
+| 守护/启动 | [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)（退出码契约） |
+| 换机器 | [docs/guides/MIGRATION.md](docs/guides/MIGRATION.md)（DPAPI 备份跨机不可解密等） |
+| 换模型 / GPT | [docs/guides/MODELS.md](docs/guides/MODELS.md) |
+| 让 AI 帮你装/修 | [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md) → [COMPAT.md](COMPAT.md)（硬契约） |
+
+常用命令速查：[COMMANDS.md](COMMANDS.md)　文档总索引：[docs/README.md](docs/README.md)　目录/脚本命名：[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)
+
+## 自测：三层，职责不同
+
+| 层 | 命令 | 说明 |
+| --- | --- | --- |
+| 离线回归 | `node scripts/test-audit.mjs` | **44 套**，不需要 SnowLuma / QQ / DSH；CI 也跑其中一部分 |
+| 活体自测 | `powershell -File scripts/live-full-test.ps1` | **54 项**，对着活的桥接跑，**会真的发 QQ 消息**（只发你自己私聊，`-MaxSends` 限流） |
+| 控制台冒烟 | `node scripts/test-console.mjs` | 打 `127.0.0.1:3100` 的真机冒烟 |
+
+## 诚实声明（别把"能跑"当"验证过"）
+
+- **GPT / OpenAI 兼容 provider**：代码路径是透传，**功能已接入但未测试**。计价表只有 DeepSeek 的，
+  其他模型按 `deepseek-flash` 兜底估算；工具调用/多模态/人格表现未验证 → [MODELS.md](docs/guides/MODELS.md)
+- **Linux**：有完整的 `deploy/` 脚本与 `bash -n` 回归，但**没有真机端到端验证过**（只在 Windows 上跑通的）
+- **字符集**：抓网页只按 UTF-8 解码，GBK/Big5 页面会乱码（不做编码嗅探）
+- **SnowLuma**：第三方程序，本项目不依赖、不修改、不分发它的代码，只按公开的 OneBot v11 协议通信
+- **QQ 账号风险**：用的是非官方协议，风控/封号风险由使用者自负
+
+---
+
 
 # QQ ↔ DeepSeek Harness 桥接
 
@@ -30,6 +99,9 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
 > 🎤 独立的「发语音」工具已拆到仓库上一级的 **`../voice-tool/`**（命令行 `voice-cli.mjs` / 图形界面 `voice-gui.mjs`），不再依赖 qq-bridge 运行。
 
 把 QQ 消息接入 DSH agent：QQ 好友/群发来的消息会变成 DSH 会话里的用户消息，agent 的回复（含提问、工具审批）会发回 QQ。
+
+<details>
+<summary>版本与 DSH 适配历史（点开看；当前 <code>v0.2.1-r1</code> / DSH <code>0.2.1-rc.2</code>）</summary>
 
 > ⚠️ **当前版本 `v0.2.1-r1`，适配 DSH 0.2.1-rc.2**（0.2.0-rc.2 亦兼容；两个版本上都逐项实测：`npm run verify:adaptation`）。
 > 鉴权用 `~/.dsh` 里持久化的浏览器会话签名密钥**离线铸造 Cookie** —— DSH 0.1.7 起进程启动 token
@@ -65,6 +137,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ 你的QQ号
 > 逐条见 [docs/guides/DSH_021_ADAPTATION.md](docs/guides/DSH_021_ADAPTATION.md)。
 >
 > 默认分支 `main` **就是**本版本，`git clone` 直接拿到，无需切换分支。
+
+</details>
 
 ```
 QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──► DSH Web API (127.0.0.1:3080/api)

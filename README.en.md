@@ -1,4 +1,94 @@
-# QQ ↔ DeepSeek Harness Bridge (qq-bridge)
+# QQ ↔ DeepSeek Harness bridge
+
+> **Personal fork** of [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge): adds persona cards,
+> song/TTS/singing, sticker battles, likes, Qzone posts, a local console, and a process supervisor.
+> Diff list: [FORK.md](FORK.md). Upstream copyright belongs to Derpyu520 and contributors; this fork is
+> **MIT** as well ([LICENSE](LICENSE) is plain MIT text; third-party components and data-egress notes are
+> in [NOTICE.md](NOTICE.md)). **No real account, group id, token or cookie is committed here.**
+
+Bridges QQ into [DeepSeek Harness](https://github.com/deepseek-ai) (DSH): messages from QQ friends and
+groups become user messages in a DSH session, and the agent's replies (split messages, stickers, voice,
+pokes, songs) go back to QQ.
+
+**The agent never talks to QQ directly** — every outbound message passes the bridge's allow-list, rate
+limits, redaction and token checks. That is deliberate: a prompt-injected model still cannot flood a
+group or escalate privileges.
+
+```
+QQ ──► SnowLuma (OneBot v11) ──► this bridge ──► DSH ──► DeepSeek / other providers
+                                   ▲                       │
+                                   └──── agent replies via tools ────┘
+```
+
+## What it does today
+
+| Area | Capability |
+| --- | --- |
+| **Chat & persona** | per-conversation persona cards (identity lives in the file's `id`, renaming keeps bindings), first-run guidance, `/role` hot switch, on-demand sections |
+| **Group behaviour** | split messages + random gaps, dive/wake state machine (`wakeConfig`), pokes, sticker battles, slang learning |
+| **Media** | image understanding, voice (live TTS / voice library), singing, song requests, forwarded chats, sticker library |
+| **Console** | `127.0.0.1:3100`: personas, slang, stickers, token & cost dashboard, sessions/workspace, security |
+| **Ops** | supervisor (auto-restart, single instance, backoff), one-command install & preflight, login autostart, machine-migration checklist |
+| **Security** | built-in OneBot client (no third-party SDK), five-layer SSRF gate, outbound redaction, console token, `state/` ACL |
+| **Models** | `deepseek-official` (✅ tested) · `openai` / GPT-compatible (⚠️ **wired up, NOT tested** — see [MODELS.md](docs/guides/MODELS.md)) |
+
+## Install
+
+Prerequisites: **DSH installed and logged in**, **SnowLuma running with your QQ alt account logged in**.
+Both are external programs, not bundled here; this project never installs or starts them (invariant L6).
+
+```powershell
+# Windows
+git clone https://github.com/juju114514/qq-bridge.git
+cd qq-bridge
+.\scripts\first-run.ps1          # preflight → deps → config → DSH preset → (optional) start
+```
+
+```bash
+# Linux / macOS
+git clone https://github.com/juju114514/qq-bridge.git
+cd qq-bridge
+./deploy/first-run.sh            # same five steps
+```
+
+Dry run (changes nothing): `.\scripts\first-run.ps1 -DryRun` / `./deploy/first-run.sh --dry-run`.
+Health check only: `node scripts/preflight.mjs`.
+
+## Where to look when something breaks
+
+| Symptom | Go to |
+| --- | --- |
+| Fresh machine, don't know where to start | [docs/guides/FRESH-INSTALL.md](docs/guides/FRESH-INSTALL.md) |
+| A specific error | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (~96 entries, sections A–S) |
+| Connected but the bot stays silent | check `GET /api/socialV2/activity` → `paused` first |
+| Supervisor / startup | [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md) (exit-code contract) |
+| Moving to another machine | [docs/guides/MIGRATION.md](docs/guides/MIGRATION.md) |
+| Switching models / GPT | [docs/guides/MODELS.md](docs/guides/MODELS.md) |
+| Let an AI install/fix it | [AGENTS.md](AGENTS.md) → [COMPAT.md](COMPAT.md) (hard contracts) |
+
+Docs index: [docs/README.md](docs/README.md) · Layout & script naming: [docs/FOLDER_MAP.md](docs/FOLDER_MAP.md) · Commands: [COMMANDS.md](COMMANDS.md)
+
+## Tests: three tiers, different jobs
+
+| Tier | Command | Notes |
+| --- | --- | --- |
+| Offline regression | `node scripts/test-audit.mjs` | **44 suites**; no SnowLuma/QQ/DSH needed |
+| Live self-test | `powershell -File scripts/live-full-test.ps1` | **54 checks** against a running bridge; **sends real QQ messages** (owner DM only, `-MaxSends` caps it) |
+| Console smoke | `node scripts/test-console.mjs` | hits `127.0.0.1:3100` |
+
+## Honest disclaimers (don't read "runs" as "verified")
+
+- **GPT / OpenAI-compatible providers**: pass-through path, **wired up but untested**; the price table only
+  covers DeepSeek models (others are estimated from `deepseek-flash`) → [MODELS.md](docs/guides/MODELS.md)
+- **Linux**: full `deploy/` scripts and `bash -n` regression, but **no end-to-end run on real Linux yet**
+- **Charset**: fetched pages are decoded as UTF-8 only; GBK/Big5 pages come out garbled
+- **SnowLuma**: third party; this project does not depend on, modify or redistribute its code — only the
+  public OneBot v11 protocol
+- **QQ account risk**: unofficial protocol; rate-limits/bans are the user's own risk
+
+---
+
+
 
 > Connect QQ messages to DeepSeek Harness (DSH) agents: QQ friends/groups become DSH conversations, and agent replies (including questions and tool approvals) are sent back to QQ.
 
@@ -10,7 +100,8 @@
 >
 > The default branch `main` **is** this version — a plain `git clone` gets it, no branch switching needed.
 
-For the detailed Chinese guide, see **[docs/guides/PROJECT_GUIDE.md](docs/guides/PROJECT_GUIDE.md)**.
+For the detailed Chinese guide, see **[docs/README.md](docs/README.md)** (index) and
+**[COMPAT.md](COMPAT.md)** (hard contracts).
 The documentation index (one line per doc, with "still current?" notes) is **[docs/README.md](docs/README.md)**;
 the repository/folder and script-naming conventions are in **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)**.
 
@@ -144,7 +235,8 @@ qq-bridge/
   docs/
     README.md           # documentation index (one line per doc + "still current?" notes)
     FOLDER_MAP.md       # folder layout and scripts/ naming conventions
-    guides/             # user/operator facing: PROJECT_GUIDE, DSH_SETUP, VOICE, TOKEN_USAGE_CONSOLE, CONSOLE-UI-TESTING
+    guides/             # user/operator facing: FRESH-INSTALL, LAUNCHER, MODELS, MIGRATION, SERVER,
+                        #   DSH_SETUP, TOKEN_USAGE_CONSOLE, SECURITY_BASELINE
     design/             # design & planning docs
     research/           # investigation notes
     audits/             # review / optimisation reports
@@ -167,7 +259,8 @@ lives in the sibling folder **`../voice-tool/`** — it only needs SnowLuma, and
 
 ## Testing
 
-`npm run test:audit` runs isolated regression tests without production credentials, DSH, or QQ messages. The detailed audit is in [docs/audits/AUDIT_REPORT_2026-09-20.md](docs/audits/AUDIT_REPORT_2026-09-20.md) (Chinese); the 2026-09-18 one it superseded is archived in [docs/legacy/](docs/legacy/).
+`npm run test:audit` runs isolated regression tests without production credentials, DSH, or QQ messages.
+See **[COMPAT.md](COMPAT.md)** for the current suite inventory and what each suite protects.
 
 After upgrading, legacy QQ session mappings without permission metadata are recreated once. Mode or preset changes also retire the old mapping and recreate the session on the next message; DSH history is retained.
 
