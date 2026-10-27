@@ -124,6 +124,53 @@ check('NOTICE.md 里提到的决策记录真实存在', () => {
   assert.ok(fs.existsSync(path.join(dir, rel)), `NOTICE.md 链到的 ${rel} 不存在`);
 });
 
+// ── 7. 第三方 IP 的归属声明（角色卡 / 素材）────────────────────────────────
+// 这两类内容不属于本项目版权，但又是"展示效果"的一部分，很容易被顺手提交进来而
+// 没有任何归属说明。少一行归属 = 让使用者替项目背 IP 风险，所以必须钉住。
+check('roles/ATTRIBUTION.md 存在，且列出现有每张角色卡', () => {
+  const attrPath = path.join(root, 'roles', 'ATTRIBUTION.md');
+  assert.ok(fs.existsSync(attrPath), '缺 roles/ATTRIBUTION.md');
+  const attr = fs.readFileSync(attrPath, 'utf8');
+  const cards = fs.readdirSync(path.join(root, 'roles'))
+    .filter((f) => f.endsWith('.md') && f !== 'README.md' && f !== 'ATTRIBUTION.md');
+  assert.ok(cards.length >= 1, 'roles/ 下没有角色卡？');
+  for (const card of cards) {
+    assert.ok(attr.includes(card), `ATTRIBUTION.md 没有列出 ${card}`);
+  }
+  for (const owner of ['miHoYo', 'DeepSeek', 'Acacia']) {
+    assert.ok(attr.includes(owner), `ATTRIBUTION.md 缺权利方 ${owner}`);
+  }
+});
+
+check('每张含第三方角色的卡都带归属行（指向 ATTRIBUTION.md）', () => {
+  const dir = path.join(root, 'roles');
+  const cards = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && f !== 'README.md' && f !== 'ATTRIBUTION.md');
+  for (const card of cards) {
+    const text = fs.readFileSync(path.join(dir, card), 'utf8');
+    // 傲娇助手是本项目原创，不要求第三方归属，但也要能在 ATTRIBUTION 里查到
+    if (card.startsWith('傲娇助手')) continue;
+    assert.match(text, /roles\/ATTRIBUTION\.md/, `${card} 缺归属行（应指向 roles/ATTRIBUTION.md）`);
+    assert.match(text, /版权|商标/, `${card} 的归属行没说清权利方`);
+  }
+});
+
+check('角色卡不得以 UTF-8 BOM 开头（会让 H1 识别失败）', () => {
+  const dir = path.join(root, 'roles');
+  for (const card of fs.readdirSync(dir).filter((f) => f.endsWith('.md'))) {
+    const buf = fs.readFileSync(path.join(dir, card));
+    assert.notDeepEqual([...buf.slice(0, 3)], [0xef, 0xbb, 0xbf], `${card} 带 UTF-8 BOM`);
+  }
+});
+
+check('assets/README.md 说明了 deepseek娘.png 的归属', () => {
+  const p = path.join(root, 'assets', 'README.md');
+  assert.ok(fs.existsSync(p), '缺 assets/README.md');
+  const text = fs.readFileSync(p, 'utf8');
+  assert.match(text, /deepseek娘\.png/, 'assets/README.md 没提 deepseek娘.png');
+  assert.match(text, /DeepSeek/, 'assets/README.md 没写权利方');
+  assert.match(text, /不覆盖|不声称任何授权/, 'assets/README.md 没说清 MIT 不覆盖它');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else {

@@ -26,6 +26,7 @@ export function createRolesHandler(deps) {
     validateRoleName,
     validateRoleContent,
     sanitizeRoleName,
+    resolveExistingRole,
     roleFilePath,
     getInjectMaxChars,
     setInjectLimit,
@@ -97,7 +98,7 @@ export function createRolesHandler(deps) {
     // ── GET /api/roles/content —— 读某个角色卡 ─────────────────────────────
     if (method === 'GET' && pathname === '/api/roles/content') {
       let name;
-      try { name = validateRoleName(url.searchParams.get('name')); } catch (error) { return fail(error); }
+      try { name = resolveExistingRole(url.searchParams.get('name')) ?? validateRoleName(url.searchParams.get('name')); } catch (error) { return fail(error); }
       if (!roleExists(name)) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return true; }
       const content = readRoleContent(name);
       sendJson({
@@ -158,7 +159,7 @@ export function createRolesHandler(deps) {
       const body = await readBody();
       let from; let to;
       try {
-        from = validateRoleName(body.from);
+        from = resolveExistingRole(body.from) ?? validateRoleName(body.from);
         to = validateRoleName(body.to);
       } catch (error) { return fail(error); }
       if (from === to) { sendJson({ ok: true, role: to, renamed: false }); return true; }
@@ -177,7 +178,7 @@ export function createRolesHandler(deps) {
     if (method === 'POST' && pathname === '/api/roles/delete') {
       const body = await readBody();
       let name;
-      try { name = validateRoleName(body.name); } catch (error) { return fail(error); }
+      try { name = resolveExistingRole(body.name) ?? validateRoleName(body.name); } catch (error) { return fail(error); }
       if (!roleExists(name)) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return true; }
       fs.rmSync(roleFilePath(name));
       const rs = readRoleState();

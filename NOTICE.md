@@ -57,6 +57,17 @@
    「`packages/sdk` 与 `packages/mcp` 适用哪个许可？」—— 这两个包**声明了却未附带**许可文件，
    属于他们该修的打包疏漏，以"用户反馈"的口吻问很自然。
 
+## 角色卡与素材的归属
+
+仓库里还有两类**不属于本项目版权**的内容，单独说明：
+
+| 内容 | 位置 | 权利方 | 详细 |
+| --- | --- | --- | --- |
+| 同人角色卡 | `roles/*.md` | miHoYo（派蒙）、Acacia / Re,AER（樱羽艾玛）、DeepSeek（小鲸鱼形象） | [roles/ATTRIBUTION.md](roles/ATTRIBUTION.md) |
+| AI 形象图 | `assets/deepseek娘.png` | DeepSeek（鲸鱼形象的著作权与商标） | [assets/README.md](assets/README.md) |
+
+两者的共同点：**MIT 只覆盖代码，不覆盖这些内容**；它们仅作个人自用的示例，权利人提出要求会立刻移除。
+
 ## 使用风险提示
 
 - SnowLuma 是独立第三方项目，与腾讯公司（Tencent）及 QQ **无任何隶属、合作、授权或背书关系**。

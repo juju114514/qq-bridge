@@ -64,7 +64,11 @@ function stripModeTags(heading) {
 export function parseRoleSections(text) {
   const sections = [];
   let current = null;
-  for (const line of String(text ?? '').split('\n')) {
+  // 去掉开头的 UTF-8 BOM：Windows 上 PowerShell 5.1 / 旧记事本 / VS Code 的某些保存
+  // 方式会给文件加 BOM，而带 BOM 时首行是 `\ufeff# 角色卡…`，`/^#{1,6}\s/` 匹配不上
+  // ⇒ 一级标题被当成普通正文（控制台的章节统计、模式标记都会跟着错位）。
+  // 实测就踩过：roles/小鲸鱼（已测试）.md 带 BOM，H1 一直没被识别成标题。
+  for (const line of String(text ?? '').replace(/^\uFEFF/, '').split('\n')) {
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (!heading) {
       if (!current) {

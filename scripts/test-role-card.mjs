@@ -111,3 +111,33 @@ test('真实人格卡可用，且筛选不丢公共内容', () => {
   // 二代注入的文本里不应再出现一代的分条机制
   assert.doesNotMatch(v2, /空格分隔（例如|\[SILENT\]/);
 });
+
+test('带 UTF-8 BOM 的角色卡标题仍可识别（实测踩过）', () => {
+  // 背景：Windows 上 PowerShell 5.1 / 某些编辑器保存会带 BOM，首行变成
+  // `\uFEFF# 标题`，`/^#{1,6}\s/` 匹配不上 ⇒ H1 退化成普通正文，
+  // 控制台的章节统计与模式标记都会跟着错位。parseRoleSections 已剥 BOM，这里钉住。
+  const withBom = '\uFEFF# 角色卡：X\n\n正文\n\n## 二节\n内容';
+  const secs = parseRoleSections(withBom);
+  assert.equal(secs[0].heading, '角色卡：X', '带 BOM 时首行标题必须仍被识别');
+  assert.equal(secs[0].mode, 'all');
+  const plain = parseRoleSections('# 角色卡：X\n\n正文');
+  assert.equal(secs[0].heading, plain[0].heading, 'BOM 版本与无 BOM 版本应一致');
+});
+
+test('roles/ 下的说明文档不会被当成人格卡', () => {
+  // 反例：roles/ATTRIBUTION.md 曾被 listRoles 当成角色卡，控制台里能选中
+  // 「ATTRIBUTION」并把它当人格注入。这里从两个角度钉：文件自身不该以 `# 角色卡` 开头，
+  // 且 bridge.js 的 listRoles 必须显式排除它。
+  const rolesDir = new URL('../roles/', import.meta.url);
+  const attr = new URL('../roles/ATTRIBUTION.md', import.meta.url);
+  assert.ok(fs.existsSync(attr), '缺 roles/ATTRIBUTION.md');
+  // 只断言它**不会被人格列表收进来**（标题长什么样不重要 —— 它本来就叫「角色卡的出处与版权」）
+
+  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  assert.match(bridge, /ROLE_NON_CARD_FILES = new Set\(\['README\.md', 'ATTRIBUTION\.md'\]\)/,
+    'listRoles 必须排除 README.md 与 ATTRIBUTION.md');
+  assert.match(bridge, /ROLE_RESERVED_NAMES = new Set\(\['README', 'ATTRIBUTION'\]\)/,
+    'ATTRIBUTION 应是保留名，不能被新建成角色卡');
+  // 带全角括号的既有卡片必须能被解析（sanitize 会吃掉括号，所以走了 resolveExistingRole）
+  assert.match(bridge, /function resolveExistingRole/, '缺 resolveExistingRole（全角括号卡名依赖它）');
+});

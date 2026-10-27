@@ -277,10 +277,16 @@ function readActivityTail(n) {
   }
 }
 
+// roles/ 下不全是角色卡：说明文档（README / ATTRIBUTION）与以下划线开头的草稿
+// 不该出现在人格列表里。少一个排除项，控制台就会多出「ATTRIBUTION」这种可以被
+// 选中、然后当成人格注入的假角色（实测踩过）。
+const ROLE_NON_CARD_FILES = new Set(['README.md', 'ATTRIBUTION.md']);
 function listRoles() {
   try {
     return fs.readdirSync(path.join(ROOT, 'roles'))
-      .filter((f) => f.endsWith('.md') && f !== 'README.md')
+      .filter((f) => f.endsWith('.md')
+        && !ROLE_NON_CARD_FILES.has(f)
+        && !f.startsWith('.') && !f.startsWith('_'))
       .map((f) => f.slice(0, -3))
       .sort((a, b) => a.localeCompare(b, 'zh-CN'));
   } catch {
@@ -305,7 +311,7 @@ function applyRoleInjectLimit(value) {
   if (!Number.isFinite(n)) return ROLE_INJECT_MAX_CHARS_DEFAULT;
   return Math.min(20000, Math.max(1000, Math.round(n)));
 }
-const ROLE_RESERVED_NAMES = new Set(['README']);
+const ROLE_RESERVED_NAMES = new Set(['README', 'ATTRIBUTION']);
 // Windows 保留设备名：roles/CON.md 这类路径会被系统当成设备而不是文件，
 // 写入会失败甚至挂起，因此在人格名层面直接拒绝。
 const WINDOWS_RESERVED_NAMES = new Set([
@@ -318,6 +324,24 @@ const WINDOWS_RESERVED_NAMES = new Set([
  * 宽松解析角色名：允许用「小鲸鱼」匹配「小鲸鱼（已测试）」这种带标注的文件名。
  * 规则：完全一致 → 前缀匹配（唯一）→ 包含匹配（唯一）→ null
  */
+/**
+ * 解析**已存在**的角色卡名：先在磁盘上的真实文件名里精确匹配，再退回 sanitize。
+ *
+ * 为什么需要：`sanitizeRoleName` 只保留 [\w 中文 -]，而历史卡片名里带全角括号
+ * （`小鲸鱼（已测试）`）—— 于是 /api/roles/content?name=小鲸鱼（已测试） 会被
+ * sanitize 成 `小鲸鱼已测试` 再判存在性，直接 404（控制台读不到、也改不了这些卡）。
+ * 这里让"已经存在的名字"原样通过，只有**新建**才走严格校验。
+ */
+function resolveExistingRole(raw) {
+  const want = String(raw ?? '').trim();
+  if (!want) return null;
+  try {
+    return listRoles().includes(want) ? want : null;
+  } catch {
+    return null;
+  }
+}
+
 function resolveRoleName(raw) {
   const want = String(raw ?? '').trim();
   if (!want) return null;
@@ -3725,7 +3749,8 @@ async function main() {
             readRoleState, writeRoleState,
             roleSummaries, readRoleContent, writeRoleContent,
             roleWarnings, roleCharStats, roleSectionReport,
-            validateRoleName, validateRoleContent, sanitizeRoleName, roleFilePath,
+            validateRoleName,
+            resolveExistingRole, validateRoleContent, sanitizeRoleName, roleFilePath,
             getInjectMaxChars: () => roleInjectMaxChars,
             setInjectLimit: (raw) => {
               const next = applyRoleInjectLimit(raw);
