@@ -36,6 +36,7 @@ import { ocrAvailable, ocrImage } from './ocr.js';
 import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcribe.js';
 import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js';
 import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
+import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
@@ -5332,6 +5333,26 @@ async function main() {
           return;
         }
 
+        // cookie 体检（只读）：抖音能不能取到流取决于这份 cookies.txt 是否还新鲜
+        if (req.method === 'GET' && url.pathname === '/api/socialV2/video-cookies') {
+          try {
+            const cookiePath = videoLinkConfig().cookiesPath;
+            const health = cookieHealth(cookiePath);
+            writeJson(res, {
+              ok: true,
+              path: cookiePath ? String(cookiePath) : '',
+              healthy: health.ok,
+              code: health.code ?? 'ok',
+              message: health.message ?? '',
+              remaining: health.stats?.earliestExpiry ? describeRemaining(health.stats.earliestExpiry) : '',
+              stats: health.stats
+            });
+          } catch (error) {
+            writeJson(res, { ok: false, error: `cookie 体检失败：${error?.message ?? error}` }, 500);
+          }
+          return;
+        }
+
         // 视频**链接**（B站/抖音）：模型把用户贴的链接交过来，桥接用 yt-dlp 下载前 N 秒再分析。
         // 与消息附件那条路分开：这条不依赖 QQ 媒体段，但要过站点白名单。
         if (req.method === 'POST' && url.pathname === '/api/socialV2/video-link') {
@@ -6244,6 +6265,13 @@ async function main() {
       const got = await analyzeVideoFile(dl.file, mode, label);
       if (got.ok && dl.partial) {
         got.note = `${got.note}\n（只取了视频前 ${videoLinkConfig().maxSeconds} 秒做分析）`;
+      }
+      // 抖音：cookie 快过期/有失效时提前预告，省得某天突然"看不了"还要排查
+      if (got.ok && /douyin\.com/i.test(url)) {
+        try {
+          const health = cookieHealth(videoLinkConfig().cookiesPath);
+          if (health.code === 'cookie-aging') got.note = `${got.note}\n（${health.message}）`;
+        } catch { /* 体检失败不影响主流程 */ }
       }
       return got;
     } finally {

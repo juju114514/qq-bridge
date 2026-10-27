@@ -168,6 +168,34 @@ v.douyin.com 短链 → 跟一次重定向拿到 aweme_id
 powershell -File scripts\set-video-cookies.ps1
 ```
 
+### 三·四、cookie 会不会过期？会不会突然看不了？
+
+会。抖音的 cookies.txt **大约几周**就要重导一次，而它过期的表现和「视频不存在」几乎一样
+（分享页解析不出 `play_addr`）—— 所以桥接会**主动体检**，而不是让你猜。
+
+```
+GET /api/socialV2/video-cookies        # 只读，需要控制台令牌
+{
+  "ok": true, "healthy": true, "code": "cookie-aging",
+  "message": "抖音 cookie 有 3/68 条已过期，可能部分视频取不到；建议重导",
+  "remaining": "不到 1 小时",
+  "stats": { "total": 68, "expired": 3, "expiringSoon": 2, "session": 10, "earliestExpiry": 1793119882000 }
+}
+```
+
+| code | 含义 | 你要做什么 |
+| --- | --- | --- |
+| `ok` | 全部新鲜 | 什么都不用做 |
+| `cookie-aging` | 部分过期 / 3 天内到期 | 还能用，但**尽快重导**；抖音链接的交付说明里会自动附这句 |
+| `cookie-expired` | 全过期 | 一定会失败，重导一次 |
+| `cookie-missing` | 没配 / 文件里没有抖音域 | 跑 `scripts\\set-video-cookies.ps1` |
+
+设计要点：
+
+- **`expiry=0` 的会话 cookie 不算过期**（关浏览器才失效），只统计带明确过期时间的；
+- 抖音链接**成功**时如果 code 是 `cookie-aging`，说明里会多一句提醒 —— 等失败才提示就太晚了；
+- 失败时直接给可操作结论（「重新导出一次」），而不是让「没有 play_addr」替你猜。
+
 ## 四、模型怎么用
 
 两个工具：
@@ -209,7 +237,8 @@ powershell -File scripts\set-video-cookies.ps1
 | 抖音报「不是视频（主页/直播/图文）」 | 抖音分享链接有四种：**视频** / 主页 / 直播 / 图文。后三种 yt-dlp 都不支持（实测主页与直播都是 `Unsupported URL`） | 让用户发**视频**分享链接，或直接发视频文件 |
 | 抖音/ B站 报「需要登录态」 | 会员视频、部分高画质、风控 | 配 `links.cookiesFromBrowser: "edge"`，yt-dlp 会复用浏览器登录态 |
 | 抖音报「需要登录态」 | yt-dlp 的 Douyin extractor 走 `aweme/v1/web/aweme/detail/`，需要 **a_bogus 签名**，无签名一律 403 —— 即使登录了也一样 | **已内置绕行**：桥接对抖音改用**分享页解析器**（见下一节），只要给了 `links.cookiesPath` 就能下；真的失败时才回退 yt-dlp |
-| 抖音解析器报「分享页里没有 play_addr」 | cookies 过期 / 视频已删 / 页面结构变了 | 重新导出 cookies；或直接发视频文件 |
+| 抖音解析器报「分享页里没有 play_addr」 | cookies 过期 / 视频已删 / 页面结构变了 | 重新导出 cookies；或直接发视频文件。先查 `/api/socialV2/video-cookies` 的 code |
+| 抖音改报「要求验证/登录」 | cookie 彻底失效（页面变成验证页） | 重导 cookies；`code=cookie-invalid` 就是这一种 |
 | 报「被站点拒绝（风控/版权）」 | 站点级限制 | 换源，或让用户发视频文件 |
 | 报「视频不可用（可能已删除/区域限制/需要登录）」 | YouTube 对部分视频要求登录确认/地区限制 | 配 `cookiesFromBrowser`；或换源 |
 | 报「这个链接里没有视频（可能是图文笔记）」 | 小红书图文笔记只有图片 | 让用户发视频版，或直接发图 |

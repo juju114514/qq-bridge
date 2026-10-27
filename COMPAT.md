@@ -245,6 +245,10 @@ DSH 的图片入口只吃静态图，所以视频必须是**降维**而不是"�
 **抖音例外**：yt-dlp 的 Douyin extractor 要 a_bogus 签名（无签名 403，登录也无效），
 所以抖音先走 `src/douyin-resolve.js` 的分享页解析（cookies.txt + iPhone UA → `play_addr` → playwm 去水印），
 失败才回退 yt-dlp。cookie 只挑 `douyin.com` 域，且只存在于 `state/cookies/`（gitignore）。
+
+cookie 还有**主动体检**：`GET /api/socialV2/video-cookies` →
+`ok` / `cookie-aging` / `cookie-expired` / `cookie-missing`，并给出 `remaining`（人话剩余时间）。
+过期不会表现成「视频不存在」，而是明确的「重导一次」。
 `socialV2.media.video.enabled=false` 时行为与改动前完全一致（视频只显示 `[视频]`）。
 
 ### 四之六、安装期的内联脚本（`npm run postinstall` 这类）

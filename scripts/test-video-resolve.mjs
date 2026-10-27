@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-const { extractAwemeId, cookieHeaderFor, stripWatermark, parseSharePage } = await import(
+const { extractAwemeId, cookieHeaderFor, stripWatermark, parseSharePage, inspectCookies, cookieHealth, describeRemaining } = await import(
   new URL('../src/douyin-resolve.js', import.meta.url).href
 );
 
@@ -95,6 +95,62 @@ check('parseSharePage：没有 play_addr 时返回空数组（不抛、不编造
   assert.equal(parsed.desc, '');
 });
 
+// ── 4.5 cookie 体检（过期就别让用户猜「为什么看不了」）────────────────────
+check('inspectCookies：过期/将过期/会话 cookie 分开统计', () => {
+  const tmp = path.join(os.tmpdir(), `ckh-${process.pid}-${Date.now()}.txt`);
+  const now = Date.parse('2026-10-28T00:00:00Z');
+  const sec = (ms) => Math.floor(ms / 1000);
+  fs.writeFileSync(tmp, [
+    '# Netscape HTTP Cookie File',
+    `.douyin.com\tTRUE\t/\tFALSE\t${sec(now - 86400000)}\told\t1`,       // 已过期
+    `.douyin.com\tTRUE\t/\tFALSE\t${sec(now + 3600000)}\tsoon\t2`,        // 1 小时内到期
+    `.douyin.com\tTRUE\t/\tFALSE\t${sec(now + 30 * 86400000)}\tfresh\t3`, // 还很久
+    '.douyin.com\tTRUE\t/\tFALSE\t0\tsession\t4',                          // 会话 cookie
+    '.bilibili.com\tTRUE\t/\tFALSE\t0\tx\ty'                                // 别的站，不该计入
+  ].join('\n'));
+  const stats = inspectCookies(tmp, 'douyin.com', { now });
+  assert.equal(stats.total, 4, `只该统计抖音域，实际 ${stats.total}`);
+  assert.equal(stats.expired, 1);
+  assert.equal(stats.expiringSoon, 1);
+  assert.equal(stats.session, 1);
+  fs.unlinkSync(tmp);
+});
+
+check('cookieHealth：缺文件/全过期/部分过期 给出可操作结论', () => {
+  assert.equal(cookieHealth('').code, 'cookie-missing');
+  assert.equal(cookieHealth(path.join(os.tmpdir(), 'nope-not-here.txt')).code, 'cookie-missing');
+
+  const tmp = path.join(os.tmpdir(), `ckh2-${process.pid}-${Date.now()}.txt`);
+  const past = Math.floor(Date.now() / 1000) - 1000;
+  fs.writeFileSync(tmp, [
+    `.douyin.com\tTRUE\t/\tFALSE\t${past}\ta\t1`,
+    `.douyin.com\tTRUE\t/\tFALSE\t${past}\tb\t2`
+  ].join('\n'));
+  const allExpired = cookieHealth(tmp);
+  assert.equal(allExpired.code, 'cookie-expired');
+  assert.match(allExpired.message, /重新导出/);
+
+  fs.writeFileSync(tmp, [
+    `.douyin.com\tTRUE\t/\tFALSE\t${past}\ta\t1`,
+    `.douyin.com\tTRUE\t/\tFALSE\t0\tb\t2`,
+    `.douyin.com\tTRUE\t/\tFALSE\t0\tc\t3`
+  ].join('\n'));
+  const partial = cookieHealth(tmp);
+  assert.equal(partial.ok, true, '部分过期不算致命');
+  assert.equal(partial.code, 'cookie-aging');
+  assert.match(partial.message, /1\/3/);
+  fs.unlinkSync(tmp);
+});
+
+check('describeRemaining：小时/天/已过期 都说人话', () => {
+  const now = Date.now();
+  assert.equal(describeRemaining(now + 20 * 60000, now), '不到 1 小时');
+  assert.equal(describeRemaining(now + 5 * 3600000, now), '约 5 小时');
+  assert.equal(describeRemaining(now + 3 * 86400000, now), '约 3 天');
+  assert.equal(describeRemaining(now - 1000, now), '已过期');
+  assert.equal(describeRemaining(0, now), '未知时间');
+});
+
 // ── 5. 接线 ──────────────────────────────────────────────────────────────
 check('video-download：抖音先走专用解析器，失败才回退 yt-dlp，且挂 cleanup', () => {
   const dl = read('src/video-download.js');
@@ -103,6 +159,22 @@ check('video-download：抖音先走专用解析器，失败才回退 yt-dlp，�
   assert.match(dl, /__douyinError/, '解析失败的原因要保留，和 yt-dlp 的错误一起报');
   assert.match(dl, /got\.cleanup = cleanup/, '解析成功也必须挂 cleanup（曾漏，报 r.cleanup is not a function）');
   assert.match(dl, /function downloadDirect/, '需要直链下载（播放地址会 302 到 CDN）');
+});
+
+check('bridge：抖音成功时预告 cookie 老化，并有体检端点', () => {
+  const bridge = read('src/bridge.js');
+  assert.match(bridge, /cookieHealth\(videoLinkConfig\(\)\.cookiesPath\)/, '抖音成功分支要体检');
+  assert.match(bridge, /cookie-aging/, '只对"将过期/部分过期"预告，不是每次都喊');
+  assert.match(bridge, /'\/api\/socialV2\/video-cookies'/, '要有只读体检端点');
+  assert.match(bridge, /describeRemaining/, '端点要给出"还能用多久"');
+});
+
+check('解析器：cookie 不可用时提前返回可操作原因（code + 中文）', () => {
+  const res = read('src/douyin-resolve.js');
+  assert.match(res, /code: 'cookie-missing'/);
+  assert.match(res, /code: 'cookie-expired'/);
+  assert.match(res, /cookie-invalid/, 'cookie 失效要有单独的 code（分享页变验证页/403）');
+  assert.match(res, /重新导出一次/, '失效时要说清怎么修');
 });
 
 check('bridge 把 cookiesPath 传给下载器（否则解析器拿不到 cookie）', () => {

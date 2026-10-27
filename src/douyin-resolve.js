@@ -60,6 +60,95 @@ export function cookieHeaderFor(cookiesFile, host = 'douyin.com') {
   return pairs.join('; ');
 }
 
+/**
+ * 解析 Netscape cookies.txt 的过期时间，给出"还能用多久"。
+ *
+ * 为什么要它：cookie 过期后表现和"视频不存在"几乎一样（分享页解析不出 play_addr），
+ * 用户只会看到一句模糊的失败。提前判断就能直接告诉他"该重导了"。
+ *
+ * 字段顺序：domain 	 flag 	 path 	 secure 	 expiry(epoch秒) 	 name 	 value
+ * expiry 为 0 表示**会话 cookie**（关浏览器就没了），不算过期。
+ *
+ * @returns {{total:number, expired:number, expiringSoon:number, session:number,
+ *            earliestExpiry:number, host:string}}
+ */
+export function inspectCookies(cookiesFile, host = 'douyin.com', { now = Date.now(), soonDays = 3 } = {}) {
+  const domain = String(host).toLowerCase().replace(/^\./, '');
+  const soonMs = Math.max(1, Number(soonDays) || 3) * 86400000;
+  let text = '';
+  try { text = fs.readFileSync(String(cookiesFile), 'utf8'); } catch { }
+  let total = 0;
+  let expired = 0;
+  let expiringSoon = 0;
+  let session = 0;
+  let earliest = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line || line.startsWith('#')) continue;
+    const p = line.split('\t');
+    if (p.length < 7) continue;
+    const ckDomain = String(p[0]).toLowerCase().replace(/^\./, '');
+    if (!(ckDomain === domain || ckDomain.endsWith(`.${domain}`))) continue;
+    total += 1;
+    const expiry = Number(p[4]) || 0;
+    if (expiry <= 0) { session += 1; continue; }
+    const at = expiry * 1000;
+    if (at <= now) { expired += 1; continue; }
+    if (at - now <= soonMs) expiringSoon += 1;
+    if (earliest === 0 || at < earliest) earliest = at;
+  }
+  return { total, expired, expiringSoon, session, earliestExpiry: earliest, host: domain };
+}
+
+/**
+ * 抖音 cookie 健康度 → 一句话结论（给用户看）。
+ * @returns {{ok:boolean, code?:'cookie-missing'|'cookie-expired'|'cookie-aging', message?:string, stats:object}}
+ */
+export function cookieHealth(cookiesFile, opts = {}) {
+  if (!cookiesFile || !fs.existsSync(String(cookiesFile))) {
+    return {
+      ok: false,
+      code: 'cookie-missing',
+      message: '抖音需要 cookies.txt：先运行 scripts\\set-video-cookies.ps1（浏览器扩展导出后一条命令接上）',
+      stats: { total: 0, expired: 0, expiringSoon: 0, session: 0, earliestExpiry: 0 }
+    };
+  }
+  const stats = inspectCookies(cookiesFile, opts.host || 'douyin.com', opts);
+  if (stats.total === 0) {
+    return { ok: false, code: 'cookie-missing', message: 'cookies.txt 里没有 douyin.com 的 cookie（导出时要在抖音页面上点导出）', stats };
+  }
+  if (stats.expired === stats.total) {
+    return { ok: false, code: 'cookie-expired', message: `抖音 cookie **全部已过期**（${stats.total} 条），重新导出一次即可`, stats };
+  }
+  if (stats.expired > 0) {
+    return {
+      ok: true,
+      code: 'cookie-aging',
+      message: `抖音 cookie 有 ${stats.expired}/${stats.total} 条已过期，可能部分视频取不到；建议重导`,
+      stats
+    };
+  }
+  if (stats.expiringSoon > 0) {
+    return {
+      ok: true,
+      code: 'cookie-aging',
+      message: `抖音 cookie 有 ${stats.expiringSoon} 条将在 ${describeRemaining(stats.earliestExpiry)}内过期，届时重导一次`,
+      stats
+    };
+  }
+  return { ok: true, stats };
+}
+
+/** 剩余时间说人话：<1 天说小时，<0 说已过期。纯函数。 */
+export function describeRemaining(atMs, now = Date.now()) {
+  if (!(atMs > 0)) return '未知时间';
+  const diff = atMs - now;
+  if (diff <= 0) return '已过期';
+  const hours = diff / 3600000;
+  if (hours < 1) return `不到 1 小时`;
+  if (hours < 24) return `约 ${Math.round(hours)} 小时`;
+  return `约 ${Math.round(hours / 24)} 天`;
+}
+
 /** 把带水印地址换成无水印（同 video_id，只换路径段）。纯函数。 */
 export function stripWatermark(playUrl) {
   const url = String(playUrl ?? '');
@@ -90,10 +179,12 @@ export function parseSharePage(html) {
  */
 export async function resolveDouyinPlayUrl(rawUrl, opts = {}) {
   const timeoutMs = Math.max(5000, Number(opts.timeoutMs) || 25000);
-  const cookie = opts.cookiesFile ? cookieHeaderFor(opts.cookiesFile) : '';
-  if (!cookie) {
-    return { ok: false, error: '抖音解析需要 cookies.txt（socialV2.media.video.links.cookiesPath）' };
-  }
+  // 先体检：过期/缺失直接说清该怎么修，别等到"分享页里没有 play_addr"再让用户猜
+  const health = cookieHealth(opts.cookiesFile);
+  if (!health.ok) return { ok: false, code: health.code, error: health.message };
+  const cookie = cookieHeaderFor(opts.cookiesFile);
+  if (!cookie) return { ok: false, code: 'cookie-missing', error: health.message || '抖音解析需要 cookies.txt' };
+  const agingHint = health.code === 'cookie-aging' ? `${health.message}；` : '';
   let awemeId = extractAwemeId(rawUrl);
   let target = String(rawUrl ?? '').trim();
   try {
@@ -108,7 +199,7 @@ export async function resolveDouyinPlayUrl(rawUrl, opts = {}) {
       awemeId = extractAwemeId(target);
       if (!awemeId) {
         // 有的短链跳到主页/直播，不是视频
-        return { ok: false, error: '这个抖音链接不是视频（可能是主页/直播/图文）' };
+        return { ok: false, error: `${agingHint}这个抖音链接不是视频（可能是主页/直播/图文）` };
       }
     }
     const shareUrl = `https://${SHARE_HOST}/share/video/${awemeId}/?region=CN`;
@@ -121,11 +212,19 @@ export async function resolveDouyinPlayUrl(rawUrl, opts = {}) {
       },
       signal: AbortSignal.timeout(timeoutMs)
     });
-    if (!res.ok) return { ok: false, error: `分享页 HTTP ${res.status}` };
+    if (!res.ok) {
+      return { ok: false, code: res.status === 403 ? 'cookie-invalid' : '', error: `${agingHint}分享页 HTTP ${res.status}` };
+    }
     const html = await res.text();
     const parsed = parseSharePage(html);
     if (!parsed.urls.length) {
-      return { ok: false, error: '分享页里没有 play_addr（可能需要重新导出 cookies，或视频已删除）' };
+      // 这两种情况最常见：cookie 失效（页面变成验证/登录页）或视频被删
+      const looksLogin = /验证|登录|verify|login|captcha/i.test(html);
+      const code = looksLogin ? 'cookie-invalid' : 'no-play-addr';
+      const reason = looksLogin
+        ? '分享页要求验证/登录 → cookie 已失效，重新导出一次'
+        : '分享页里没有 play_addr（cookie 可能失效，或视频已删除/仅粉丝可见）';
+      return { ok: false, code, error: `${agingHint}${reason}` };
     }
     return {
       ok: true,
