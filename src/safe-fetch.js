@@ -114,6 +114,28 @@ export function isPrivateIp(ip) {
 }
 
 /**
+ * 只抓文本：这些 Content-Type 一律**不解析**。
+ *
+ * 为什么需要：`safeFetch` 是给「网页正文」用的（web_fetch）。以前它不看类型，
+ * 一个 PDF / 图片 / zip 会被当 UTF-8 解码成 50KB 乱码塞给模型 —— 既浪费预算，
+ * 又可能让模型把二进制当正文乱总结。这里在**读完响应头**就拒掉，正文一个字节都不收。
+ *
+ * 判定策略是**保守放行**：只拦明确的二进制类型，未声明或未知类型仍然放行，
+ * 因为不少站点会漏写/写错 Content-Type，误拒会让 web_fetch 大面积失败。
+ * @param {string} contentType 原始 Content-Type 头
+ * @returns {boolean} true = 非文本，应拒绝
+ */
+export function isNonTextContentType(contentType) {
+  const ctype = String(contentType ?? '').toLowerCase().split(';')[0].trim();
+  if (!ctype) return false; // 没声明类型：放行（站点漏写很常见）
+  if (ctype.startsWith('text/')) return false;
+  if (/^application\/(json|xml|xhtml\+xml|rss\+xml|atom\+xml|ld\+json|javascript|x-javascript|ecmascript)$/.test(ctype)) return false;
+  if (ctype.startsWith('image/') || ctype.startsWith('audio/') || ctype.startsWith('video/') || ctype.startsWith('font/')) return true;
+  if (/^application\/(pdf|zip|gzip|x-tar|x-7z-compressed|octet-stream|msword|vnd\.|wasm|x-font|x-protobuf)/.test(ctype)) return true;
+  return false; // 未知 application/* ：放行，宁可让模型看到 HTML 也别误拒
+}
+
+/**
  * 把校验过的地址排成「尝试顺序」。
  *
  * 为什么不能只取第一个：DNS 返回顺序是**轮转/不确定**的，而本机常常只有 IPv4 出口。
@@ -242,6 +264,16 @@ function attemptOnce(url, address, limit, binary, budgetMs) {
         });
         if (settled) { res.destroy(); return; }
         const statusCode = res.statusCode || 0;
+        // 文本模式先看类型：非文本直接拒，不读正文（省流量、也避免把二进制塞给模型）。
+        // 二进制模式（safeFetchBuffer）不看类型，它后面用文件签名自己校验。
+        if (!binary && !REDIRECT_STATUSES.has(statusCode)) {
+          const ctype = String(res.headers['content-type'] ?? '');
+          if (isNonTextContentType(ctype)) {
+            fail(new Error(`非文本内容（${String(ctype).split(';')[0].trim() || '未知类型'}），不解析；需要图片/文件请走专用工具`), false);
+            res.destroy();
+            return;
+          }
+        }
         if (REDIRECT_STATUSES.has(statusCode)) {
           done({ statusCode, redirect: String(res.headers.location || '') });
           // 不下载重定向正文：攻击者可以发送无限正文消耗连接和带宽。

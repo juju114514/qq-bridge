@@ -167,6 +167,29 @@ roles/<任意文件名>.md
 | `probe-dsh-providers.mjs` | 打印 DSH 的 provider 分组与模型接入 settings 路径（接新模型前先跑） | 换 provider / 换 DSH 版本 |
 | `live-full-test.ps1` | **全功能自测（54 项，会真发消息）**：只读接口 + 守卫 + 人格 CRUD + 真实 QQ 动作 + 媒体 | 改完功能、上线前手工跑：`powershell -File scripts\live-full-test.ps1`（`-MaxSends` 控发送量） |
 
+## 四之三、抓网页的安全契约（`web_fetch` / `src/safe-fetch.js`）
+
+只要模型能抓网址，就必须有这五道闸。缺任何一道都是 SSRF/资源类漏洞：
+
+| # | 闸门 | 实现位置 | 说明 |
+| --- | --- | --- | --- |
+| 1 | **只允许 http/https** | `validateFetchUrl` | 拒绝 `file:` / `gopher:` 等；同时拒绝 URL 里带凭据（`user:pass@`） |
+| 2 | **解析后校验 IP，禁止内网** | `resolveSafeAddresses` + `isPrivateIp` | 域名先 DNS 解析（`all:true`），**任一**解析结果落在私网就整条拒绝 |
+| 3 | **每跳重定向重新校验** | `safeFetch` 循环 | 最多 5 跳；每跳对新 URL 重新解析+校验；重定向正文**不下载**（否则可被用来耗尽连接） |
+| 4 | **限体积 + 限超时** | `maxChars`/`maxBytes` + 总 deadline | 文本超限**截断并标 `truncated`**；图片超限**硬失败**；总预算 20s、单地址尝试 8s |
+| 5 | **非文本不解析** | `isNonTextContentType` | `image/*`、`audio/*`、`video/*`、`font/*`、`application/pdf|zip|gzip|octet-stream|…` 一律在读正文**之前**拒掉 |
+
+补充两条容易被忽略的：
+
+- **DNS rebinding 的根治办法是"把校验过的 IP 钉死"**：解析出地址后直接连
+  `hostname: <已校验 IP>`，但保留原始 `Host` 与 TLS `servername`（SNI）—— 这样连接阶段
+  **不会再解析一次**，重绑定就无从下手。换地址重试时同样不重新解析。
+- **保守放行未知类型**：没写 Content-Type 或 `application/x-unknown` 仍然放行，
+  因为站点漏写很常见，误拒会让 `web_fetch` 大面积失败。
+
+> ⚠️ 已知限制（写出来是为了不被当成"已解决"）：**字符集只按 UTF-8 解码**。
+> GBK/Big5 页面会出乱码（历史上一直如此），当前不做编码嗅探。
+
 ## 五、失败特征表（症状 → 根因）
 
 | 症状 | 最可能根因 | 怎么确认 / 怎么修 |

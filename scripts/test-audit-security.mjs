@@ -25,7 +25,7 @@ dns.promises.lookup = async (host) => {
 let fetchModule;
 try { fetchModule = await import('../src/safe-fetch.js'); }
 finally { dns.promises.lookup = originalLookup; }
-const { isPrivateIp, safeFetch, safeFetchBuffer, validateFetchUrl } = fetchModule;
+const { isNonTextContentType, isPrivateIp, safeFetch, safeFetchBuffer, validateFetchUrl } = fetchModule;
 
 function mockTransport(t, scripts) {
   const requests = [];
@@ -154,6 +154,38 @@ test('text limits count Unicode code points and close oversized responses', asyn
   assert.equal(result.body, '😀😀😀');
   assert.equal(result.truncated, true);
   assert.equal(responses[0].destroyed, true);
+});
+
+test('non-text Content-Type is refused before reading the body', async (t) => {
+  // 背景：safeFetch 是给网页正文用的。以前不看类型，PDF/图片会被当 UTF-8 解码成
+  // 50KB 乱码塞给模型 —— 既浪费预算，又可能让模型把二进制当正文总结。
+  const cases = [
+    ['image/png', true], ['application/pdf', true], ['application/octet-stream', true],
+    ['audio/mpeg', true], ['text/html; charset=utf-8', false], ['application/json', false],
+    ['application/xhtml+xml', false], ['', false], ['application/x-unknown', false],
+  ];
+  for (const [ctype, shouldReject] of cases) {
+    assert.equal(isNonTextContentType(ctype), shouldReject, `Content-Type=${ctype || '(空)'}`);
+  }
+
+  const { responses } = mockTransport(t, [
+    { status: 200, headers: { 'content-type': 'application/pdf' }, produce() {} },
+  ]);
+  await assert.rejects(safeFetch('http://93.184.216.34/doc.pdf'), /非文本内容/);
+  assert.equal(responses[0].destroyed, true, '非文本必须立刻断开，不读正文');
+
+  mockTransport(t, [{ status: 200, headers: { 'content-type': 'text/html' }, body: '<h1>x</h1>' }]);
+  const result = await safeFetch('http://93.184.216.34/page');
+  // 文本必须被完整读出来（truncated=false 说明不是被闸门提前掐断的）
+  assert.equal(result.body, '<h1>x</h1>');
+  assert.equal(result.truncated, false);
+});
+
+test('non-text gate does not affect binary mode (safeFetchBuffer validates by signature)', async (t) => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 0, 0, 0, 0]);
+  mockTransport(t, [{ status: 200, headers: { 'content-type': 'image/png' }, body: png }]);
+  const got = await safeFetchBuffer('http://93.184.216.34/pic.png', 1024);
+  assert.deepEqual(got.buffer, png, '图片走 safeFetchBuffer 时不能被文本闸门拦掉');
 });
 
 test('image byte limits and signatures are checked', async (t) => {
