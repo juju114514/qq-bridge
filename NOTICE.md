@@ -13,11 +13,14 @@
 | 组件 | 许可 | 说明 |
 | --- | --- | --- |
 | [`@deepseek-ai/dsh`](https://github.com/deepseek-ai/deepseek-harness) 及其 `@deepseek-ai/*` 包 | MIT | DeepSeek Harness 本体与官方 API 客户端 |
-| [`@snowluma/sdk`](https://www.npmjs.com/package/@snowluma/sdk) / [`@snowluma/mcp`](https://www.npmjs.com/package/@snowluma/mcp) | ⚠️ **声明为 `SEE LICENSE IN LICENSE`，但包里没有 LICENSE 文件**（见下） | 本项目通过 npm 依赖使用；计划在 QSH 里**移除这两个依赖**（见下） |
+| ~~[`@snowluma/sdk`](https://www.npmjs.com/package/@snowluma/sdk) / [`@snowluma/mcp`](https://www.npmjs.com/package/@snowluma/mcp)~~ | ⚠️ 声明为 `SEE LICENSE IN LICENSE`，但包里没有 LICENSE 文件 | **已于 2026-10-27 移除**：改用自带的 `src/onebot-ws.js`（公开 OneBot v11 协议 + Node 内置 WebSocket），不再依赖、不再修补这两个包（见下） |
 | [SnowLuma](https://github.com/SnowLuma/SnowLuma) 本体 | SnowLuma 源码可见非商业许可（非 OSI 开源） | **本项目不在仓库内包含、也不分发 SnowLuma 的源码或二进制**，只通过 OneBot v11 协议与它通信（另只读其 `config/onebot_*.json` 以发现 token）。⚠️ 例外见下：`npm install` 会对两个 `@snowluma/*` **npm 包**的本地安装副本做一次机械修补（不触碰 SnowLuma 本体，也不触碰任何原生组件） |
 | `@modelcontextprotocol/sdk`、`js-yaml`、`zod` 等 | MIT / ISC | 见各自包内 LICENSE |
 
-### ⚠️ 已知的依赖许可瑕疵（`@snowluma/sdk` / `@snowluma/mcp`）
+### ✅ 已解决的依赖许可瑕疵（`@snowluma/sdk` / `@snowluma/mcp`）
+
+> **2026-10-27 更新**：两个依赖已从 `package.json` 移除，`postinstall` 补丁脚本已删除。
+> 下面保留原始记录，因为它是**决策依据**（为什么值得为 200 行客户端放弃两个现成依赖）。
 
 **事实**（2026-09-20 实测，可自行复核）：
 
@@ -47,7 +50,7 @@
      OneBot v11 是公开协议规范，自己实现一个最小客户端即可（约 150 行 + 回归）；
      顺带可去掉 `postinstall` 补丁 —— ⚠️ **删依赖与换客户端必须同批落地**（补丁是 `postinstall` 载荷路径，
      只删依赖会让 `npm install` 或启动直接失败）；
-   - `@snowluma/mcp` 在本项目里**运行时完全不用**（`src/` 里零引用，仅 `scripts/test-mcp-exec.mjs` 用到）
+   - `@snowluma/mcp` 在本项目里**运行时完全不用**（`src/` 里零引用，已随依赖一并移除）
      ——改成**自建能力矩阵**（只取动作名与参数名这类接口事实，措辞自己写；
      ⚠️ **不要提交它的 `catalog.js` 快照**，那本身就是再分发其内容，会触发 §3(b)(c)）。
 4. 若你要更彻底地消除不确定性，可以在给 SnowLumaDevs 的邮件里**顺带问一句**

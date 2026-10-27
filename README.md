@@ -402,8 +402,8 @@ qq-bridge/
     dsh-client.js       # Node 版 DSH API 客户端（WS 下行）
     md-to-plain.js      # Markdown → QQ 纯文本
     self-test.js        # DSH 侧自测
-  scripts/              # 测试/运维脚本（含 postinstall 的 patch-snowluma-sdk.mjs）
-    patch-snowluma-sdk.mjs  # 修补 SDK 的 ESM 打包 bug（postinstall 自动执行）
+  scripts/              # 测试/运维脚本
+    onebot-ws.js 的测试见 scripts/test-onebot-ws.mjs（自带客户端，不依赖 @snowluma/sdk）
   state/                # 运行时数据（不入库）
 ```
 
@@ -487,7 +487,7 @@ SnowLuma 同一个账号的 **HTTP token（默认 3000 端口）与 WebSocket to
 - **发**语音是支持的（独立工具的图形界面 / 命令行 / AI 工具，见 `docs/README.md` 的文档索引）；但**收**到的语音目前只显示占位文本，不做语音转写入上下文
 - **AI 发语音默认关闭**（`socialV2.voice.enabled` 与 `tools.sendVoice` 默认 `false`）：先把音频放进 `audio/`，再到控制台打开开关；你自己发语音不受这个开关影响
 - agent 的 Markdown 回复会转成纯文本（链接保留 `文字 (url)` 形式）
-- `@snowluma/sdk` 的 npm 发布版存在 ESM 扩展名 bug，本仓库通过 postinstall 补丁修复（见 `scripts/patch-snowluma-sdk.mjs`）
+- **不再依赖 `@snowluma/*`**：QQ 侧的 OneBot 客户端是本仓库自带的 `src/onebot-ws.js`（公开 OneBot v11 协议 + Node 内置 WebSocket）。之前为了绕开 `@snowluma/sdk` 的 ESM 打包 bug 需要 `postinstall` 去修改它的 `dist`，那条链路已一并删除——**本仓库不再修改任何第三方包**
 
 ## 合规提醒
 

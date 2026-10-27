@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SnowLumaWebSocketClient } from '@snowluma/sdk';
+import { OneBotWsClient } from '../src/onebot-ws.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'config.json'), 'utf8'));
@@ -11,7 +11,7 @@ const { wsUrl, accessToken } = cfg.snowluma;
 
 console.log(`测试连接 ${wsUrl}（token ${accessToken ? '已配置' : '未配置'}）…`);
 
-const bot = new SnowLumaWebSocketClient({
+const bot = new OneBotWsClient({
   url: wsUrl,
   accessToken: accessToken || undefined,
   reconnect: false

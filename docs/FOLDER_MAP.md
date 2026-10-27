@@ -59,7 +59,7 @@ DSH/                         ← 工作区根（不是仓库根）
 | `diagnose-acl.mjs` | 只读盘点：列出仓库里所有被**切断 ACL 继承**的路径，分「有意收紧（`state/`、`config.json`）」与「非预期收紧」两类，并对后者打印恢复继承的命令。背景见 [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) §2.6：DSH 沙箱的写权限只靠继承下发能力 SID，切断继承 ⇒ 沙箱里写不进去。**必须在无沙箱终端跑**（沙箱禁止以管道 stdio 拉起 icacls） | 保留（`npm run diagnose:acl`） |
 | `dsh-modules.mjs` | 小工具：按路径加载 DSH 安装内的模块 | 保留 |
 | `check-onebot-status.mjs` | 手工排查：查 OneBot 连通性 | 保留（运维常用） |
-| `patch-*.mjs` | **补丁**（含 `postinstall` 的 `patch-snowluma-sdk.mjs`：修 `@snowluma/sdk` 的 ESM 打包 bug） | `patch-snowluma-sdk.mjs` **必须保留**（postinstall 依赖）；其余见第四节 |
+| `patch-*.mjs` | **补丁**（含 `postinstall` 的 `onebot-ws.js`：修 `@snowluma/sdk` 的 ESM 打包 bug） | `onebot-ws.js` **必须保留**（postinstall 依赖）；其余见第四节 |
 | `cleanup-*.mjs` | **清理一次性残留**（probe 会话/工作区、测试会话） | 见第四节 |
 | `fix-*.mjs` | **一次性修复**（针对某次运行产生的脏数据） | 见第四节 |
 | `diag-*.mjs` | **诊断**（如归档并清理日志） | 见第四节 |
@@ -121,7 +121,7 @@ docs/
 （例如 `scripts/legacy/`），或直接删除——它们都不在 `package.json` 脚本里，也没有被 `test-audit.mjs` 引用，
 移动不会影响任何自动化回归。反过来，**下面这些千万别当"过期脚本"清掉**：
 
-- `scripts/patch-snowluma-sdk.mjs`（`postinstall` 依赖，删了 `npm install` 就坏）
+- `scripts/onebot-ws.js`（`postinstall` 依赖，删了 `npm install` 就坏）
 - `scripts/test-audit.mjs` 清单里的每一个（完整清单见该文件 `tests[]` 数组）
 - `scripts/console-ui-*.json` / `console-ui-fixture.mjs` / `fixtures/`（控制台回归基线）
 - `scripts/audit-bridge-harness.mjs`、`scripts/dsh-modules.mjs`（被测试/工具引用）

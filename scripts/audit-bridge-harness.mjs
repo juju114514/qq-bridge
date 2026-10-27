@@ -185,7 +185,11 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timers.add(timer); return timer; },
     clearTimeout, setInterval: () => ({ unref() {} }), clearInterval: () => {},
     NodeApiClient: class { constructor() { return api; } },
-    SnowLumaWebSocketClient: FakeBot, text: (s) => s,
+    // bridge.js 顶层 import 会被剥掉，这里按名字注入。
+    // 注意：QQ 侧客户端已从 `@snowluma/sdk` 换成自带的 `src/onebot-ws.js`
+    // （见 docs/design/decisions 与 scripts/test-onebot-ws.mjs），但 VM 里仍然是同一个
+    // FakeBot 桩，所以断言面不变；`text()` 桩保持"原样返回字符串"，行为与旧桩一致。
+    OneBotWsClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt,

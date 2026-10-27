@@ -78,6 +78,10 @@ const tests = [
   //   · LICENSE 只放协议正文 —— 附录（第三方组件/数据出机清单）塞在同一文件里会让
   //     GitHub 的 licensee 匹配失败，仓库页面显示 Other/NOASSERTION。附录现在在 NOTICE.md。
   'test-packaging.mjs',
+  // OneBot WS 客户端（自带实现，替代 @snowluma/sdk）：
+  //   echo 配对 / 事件分发 / call() 抛错 / 超时 / 断线重连 / 主动关闭不重连 ——
+  //   这些坏了的表现是「机器人突然不说话、发错人、断线不自愈」，业务测试全绿也发现不了。
+  'test-onebot-ws.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
