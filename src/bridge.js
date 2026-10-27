@@ -2813,7 +2813,8 @@ async function main() {
    */
   const TURN_BUSY_LEASE_MS = 15 * 60 * 1000;
   const turnLeaseNoted = new Set(); // 租约过期的日志去重（每个 session 只记一次）
-  const pendingWakeLeaseTimers = new Map(); // key -> timeout：防止 accepted 但无 turn/end 的唤醒把 key 永久标记为 busy
+  const pendingWakeLeaseTimers = new Map();
+  const pendingWakeWarnTimers = new Map(); // key -> timeout：防止 accepted 但无 turn/end 的唤醒把 key 永久标记为 busy
   const wakeConfigUpdatedKeys = new Set();
   const markReadCalledKeys = new Set();
   const wakeConfigMissCount = new Map();
@@ -2936,24 +2937,52 @@ async function main() {
 
   // 唤醒“防卡死”租约：正常应在 turn/end 时删除 pendingWakeKeys；若 DSH 接受了但一直没回合结束，
   // 30 分钟后强制解除 busy 标记，避免该会话永久无法被唤醒。
+  //
+  // 为什么还要一个「10 分钟告警」：30 分钟太久了 —— 用户看到的现象只是「AI 一句不回」，
+  // 而日志里只有一行「会话繁忙，暂存唤醒原因」，很容易误判成桥接坏了。
+  // 10 分钟时打一条 WARN 并给出文档锚点，让问题在**还能自愈的时候**被发现。
+  const PENDING_WAKE_WARN_MS = 10 * 60 * 1000;
+  const PENDING_WAKE_LEASE_MS = 30 * 60 * 1000;
+  /** key → 上锁时间（给 /api/status 的 busy 快照用，也是 10 分钟告警的依据） */
+  const pendingWakeArmedAt = new Map();
   function armPendingWakeLease(key) {
     const old = pendingWakeLeaseTimers.get(key);
     if (old) clearTimeout(old);
+    pendingWakeArmedAt.set(key, Date.now());
+    const warn = setTimeout(() => {
+      if (!pendingWakeKeys.has(key)) return;
+      const st = socialV2.conversations.get(key);
+      const queued = Array.isArray(st?.pendingWakeReasons) ? st.pendingWakeReasons.length : 0;
+      log(`⚠️ [reserved2] 会话 ${key} 已「繁忙」10 分钟（pendingWakeKey 未解除，暂存唤醒 ${queued} 条）：`
+        + 'DSH 那边可能有一个回合没结束。30 分钟租约会自动解除；期间该会话不会被唤醒。'
+        + '排查与处置见 docs/guides/SESSION-BUSY.md');
+    }, PENDING_WAKE_WARN_MS);
+    warn.unref?.();
     const timer = setTimeout(() => {
       pendingWakeKeys.delete(key);
       pendingWakeLeaseTimers.delete(key);
-    }, 30 * 60 * 1000);
+      pendingWakeArmedAt.delete(key);
+      log(`[reserved2] 会话 ${key} 的「繁忙」标记已按 30 分钟租约强制解除（如果 DSH 那个回合其实还活着，它的回复仍会被收下）`);
+    }, PENDING_WAKE_LEASE_MS);
     timer.unref?.();
+    // 两个定时器都挂在同一个 key 上：先存告警，再存强解
     pendingWakeLeaseTimers.set(key, timer);
+    pendingWakeWarnTimers.set(key, warn);
   }
   function disarmPendingWakeLease(key) {
-    const old = pendingWakeLeaseTimers.get(key);
-    if (old) clearTimeout(old);
-    pendingWakeLeaseTimers.delete(key);
+    for (const map of [pendingWakeLeaseTimers, pendingWakeWarnTimers]) {
+      const old = map.get(key);
+      if (old) clearTimeout(old);
+      map.delete(key);
+    }
+    pendingWakeArmedAt.delete(key);
   }
   function clearAllPendingWakeLeases() {
-    for (const t of pendingWakeLeaseTimers.values()) clearTimeout(t);
+    for (const timer of pendingWakeLeaseTimers.values()) clearTimeout(timer);
     pendingWakeLeaseTimers.clear();
+    for (const timer of pendingWakeWarnTimers.values()) clearTimeout(timer);
+    pendingWakeWarnTimers.clear();
+    pendingWakeArmedAt.clear();
   }
 
   // DSH 可用性探活 + 重启容错队列：
@@ -3600,6 +3629,7 @@ async function main() {
             snowlumaHealthSnapshot,
             readActivityTail,
             roleName,
+            socialV2BusySnapshot,
           });
           const handleRoles = createRolesHandler({
             sendJson, readBody, log, fs, path, ROOT,
@@ -9073,6 +9103,39 @@ async function main() {
       if (Number.isFinite(startedAt) && startedAt > 0 && Date.now() - startedAt < TURN_BUSY_LEASE_MS) return 'turn';
     }
     return 'unknown';
+  }
+
+  /**
+   * 「会话为什么忙」的快照（**只给操作者看**，不进 agent 视图）。
+   *
+   * 为什么需要：busy 的判定全在内存里（pendingWakeKeys / promptQueues / v2TurnStartAt），
+   * 用户从日志只能看到一行「会话繁忙，暂存唤醒原因」，判断不了是「正常在跑回合」还是
+   * 「回合卡住了」。这个快照把三件事摊开：忙的原因、已经忙了多久、暂存了几条唤醒。
+   */
+  function socialV2BusySnapshot() {
+    const rows = [];
+    for (const [key, st] of socialV2.conversations) {
+      if (!isConversationBusyV2(key, st)) continue;
+      const sid = state.sessions[key];
+      const startedAt = sid ? Number(v2TurnStartAt.get(sid)) || 0 : 0;
+      const armedAt = Number(pendingWakeArmedAt.get(key)) || 0;
+      rows.push({
+        key,
+        reason: busyReasonV2(key, st),
+        // 回合已跑多久（null = 没有进行中的回合，忙在队列/定时器上）
+        turnStartedAgoMs: startedAt ? Date.now() - startedAt : null,
+        // pendingWakeKey 上锁多久 / 30 分钟租约还剩多久
+        armedAgoMs: armedAt ? Date.now() - armedAt : null,
+        leaseLeftMs: armedAt ? Math.max(0, PENDING_WAKE_LEASE_MS - (Date.now() - armedAt)) : null,
+        pendingWakeReasons: Array.isArray(st.pendingWakeReasons) ? st.pendingWakeReasons.length : 0,
+        queuedPrompts: (() => {
+          const q = promptQueues.get(key);
+          if (!q) return 0;
+          return (q.running ? 1 : 0) + (Array.isArray(q.queue) ? q.queue.length : 0);
+        })(),
+      });
+    }
+    return rows.sort((a, b) => String(a.key).localeCompare(String(b.key)));
   }
 
   function isConversationBusyV2(key, st) {

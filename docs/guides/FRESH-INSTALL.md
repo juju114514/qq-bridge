@@ -115,6 +115,7 @@ node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能�
 | 模式不是 `reserved2` | 工具不可用 | [E.0b](../TROUBLESHOOTING.md#e0b-再查是不是模式白名单挡住了) | ✅ |
 | 白名单没放行 | 完全不响应 | [E3](../TROUBLESHOOTING.md#e3-白名单没命中) | ✅ |
 | 唤醒配置睡死 | 只有 @ 才理人 | [E4](../TROUBLESHOOTING.md#e4-唤醒配置把它自己睡死了) | ✅ |
+| **反复「会话繁忙」+ 一句不回** | 回合卡住，忙到 30 分钟租约到期 | [E.8](../TROUBLESHOOTING.md#e8-日志反复会话繁忙暂存唤醒原因ai-一句不回) + [SESSION-BUSY.md](SESSION-BUSY.md) | ✅ 2026-10-27 |
 | 被本地限流 | 日志 `限流` | [E5](../TROUBLESHOOTING.md#e5-消息发出去了但-ai-被限流) | ✅ |
 | 模型余额/额度 | 模型侧报错 | [E7](../TROUBLESHOOTING.md#e7-模型侧报错余额额度) + [O5](../TROUBLESHOOTING.md#o5-deepseek-平台级-429和本地限流是两回事) | ✅ |
 | 首次说话没弹人设菜单 | 直接默认人格 | [F1](../TROUBLESHOOTING.md#f1-第一次说话没弹选人设菜单) | ✅ |

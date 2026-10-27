@@ -164,6 +164,7 @@ roles/<任意文件名>.md
 | `test-compat.mjs` | `compat.json` 动作清单 ↔ 代码、平台能力 ↔ 闸门 | 加接口/加动作/改平台行为 |
 | `test-packaging.mjs` | 单一锁文件、LICENSE 纯净、**归属完整性**（角色卡/素材） | 加依赖/加素材 |
 | `test-first-run.mjs` | `first-run.ps1` 的契约：不覆盖 config、不代启 SnowLuma、DryRun 行为 | 动首次引导脚本 |
+| `diag-session-busy.mjs` | 会话繁忙诊断（忙着的原因/时长/租约/暂存数） | 用户报「AI 不回」且日志有「会话繁忙」时 |
 | `preflight.mjs` | 全新环境体检（Node/依赖/config/端口/DSH/SnowLuma/人格卡） | **首次安装、换机器**：`node scripts/preflight.mjs`（装依赖前就能跑） |
 | `test-console.mjs` | 控制台真机冒烟（打 `127.0.0.1:3100`） | **不在审计里**，手动：`node scripts/test-console.mjs` |
 | `probe-dsh-providers.mjs` | 打印 DSH 的 provider 分组与模型接入 settings 路径（接新模型前先跑） | 换 provider / 换 DSH 版本 |

@@ -100,6 +100,8 @@ const tests = [
   'test-launcher-scripts.mjs',
   // 首次运行引导 first-run.ps1：不覆盖 config.json、不代启 SnowLuma、DryRun 行为。
   'test-first-run.mjs',
+  // 「会话繁忙」静默失效面：诊断脚本 / status 快照 / 10+30 分钟两道租约 / 文档锚点。
+  'test-session-busy.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

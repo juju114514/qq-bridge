@@ -67,6 +67,7 @@ DSH/                         ← 工作区根（不是仓库根）
 | `deploy/first-run.sh` | **首次运行引导（Linux/macOS）**：与 `scripts/first-run.ps1` 同五步、同两条硬边界、同退出码（0/1/2/3）。参数 `--dry-run` / `--skip-npm` / `--skip-preset` / `--start` / `--non-interactive` / `--root` / `--node` | 保留（Linux 新用户入口） |
 | `first-run.ps1` | **首次运行引导（Windows）**：体检 → `npm install` → 生成/校验 `config.json` → `setup-dsh.mjs` →（可选）`start-bridge.ps1`。任一步失败即停并给文档锚点；幂等；`-DryRun` 只打印计划。**绝不覆盖已有 config.json、不代启 SnowLuma** | 保留（新用户入口） |
 | `test-first-run.mjs` | 上面两个脚本的契约测试（结构 + DryRun 行为 + 两条硬边界；shell 版另有 bash -n 与 LF/无 BOM 断言） | 保留 |
+| `diag-session-busy.mjs` | **会话繁忙诊断**：读 `/api/status` 的 `socialV2Busy`，列出每个忙着的会话（原因/回合时长/上锁时长/租约剩余/暂存数），「看起来卡住」时退出码 1。支持 `--key` / `--json` / `--base` | 保留（E.8 的配套工具） |
 | `preflight.mjs` | **全新机器环境体检**（不依赖 node_modules，装依赖前就能跑）：Node 版本、仓库完整性、依赖、config.json 与关键字段、state 可写、端口占用、DSH/SnowLuma 可达性、人格卡元数据；每条带 TROUBLESHOOTING 锚点。退出码 0/1/2 | 保留（首次安装/换机器必跑） |
 | `probe-dsh-providers.mjs` | **模型接入探针**：打印 `session.modelCatalog` 的 provider 分组与 settings 里与模型接入有关的路径（`providers.*` / `apiKeyEnv` / `baseURL` / `allowedModels`），值一律脱敏 | 接新 provider / 换 DSH 版本时先跑 |
 | `route-list-all.mjs` | 路由清单（`bridge.js` + `src/api/*` + `src/http/*`）。注：`route-inventory.mjs` 只扫 `bridge.js`，重构后它会漏报 | 保留（对账用） |
@@ -90,7 +91,7 @@ DSH/                         ← 工作区根（不是仓库根）
 docs/
 ├── README.md     # 文档索引（每篇一句话 + 是否仍然有效）  ← 先看这个
 ├── FOLDER_MAP.md # 本文件
-├── guides/       # 面向使用者/运维：DSH_SETUP / DSH_020_ADAPTATION / SECURITY_BASELINE / TOKEN_USAGE_CONSOLE / CONSOLE-UI-TESTING / PRIVACY / PROJECT_GUIDE / VOICE / LAUNCHER / MIGRATION / **MODELS**
+├── guides/       # 面向使用者/运维：DSH_SETUP / DSH_020_ADAPTATION / SECURITY_BASELINE / TOKEN_USAGE_CONSOLE / CONSOLE-UI-TESTING / PRIVACY / PROJECT_GUIDE / VOICE / LAUNCHER / MIGRATION / MODELS / **SESSION-BUSY**
 ├── design/       # 设计与规划：GEN2_SIMULATION_PLAN / SOCIAL_MODE_PLAN / DSH_QQ_TOOLS_PLAN / 真人语感策略
 ├── research/     # 调研：SnowLuma功能调研 / 免打扰 / 表情包 / 本地模型选型
 ├── audits/       # 审查与优化报告（最新的全项目体检是 AUDIT_REPORT_2026-09-20）

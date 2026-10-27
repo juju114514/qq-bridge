@@ -27,6 +27,7 @@ export function createStatusHandler(deps) {
     snowlumaHealthSnapshot,
     readActivityTail,
     roleName,
+    socialV2BusySnapshot,
   } = deps;
 
   /**
@@ -59,6 +60,9 @@ export function createStatusHandler(deps) {
       roleId: rs.role ?? null,
       roleMode: rs.mode ?? 'active',
       dshReady: isDshReady(),
+      // 「会话为什么忙」：只给操作者（含 busy 原因 / 已忙多久 / 暂存唤醒数 / 租约剩余）。
+      // agent 视图不给：会话级主体不该看到别的会话的状态。
+      socialV2Busy: typeof socialV2BusySnapshot === 'function' ? socialV2BusySnapshot() : [],
       ownerQQ: cfg.ownerQQ ?? null,
       allowGroups: cfg.allow?.groups ?? [],
       allowPrivate: cfg.allow?.private ?? [],
