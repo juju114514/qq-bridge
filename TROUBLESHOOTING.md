@@ -614,6 +614,9 @@ git checkout -- dsh/agent-presets/
 
 **解决**：调大 `media.maxModelBytes` / `maxLongEdge`；或让它只描述不细看。
 
+> **唱歌/语音相关的链路说明**（为什么"一字一顿"、为什么高音发薄、RVC 训练跑到哪一步）见
+> [docs/guides/SINGING.md](docs/guides/SINGING.md)。
+
 ### H2. 语音发出去「没有声音」
 
 **原因**（我们踩过）：源音频音量太低（例如 −34 dB）。
