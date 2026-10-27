@@ -23,11 +23,21 @@ QQ ──► SnowLuma（OneBot v11）──► 本桥接 ──► DSH ──►
 | --- | --- |
 | **聊天与人格** | 多会话人格卡（身份存文件里的 `id`，改名不影响绑定）、首次使用引导、`/role` 热切换、按需小节注入 |
 | **群聊拟人** | 分条发送 + 随机间隔、潜水/唤醒状态机（`wakeConfig`）、拍一拍、收藏表情/斗图、黑话学习 |
-| **媒体** | 识图看表情、语音（TTS 现场合成 / 语音库）、唱歌、点歌（网易云）、合并转发、表情包管理 —— 唱歌的四条链路与踩坑见 [SINGING.md](docs/guides/SINGING.md) |
+| **媒体** | 识图看表情（长图自动切片 + OCR 取字）、语音（TTS 现场合成 / 语音库）、唱歌、点歌（网易云）、合并转发、表情包管理 —— 唱歌的四条链路与踩坑见 [SINGING.md](docs/guides/SINGING.md) |
+| **视频** | **模型看不了视频，所以降维**：抽 9 帧拼成一张 3×3 故事板（每格烧时间戳）+ 音轨 ASR 转写；两种模式 `storyboard` / `transcript`。详见 [VIDEO.md](docs/guides/VIDEO.md) |
+| **视频链接** | 贴个链接就能看：**B站 / 抖音 / 快手 / 小红书 / YouTube** 白名单（其他站点一律拒）。yt-dlp 只下前 180 秒；抖音因签名限制走专用解析器（分享页 `play_addr`）；cookie 有主动体检 |
 | **控制台** | `127.0.0.1:3100`：人格、黑话、表情库、令牌与花费看板、会话与工作区、安全 |
 | **运维** | 守护进程（崩溃自动拉起、单实例、退避重启）、一键安装/体检、登录自启、换机器迁移清单 |
 | **安全** | 自带 OneBot 客户端（不依赖第三方 SDK）、SSRF 五道闸、出站脱敏、控制台令牌、`state/` ACL |
 | **模型** | `deepseek-official`（✅ 已测试）｜`openai` / GPT 等兼容 provider（⚠️ **已接入、未测试**，见 [MODELS.md](docs/guides/MODELS.md)） |
+
+## 最近更新
+
+| 日期 | 内容 | 看这里 |
+| --- | --- | --- |
+| 2026-10-28 | **视频理解**：故事板 + 转写；五站链接识别；抖音专用解析器；cookie 体检 | [CHANGELOG](CHANGELOG.md) / [VIDEO.md](docs/guides/VIDEO.md) |
+| 2026-10-28 | **技能**：引入 `caveman`（只压日志和输出，代码逐字）；`scripts/install-skills.ps1` 可装可卸 | [SKILLS.md](docs/guides/SKILLS.md) |
+| 2026-10-28 | 修复 `package.json` 的 postinstall（少引号 + 乱码，曾让 `npm install` 必失败） | [CHANGELOG](CHANGELOG.md) |
 
 ## 装起来
 
@@ -72,7 +82,7 @@ cd qq-bridge
 
 | 层 | 命令 | 说明 |
 | --- | --- | --- |
-| 离线回归 | `node scripts/test-audit.mjs` | **44 套**，不需要 SnowLuma / QQ / DSH；CI 也跑其中一部分 |
+| 离线回归 | `node scripts/test-audit.mjs` | **50 套**，不需要 SnowLuma / QQ / DSH；CI 也跑其中一部分 |
 | 活体自测 | `powershell -File scripts/live-full-test.ps1` | **54 项**，对着活的桥接跑，**会真的发 QQ 消息**（只发你自己私聊，`-MaxSends` 限流） |
 | 控制台冒烟 | `node scripts/test-console.mjs` | 打 `127.0.0.1:3100` 的真机冒烟 |
 
@@ -88,7 +98,12 @@ cd qq-bridge
 ---
 
 
-# QQ ↔ DeepSeek Harness 桥接
+---
+
+## 附：上游 README（原样保留）
+
+> 下面是上游 `Derpyu520/qq-bridge` 的 README 正文，保留在这里是为了**与上游逐项对照**
+> （版本适配历史、协议代次、安全守卫对账等细节都在里面）。本分支的改动清单见 [FORK.md](FORK.md)。
 
 **English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
 

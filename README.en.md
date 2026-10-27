@@ -27,10 +27,20 @@ QQ ──► SnowLuma (OneBot v11) ──► this bridge ──► DSH ──►
 | **Chat & persona** | per-conversation persona cards (identity lives in the file's `id`, renaming keeps bindings), first-run guidance, `/role` hot switch, on-demand sections |
 | **Group behaviour** | split messages + random gaps, dive/wake state machine (`wakeConfig`), pokes, sticker battles, slang learning |
 | **Media** | image understanding, voice (live TTS / voice library), singing, song requests, forwarded chats, sticker library |
+| **Video** | **models can't watch video, so we shrink it**: 9 frames tiled into one 3×3 storyboard (each cell burns a timestamp) + ASR transcript of the audio track; two modes, `storyboard` / `transcript` — see [VIDEO.md](docs/guides/VIDEO.md) |
+| **Video links** | paste a link and it can watch it: allowlisted **Bilibili / Douyin / Kuaishou / Xiaohongshu / YouTube** (everything else is refused). yt-dlp fetches only the first 180 s; Douyin goes through a dedicated resolver (share-page `play_addr`) because of its signature requirement; cookies get a health check |
 | **Console** | `127.0.0.1:3100`: personas, slang, stickers, token & cost dashboard, sessions/workspace, security |
 | **Ops** | supervisor (auto-restart, single instance, backoff), one-command install & preflight, login autostart, machine-migration checklist |
 | **Security** | built-in OneBot client (no third-party SDK), five-layer SSRF gate, outbound redaction, console token, `state/` ACL |
 | **Models** | `deepseek-official` (✅ tested) · `openai` / GPT-compatible (⚠️ **wired up, NOT tested** — see [MODELS.md](docs/guides/MODELS.md)) |
+
+## Recent changes
+
+| Date | What | Where |
+| --- | --- | --- |
+| 2026-10-28 | **Video understanding**: storyboard + transcript; five-site link support; Douyin resolver; cookie health check | [CHANGELOG](CHANGELOG.md) / [VIDEO.md](docs/guides/VIDEO.md) |
+| 2026-10-28 | **Skills**: vendored `caveman` (compress logs and tool output only — code stays verbatim); `scripts/install-skills.ps1` installs/uninstalls | [SKILLS.md](docs/guides/SKILLS.md) |
+| 2026-10-28 | Fixed `package.json` postinstall (missing quote + mojibake, which broke every `npm install`) | [CHANGELOG](CHANGELOG.md) |
 
 ## Install
 
