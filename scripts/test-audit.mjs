@@ -112,6 +112,8 @@ const tests = [
   'test-video-link.mjs',
   // 抖音专用解析器：取 id / cookie 域名过滤 / 去水印 / 分享页解析 / 接线。
   'test-video-resolve.mjs',
+  // DSH 端口自动发现：平台闸门 / HTTP 探活 / 候选顺序 / 自愈接线。
+  'test-dsh-port.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

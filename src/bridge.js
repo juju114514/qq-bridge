@@ -37,6 +37,7 @@ import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcri
 import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js';
 import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
+import { discoverDshBaseUrl } from './dsh-port.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
@@ -890,6 +891,30 @@ function normalizeIdList(value) {
 }
 
 // ── 配置 ────────────────────────────────────────────────────────────────────
+/**
+ * 只改 `dsh.baseUrl` 一个字段并写回 config.json。
+ *
+ * 为什么不用 persistSnowLumaEndpoint：它只认 snowluma.* 的字段（accessToken/wsUrl/httpUrl），
+ * 传 dshBaseUrl 进去会被静默忽略 —— 看起来"写成功了"，实际上文件没变。
+ *
+ * 编码约定（被 BOM 坑过）：读时吃掉 BOM，写回时**原样保留**用户文件的 BOM 状态；
+ * 全部一致时不写文件（幂等，避免 git 里出现整文件重写）。
+ */
+function persistDshBaseUrl(cfgPath, baseUrl) {
+  const value = String(baseUrl ?? '').trim();
+  if (!value) return { updated: false, changed: {} };
+  let text = fs.readFileSync(cfgPath, 'utf8');
+  const hadBom = text.charCodeAt(0) === 0xFEFF;
+  if (hadBom) text = text.slice(1);
+  const cfg = JSON.parse(text);
+  const current = String(cfg.dsh?.baseUrl ?? '');
+  if (current === value) return { updated: false, changed: {} };
+  cfg.dsh = { ...(cfg.dsh ?? {}), baseUrl: value };
+  const serialized = JSON.stringify(cfg, null, 2) + '\n';
+  fs.writeFileSync(cfgPath, hadBom ? `\uFEFF${serialized}` : serialized, 'utf8');
+  return { updated: true, changed: { 'dsh.baseUrl': { from: current || null, to: value } } };
+}
+
 function loadConfig() {
   const p = path.join(ROOT, 'config.json');
   const file = readJsonSafe(p, null, true);
@@ -2799,7 +2824,9 @@ async function main() {
   }
 
   // DSH 侧
-  const api = new NodeApiClient(cfg.dsh.baseUrl, undefined, {
+  // 用 let：DSH 每次重启都换端口，连通失败时会自动发现新端口、写回 config.json，
+  // 然后**重建**这个客户端（见 ensureDshBaseUrl）。
+  let api = new NodeApiClient(cfg.dsh.baseUrl, undefined, {
     token: cfg.dsh.authToken,
     // true=用户在 config.json 里显式填的；false=从日志猜的。猜来的不优先于离线铸造。
     tokenExplicit: cfg.dsh.authTokenExplicit === true,
@@ -3353,6 +3380,44 @@ async function main() {
   // 换机器后最常见的故障就是「config 里的 dsh.baseUrl 还是旧端口」，可叹的是
   // 原实现把异常吞进 `catch {}`，用户只看到「DSH 不可用（重启中？）」——方向完全错了。
   let dshFailLogged = '';
+
+  /**
+   * DSH 端口自愈。
+   *
+   * 为什么必须有：**DSH 每次启动都换一个随机回环端口**（实测 54694 → 65452 → 50075）。
+   * 以前只能让用户手改 `config.json`，而 QQ 侧的症状只是「⏳ 系统服务重启中，消息已排队」——
+   * 根本指不到"端口变了"这里。现在连不上就先问系统"DSH 在听哪个端口"，找到就写回配置并重建客户端。
+   */
+  const ensureDshBaseUrl = async (reason) => {
+    const found = await discoverDshBaseUrl({
+      preferred: cfg.dsh.baseUrl,
+      extraPorts: [Number(cfg.dsh.port) || 0]
+    });
+    if (!found.baseUrl) {
+      log(`[dsh] 连不上，也没探测到新的 DSH 端口（试过：${found.candidates.join(', ') || '无'}）；` +
+        '请确认 DeepSeek Harness 已启动并登录。');
+      return false;
+    }
+    if (found.baseUrl === cfg.dsh.baseUrl) return false;
+    log(`[dsh] 端口漂移：${cfg.dsh.baseUrl} → ${found.baseUrl}（原因：${reason}），已自动更新 config.json`);
+    cfg.dsh.baseUrl = found.baseUrl;
+    try {
+      const saved = persistDshBaseUrl(path.join(ROOT, 'config.json'), found.baseUrl);
+      if (!saved.updated) log('[dsh] config.json 无变化（可能已是新值）');
+    } catch (error) {
+      log(`[dsh] 写回 config.json 失败（不影响本次运行）：${error?.message ?? error}`);
+    }
+    api = new NodeApiClient(cfg.dsh.baseUrl, undefined, {
+      token: cfg.dsh.authToken,
+      tokenExplicit: cfg.dsh.authTokenExplicit === true,
+      header: cfg.dsh.authHeader,
+      prefix: cfg.dsh.authPrefix,
+      allowRemote: cfg.dsh.allowRemote === true
+    });
+    dshFailLogged = '';
+    return true;
+  };
+
   const checkDsh = async () => {
     let ok = false;
     let failReason = '';
@@ -3363,10 +3428,22 @@ async function main() {
       failReason = String(error?.message ?? error ?? 'unknown');
     }
     if (!ok && failReason !== dshFailLogged) {
-      dshFailLogged = failReason;
-      log(`⚠️ 连不上 DSH（${cfg.dsh.baseUrl}）：${failReason}`);
-      log('   换过机器/重装过 DSH 时端口通常变了：把实际端口写进 config.json 的 dsh.baseUrl 后重启桥接；');
-      log('   Windows 可跑 launcher/sync-dsh-port.ps1；Linux 与迁移步骤见 docs/guides/MIGRATION.md');
+      // 先自愈（DSH 端口每次重启都变）；自愈不成再提示，提示要指向真实原因
+      if (await ensureDshBaseUrl(failReason)) {
+        try {
+          await api.settings.describe({});
+          ok = true;
+          log('[dsh] 已用新端口连通');
+        } catch (error) {
+          log(`[dsh] 换端口后仍连不上：${error?.message ?? error}`);
+        }
+      }
+      if (!ok) {
+        dshFailLogged = failReason;
+        log(`⚠️ 连不上 DSH（${cfg.dsh.baseUrl}）：${failReason}`);
+        log('   DSH 每次启动都会换端口；桥接会自动探测并写回 config.json。');
+        log('   一直探测不到就确认 DeepSeek Harness 已启动并登录（docs/guides/FRESH-INSTALL.md 阶段 4）。');
+      }
     }
     if (ok) {
       dshFailLogged = '';

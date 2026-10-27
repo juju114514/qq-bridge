@@ -674,6 +674,26 @@ Invoke-RestMethod http://127.0.0.1:5111/health
 
 完整管线与坑表见 [docs/guides/VIDEO.md](docs/guides/VIDEO.md)。
 
+### H5c. QQ 里回「⏳ 系统服务重启中，消息已排队」
+
+这句话来自桥接：**DSH 连不上**（`dshReady=false`），消息进队列等它恢复。
+
+最常见的原因只有一个：**DSH 每次启动都换一个随机回环端口**
+（实测 54694 → 65452 → 50075）。以前要手动把新端口写进 `config.json` 的 `dsh.baseUrl` 再重启桥接，
+而 QQ 侧的症状完全指不到这里。
+
+**2026-10-28 起桥接会自己修**：连不上时先问系统「DSH 在听哪个端口」
+（进程名匹配 `DeepSeek|dsh` → `Get-NetTCPConnection` → 逐个 HTTP 探活），
+找到就写回 `config.json` 并重建客户端，日志里会有一行：
+
+```
+[dsh] 端口漂移：http://127.0.0.1:65452 → http://127.0.0.1:50075（原因：…），已自动更新 config.json
+[dsh] 已用新端口连通
+```
+
+如果一直看到「连不上，也没探测到新的 DSH 端口」，那是 DSH 真的没起来（没登录/被关掉），
+不是端口问题 —— 去 [docs/guides/FRESH-INSTALL.md](docs/guides/FRESH-INSTALL.md) 阶段 4。
+
 ### H6. 点歌失败
 
 **原因**：网易云接口风控/该曲无版权。
