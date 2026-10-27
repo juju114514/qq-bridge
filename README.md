@@ -161,6 +161,18 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 
 手装流程见 [SETUP.md](SETUP.md)。
 
+## 全新机器装之前：先跑体检
+
+```bash
+node scripts/preflight.mjs
+```
+
+它不依赖 `npm install`（只用 Node 内置模块），逐项检查：Node 版本、仓库完整性、
+依赖、`config.json` 与关键字段、`state/` 可写、端口占用、DSH 与 SnowLuma 可达性、
+人格卡元数据。每条结论都带「下一步看哪一节」。
+
+会踩的坑与对应排查的完整清单（按阶段组织）：**[docs/guides/FRESH-INSTALL.md](docs/guides/FRESH-INSTALL.md)**。
+
 ## 模型接入（DeepSeek 已测 / GPT 等未测）
 
 桥接**不直连任何模型厂商**：它把 `config.json` 里的 `dsh.provider` / `dsh.model` /

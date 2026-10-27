@@ -103,6 +103,41 @@ node --version
 npm install --foreground-scripts
 ```
 
+### A5b. `npm install` 末尾打印 `[qq-bridge] 依赖已就绪（不再修补任何第三方包）`
+
+**这不是错误。** 2026-10-27 起 `postinstall` 只打印这一行：
+`@snowluma/*` 依赖已移除（改用自带的 `src/onebot-ws.js`），仓库不再修改任何第三方包。
+
+判断标准：**只要退出码是 0 就没问题**。真出错时 npm 会打印 `ELIFECYCLE` / `ERR!`。
+
+### A8. `npm` 本身不存在（`npm : 无法将"npm"项识别为`）
+
+**原因**：精简版/绿色版 Node 只带 `node.exe`；或 npm 目录没进 PATH。
+
+```powershell
+node -v          # 有版本 → node 在
+where.exe npm    # 找不到 → 没有 npm
+```
+
+装官方 Node（自带 npm）后**重开终端**；临时救急只补 PATH：
+
+```powershell
+$env:Path = "C:\Program Files\nodejs;" + $env:Path
+```
+
+注意：`node scripts/preflight.mjs` 只依赖内置模块，没有 npm 也能跑。
+
+### A9. PowerShell 拒绝执行脚本（`因为在此系统上禁止运行脚本`）
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass      # 只影响本次会话（推荐先试）
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned  # 影响当前用户
+# 或者不改策略，调用时绕过：
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-bridge.ps1
+```
+
+> 桌面快捷方式内置了 `-ExecutionPolicy Bypass`：**双击能跑、终端里跑报错**就是这条。
+
 ### A6. 脚本报 `意外标记`、中文变乱码、`表达式或语句中包含意外的标记`
 
 **原因**：PowerShell 5.1 读**无 BOM 的 UTF-8** 会按 ANSI 解析，中文注释/字符串被打乱，导致语法错误。
@@ -214,6 +249,18 @@ git checkout -- dsh/agent-presets/
 ```
 
 然后重新执行 DSH 端的 preset 安装（见 `SETUP.md` 的「DSH 端安装」）。
+
+### C3b. `dshReady=true` 但工具不对 / 行为像没接 QQ（preset 没装）
+
+`qq-chat` 与 `qq-chat-v2` 这两个 preset 装在 **DSH 自己的 home** 里，不在本仓库：
+只 clone 仓库、不装 preset，表现是「连得上、模式判断怪、AI 没有 QQ 工具」。
+
+```powershell
+node scripts/setup-dsh.mjs          # 幂等安装/更新 preset
+node scripts/verify-adaptation.mjs  # 或 npm run verify:adaptation
+```
+
+换机器时最容易漏这一步（见 [docs/guides/MIGRATION.md](docs/guides/MIGRATION.md)）。
 
 ### C4. 桥接日志 `DSH 已就绪（模式: reserved2）` 但 AI 还是不回
 
