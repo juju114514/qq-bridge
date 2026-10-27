@@ -101,6 +101,9 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 | --- | --- | --- |
 | 故事板有黑格 / 只出几格 | 拿不到时长，按 180s 均匀取点 → 取到片外 | **必须先 `probeVideo`**；拿不到时长就退化成"只取第一帧" |
 | 故事板糊得看不清 | 格子太宽导致整张超过 1280，被二次缩小 | `cellW = min(想要的, (maxLongEdge - 间距)/cols)`，代码里已夹 |
+| **视频被当成图片、模型啥也拿不到** | **QQ 实测：视频不是 `video` 段，而是 `image` 段**，`file` 是 `<hash>.mp4`、`url` 指向 `multimedia.nt.qq.com.cn` | 按**扩展名**兜底识别（`mp4/mov/m4v/webm/mkv/flv/avi/3gp`）→ 归成 `kind:'video'`；消费侧也再兜一次（历史消息里 kind 还是 image） |
+| 请求直接 500 / 桥接崩了 | 只在运行期才炸的 `ReferenceError`：漏 `import fs`、漏 `import probeVideo`、变量名写成 `modelVideoLimits` | 静态断言兜底：`test-video-frames.mjs` 检查 bridge 的 import 行里包含所有用到的跨模块函数 |
+| 转写栏是空的，既没文字也没原因 | ASR **成功但没识别出人声**（静音/纯音乐/纯画面录屏），代码把空结果静默丢了 | 空结果也要写「ASR 没识别到人声（静音/纯音乐/只有画面）」——有痕迹模型才知道不是漏了 |
 | 时间戳没烧上 | `drawtext` 找不到字体（Linux/无字体包） | Windows 用 `fontfile='C\:/Windows/Fonts/consola.ttf'`；Linux 装 DejaVu 后改路径 |
 | 视频下载把内存吃满 | 直接用 `safeFetchBuffer`（整段进内存） | 用 `safeDownloadToFile` 流式写盘 |
 | 内网/回环地址被拒 | 这是**故意的** SSRF 防护 | 别用 `http://127.0.0.1` 测；要本地测就先临时改成 file:// 读（还是走同一条 CLI 逻辑） |
@@ -109,6 +112,21 @@ QQ 视频消息（OneBot v11 的 video 段：file / url / duration）
 | 视频消息里只有 `file` 没有 `url` | 网关实现差异 | 目前会明确报"网关没有给视频地址"，需要网关侧支持或改用文件发送 |
 
 ---
+
+## 五之二、真机验证（2026-10-27，真实 QQ 视频）
+
+用户在私聊发了一段 **18 秒的录屏**（手机录屏：某软件的安全设置页）。链路表现：
+
+| 环节 | 实测 |
+| --- | --- |
+| 消息入库 | 18s 视频以 **image 段**到达，`file=210ae5….mp4`，`url` 是 `multimedia.nt.qq.com.cn/download?...&orgfmt=t264` |
+| 下载 | 流式下载通过（同一条 URL 带 rkey，可能过期，所以要立刻下） |
+| 探测 | `probeVideo` 读到 18s；**有音轨但全程无人声** |
+| 抽帧 | 9 帧 3×3，**1.8 秒**，故事板 **79 KB**，9 个时间戳从 `00:00:00` 到 `00:00:16.234` |
+| 转写 | ASR 跑通但识别为空 → 交付里写「（没有声音转写：ASR 没识别到人声（静音/纯音乐/只有画面））」 |
+
+**结论**：链路可用。录屏类视频靠故事板能看清页面标题与小标题（420px/格，正文偏小），
+纯口播/会议类才是 `mode=transcript` 的主场。
 
 ## 六、测试
 

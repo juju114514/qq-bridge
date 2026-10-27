@@ -662,6 +662,10 @@ Test-Path D:\QQBot\ffmpeg\ffprobe.exe
 Invoke-RestMethod http://127.0.0.1:5111/health
 ```
 
+**最容易踩的一条（2026-10-27 真机）**：QQ 发视频时，网关给的是 **`image` 段 + `file=xxx.mp4`**，
+不是 `video` 段。早期只判 `seg.type==='video'` → 视频被当图片抓 → 嗅探成"不是有效图片" →
+模型什么都拿不到。现在按扩展名兜底识别，历史消息也在消费侧再兜一次。
+
 完整管线与坑表见 [docs/guides/VIDEO.md](docs/guides/VIDEO.md)。
 
 ### H6. 点歌失败

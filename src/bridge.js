@@ -30,9 +30,10 @@ import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-p
 import { SENSITIVE_RE } from './sensitive.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage, describeAge } from './qq-model-view.js';
-import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
-import { normalizeImageForModel } from './media-normalize.js';
+import { safeFetchBuffer, safeDownloadToFile, looksLikeImageBuffer } from './safe-fetch.js';
+import { normalizeImageForModel, normalizeVideoForModel, probeVideo, extractVideoAudio } from './media-normalize.js';
 import { ocrAvailable, ocrImage } from './ocr.js';
+import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcribe.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
@@ -1694,6 +1695,15 @@ function sanitizeMediaSummary(value, max = 60) {
 // emoji_id/emoji_package_id/key/url**（实测：sub_type 可能是 0，靠 emoji_id 区分），
 // 部分网关实现则用 mface 段。以前只留 file/url/subType/summary，emoji 字段被丢掉，
 // 一旦 get_image 取不到（市场表情不在网关缓存里），就再也没有其它可用的兜底地址。
+// QQ（SnowLuma 网关）实测：用户发的视频不是 `video` 段，而是 **`image` 段**，
+// file 是 `<xxxx>.mp4`、url 指向 multimedia.nt.qq.com.cn。最初只按 seg.type==='video'
+// 判断，于是视频被当成图片走 image 链路 → 嗅探成"不是有效图片" → 模型什么也拿不到。
+// 所以这里按**扩展名**兜底识别；上游将来真发 video 段时两条路都能走。
+const VIDEO_REF_RE = /\.(mp4|mov|m4v|webm|mkv|flv|avi|3gp)(\?|#|$)/i;
+function looksLikeVideoRef(...refs) {
+  return refs.some((ref) => VIDEO_REF_RE.test(String(ref ?? '').trim()));
+}
+
 function extractMediaFromSegments(segments) {
   const media = [];
   for (const seg of segments ?? []) {
@@ -1705,6 +1715,17 @@ function extractMediaFromSegments(segments) {
       emojiKey: String(d.key ?? '')
     };
     if (seg.type === 'image') {
+      // 先判"看起来是视频"：QQ 把视频塞进 image 段（见上面的注释）
+      if (looksLikeVideoRef(d.file, d.url)) {
+        media.push({
+          kind: 'video',
+          file: String(d.file ?? ''),
+          url: String(d.url ?? ''),
+          durationSec: Number(d.duration ?? d.seconds ?? 0) || 0,
+          thumb: String(d.thumb ?? '')
+        });
+        continue;
+      }
       media.push({
         kind: 'image',
         file: String(d.file ?? ''),
@@ -6092,14 +6113,18 @@ async function main() {
       let asrNote = '';
       if (modelVideoConfig.asr && meta.hasAudio) {
         const aud = await extractVideoAudio(got.file, {
-          ffmpegPath: modelVideoLimits.ffmpegPath,
-          videoMaxSeconds: modelVideoLimits.videoMaxSeconds
+          ffmpegPath: modelMediaLimits.ffmpegPath,
+          videoMaxSeconds: modelMediaLimits.videoMaxSeconds
         });
         if (aud.ok) {
           const tr = await transcribeFile(aud.file, { baseUrl: modelVideoConfig.asrUrl, timeoutMs: modelVideoConfig.asrTimeoutMs });
           aud.cleanup?.();
-          if (tr.ok) transcript = tr.text;
-          else asrNote = tr.error;
+          if (tr.ok) {
+            transcript = tr.text;
+            // ASR 成功但一个字都没识别出来（静音/纯音乐/纯画面录屏）：
+            // 必须留下痕迹，否则交付里既没有转写也没有原因，模型会以为"漏了"。
+            if (!String(transcript).trim()) asrNote = 'ASR 没识别到人声（静音/纯音乐/只有画面）';
+          } else asrNote = tr.error;
         } else {
           asrNote = aud.error;
         }
@@ -6116,7 +6141,7 @@ async function main() {
         };
       }
       const board = await normalizeVideoForModel(got.file, {
-        ...modelVideoLimits,
+        ...modelMediaLimits,
         durationSec: dur,
         width: meta.width,
         height: meta.height
@@ -6446,6 +6471,31 @@ async function main() {
           data: got.board.buffer.toString('base64'),
           text: got.note
         });
+      } else if (looksLikeVideoRef(media?.file, media?.url)) {
+        // 防御：上线前存进 state 的老消息 kind 还是 image（file 却是 .mp4），
+        // 这里按扩展名再兜一次，避免"历史视频永远读不了"。
+        const base = {
+          index,
+          kind: 'video',
+          ...(media.file ? { file: String(media.file) } : {}),
+          ...(media.url ? { url: String(media.url) } : {})
+        };
+        if (!modelVideoConfig.enabled) {
+          out.push({ ...base, text: '（视频理解未开启：config.json 的 socialV2.media.video.enabled=false）' });
+          continue;
+        }
+        const got = await videoToModelParts(media, index, opts.mode === 'transcript' ? 'transcript' : 'storyboard');
+        if (!got.ok) {
+          out.push({ ...base, text: `（视频读取失败：${got.error}）` });
+          continue;
+        }
+        if (got.textOnly) { out.push({ ...base, text: got.textOnly }); continue; }
+        if (totalBytes + got.board.buffer.length > MAX_MEDIA_BYTES) {
+          out.push({ ...base, text: '（视频故事板总大小超限，已跳过）' });
+          continue;
+        }
+        totalBytes += got.board.buffer.length;
+        out.push({ ...base, mimeType: got.board.mimeType, data: got.board.buffer.toString('base64'), text: got.note });
       } else {
         const img = await fetchOneBotImage(media);
         const kind = media.kind === 'sticker' ? 'sticker' : 'image';

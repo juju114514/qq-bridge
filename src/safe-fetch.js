@@ -6,6 +6,7 @@
 // - 手动跟随重定向，每一跳重新校验
 // - 响应体限量读取，每次请求有包含响应体的总时限
 import dns from 'node:dns';
+import fs from 'node:fs';
 import net from 'node:net';
 import http from 'node:http';
 import https from 'node:https';

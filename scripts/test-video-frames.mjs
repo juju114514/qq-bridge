@@ -121,6 +121,16 @@ await check('OCR/ASR 这类旁路服务都"只探测、不代启动"', () => {
   assert.match(asr, /reason/, '失败要带 reason 供降级判断');
 });
 
+await check('bridge 用到的跨模块函数都真的 import 了（连踩两次未定义）', () => {
+  const bridge = read('src/bridge.js');
+  const need = ['normalizeVideoForModel', 'probeVideo', 'extractVideoAudio', 'safeDownloadToFile',
+    'transcribeFile', 'formatTranscript'];
+  const importText = bridge.split('\n').filter((l) => l.startsWith('import ')).join('\n');
+  for (const name of need) {
+    assert.ok(new RegExp(`\\b${name}\\b`).test(importText), `bridge 没 import ${name}（运行时才会炸 ReferenceError）`);
+  }
+});
+
 await check('MCP 暴露 qq_get_message_video（两种 mode）', () => {
   const mcp = read('src/mcp-snowluma-safe.js');
   assert.match(mcp, /'qq_get_message_video'/);
