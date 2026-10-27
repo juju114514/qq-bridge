@@ -94,6 +94,13 @@ export function createSocialV2SendHandler(deps) {
       }
       if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return true; }
 
+      // 平台闸门：这两个功能 spawn 的是 powershell.exe。换到 Linux 后它会直接 ENOENT，
+      // 用户看到的是「启动合成失败：spawn powershell.exe ENOENT」—— 既没说是平台问题，
+      // 也没说怎么绕。这里提前给出可执行的提示（换机器时最常踩的一条）。
+      if (process.platform !== 'win32' && !process.env.QQBOT_SAY_SCRIPT) {
+        sendJson({ ok: false, error: `语音合成依赖 Windows PowerShell（当前是 ${process.platform}）；设 QQBOT_SAY_SCRIPT 指向平台自带的合成脚本可绕过` }, 400);
+        return true;
+      }
       const sayScript = process.env.QQBOT_SAY_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'speak.ps1');
       if (!fs.existsSync(sayScript)) {
         sendJson({ ok: false, error: `说话脚本不存在：${sayScript}（可用 QQBOT_SAY_SCRIPT 或 config.paths.tools 指定）` }, 500);
@@ -137,6 +144,10 @@ export function createSocialV2SendHandler(deps) {
       }
       if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return true; }
 
+      if (process.platform !== 'win32' && !process.env.QQBOT_SING_SCRIPT) {
+        sendJson({ ok: false, error: `唱歌依赖 Windows PowerShell（当前是 ${process.platform}）；设 QQBOT_SING_SCRIPT 指向平台自带脚本可绕过` }, 400);
+        return true;
+      }
       const singScript = process.env.QQBOT_SING_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'sing.ps1');
       if (!fs.existsSync(singScript)) {
         sendJson({ ok: false, error: `唱歌脚本不存在：${singScript}（可用 QQBOT_SING_SCRIPT 或 config.paths.tools 指定）` }, 500);

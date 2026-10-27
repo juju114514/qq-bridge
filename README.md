@@ -4,7 +4,7 @@
 
 > 常用命令速查：[COMMANDS.md](COMMANDS.md)
 >
-> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（96 条）
+> 🤖 **让 AI 帮你装/修**：先读 [AGENTS.md](AGENTS.md)（AI 入口）→ [AGENT-INSTALL.md](AGENT-INSTALL.md)（逐步清单）→ 出错查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)、[换机器迁移清单](docs/guides/MIGRATION.md)（96 条）
 
 ## 三步上手（换成你自己的 DeepSeek）
 

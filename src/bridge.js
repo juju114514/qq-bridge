@@ -4712,7 +4712,13 @@ async function main() {
             if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           }
           if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          const songScript = process.env.QQBOT_SONG_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1');
+          // 点歌同样依赖 powershell.exe（song.ps1 里还要 ffmpeg）：非 Windows 上直接说清楚，
+        // 别让用户对着 ENOENT 猜。
+        if (process.platform !== 'win32' && !process.env.QQBOT_SONG_SCRIPT) {
+          sendJson({ ok: false, error: `点歌依赖 Windows PowerShell（当前是 ${process.platform}）；设 QQBOT_SONG_SCRIPT 指向平台自带脚本可绕过` }, 400);
+          return true;
+        }
+        const songScript = process.env.QQBOT_SONG_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1');
           if (!fs.existsSync(songScript)) { sendJson({ ok: false, error: '点歌脚本不存在' }, 500); return; }
           const nameFile = path.join(os.tmpdir(), `qq-song-${Date.now()}.txt`);
           try { fs.writeFileSync(nameFile, name, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写歌名文件失败：${error?.message ?? error}` }, 500); return; }
@@ -9681,6 +9687,10 @@ async function main() {
         if (!songTitle) { await sendToQQ(key, '格式：/song 歌名 [|母带] [|整首]'); return; }
         const cmdFile = path.join(os.tmpdir(), `qq-song-cmd-${Date.now()}.txt`);
         try { fs.writeFileSync(cmdFile, songTitle, 'utf8'); } catch { }
+        if (process.platform !== 'win32' && !process.env.QQBOT_SONG_SCRIPT) {
+          await sendToQQ(key, `点歌依赖 Windows PowerShell（当前是 ${process.platform}），这台机器上用不了。`);
+          return;
+        }
         const cmdArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (process.env.QQBOT_SONG_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1')), '-NameFile', cmdFile, '-Target', key];
         if (wantFull) cmdArgs.push('-Full'); else cmdArgs.push('-Seconds', '40');
         if (qualityArg) cmdArgs.push('-Quality', qualityArg);
