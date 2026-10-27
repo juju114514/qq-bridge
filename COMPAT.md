@@ -225,6 +225,20 @@ roles/<任意文件名>.md
 3. **失败必须降级**：非 Windows / 没装语言包 / 超时 → `{ok:false, reason}`，调用方退回切片，
    绝不让 OCR 抛异常打断整条消息。
 
+### 四之五、视频：只能「故事板 + 转写」，没有第二条路
+
+DSH 的图片入口只吃静态图，所以视频必须是**降维**而不是"传进去"：
+
+| 步骤 | 实现 | 关键约束 |
+| --- | --- | --- |
+| 下载 | `safeDownloadToFile`（同一个 `safe-fetch` 模块，同样的 SSRF 闸门） | **流式写盘**，不能整段进内存；默认上限 64 MB |
+| 探元数据 | `probeVideo`（ffprobe） | **拿不到时长就不能抽帧**（按上限取点会取到片外 → 黑格） |
+| 抽帧 | `normalizeVideoForModel`（ffmpeg `fps`→`scale`→`drawtext`→`tile`） | `cols × cellW + 间距 ≤ maxLongEdge`，否则整张二次缩小把字糊掉 |
+| 转写 | `extractVideoAudio` → `POST :5111/transcribe` | ASR **只探测不代启动**；不可用必须降级成"只有画面"并写明原因 |
+
+交付形态：`qq_get_message_video` 的 `mode=storyboard`（1 张拼图 + 转写）/ `mode=transcript`（只要文字）。
+`socialV2.media.video.enabled=false` 时行为与改动前完全一致（视频只显示 `[视频]`）。
+
 ## 五、失败特征表（症状 → 根因）
 
 | 症状 | 最可能根因 | 怎么确认 / 怎么修 |

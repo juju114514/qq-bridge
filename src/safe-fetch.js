@@ -419,3 +419,95 @@ export async function safeFetchBuffer(urlString, maxBytes = 8 * 1024 * 1024) {
   }
   throw new Error('重定向次数过多，已停止');
 }
+
+/**
+ * 把 URL **流式**下载到本地文件（视频要用：几十 MB 全塞内存不合适）。
+ *
+ * 与 safeFetch 同一套 SSRF 闸门：只 http(s)、解析后校验 IP 不在内网、
+ * 每跳重定向重新校验、限体积、限超时。区别只是正文直接写盘，不 decode 成文本。
+ *
+ * @returns {Promise<{ok:true, file:string, bytes:number, url:string, contentType:string}>}
+ */
+export async function safeDownloadToFile(urlString, destFile, { maxBytes = 64 * 1024 * 1024, timeoutMs = 120000 } = {}) {
+  validateLimit(maxBytes, 'maxBytes');
+  const imgExt = pathExtOf(destFile);
+  let { url, addresses } = await validateFetchUrl(urlString);
+  const MAX_REDIRECTS = 5;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    const result = await downloadOnce(url, addresses, destFile, maxBytes, timeoutMs);
+    if (REDIRECT_STATUSES.has(result.statusCode)) {
+      if (!result.redirect) throw new Error(`重定向缺少 Location: ${result.statusCode}`);
+      const next = new URL(result.redirect, url).toString();
+      ({ url, addresses } = await validateFetchUrl(next));
+      continue;
+    }
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      throw new Error(`下载失败：HTTP ${result.statusCode}（${imgExt}）`);
+    }
+    return { ok: true, file: destFile, bytes: result.bytes, url: url.toString(), contentType: result.contentType };
+  }
+  throw new Error('重定向次数过多，已停止');
+}
+
+function pathExtOf(file) {
+  const m = /\.([a-z0-9]+)$/i.exec(String(file ?? ''));
+  return m ? m[1] : '';
+}
+
+/** 单跳下载：钉住已校验的 IP，边下边写盘。 */
+function downloadOnce(url, addresses, destFile, maxBytes, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const list = (Array.isArray(addresses) ? addresses : [addresses]).filter(Boolean);
+    if (!list.length) { reject(new Error(`没有可用地址：${url.hostname}`)); return; }
+    const mod = url.protocol === 'https:' ? https : http;
+    const hostname = url.hostname.replace(/^\[|\]$/g, '');
+    let settled = false;
+    const fail = (error) => { if (!settled) { settled = true; try { fs.unlinkSync(destFile); } catch {} ; reject(error); } };
+    const done = (out) => { if (!settled) { settled = true; resolve(out); } };
+    let req;
+    try {
+      req = mod.request({
+        hostname: list[0],
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname + url.search,
+        method: 'GET',
+        headers: { host: url.host, 'user-agent': 'Mozilla/5.0 qq-bridge', accept: '*/*' },
+        servername: url.protocol === 'https:' && !net.isIP(hostname) ? hostname : undefined,
+        rejectUnauthorized: url.protocol === 'https:',
+        timeout: timeoutMs
+      }, (res) => {
+        const statusCode = res.statusCode || 0;
+        if (REDIRECT_STATUSES.has(statusCode)) {
+          done({ statusCode, redirect: String(res.headers.location || '') });
+          res.destroy();
+          return;
+        }
+        if (statusCode < 200 || statusCode >= 300) {
+          done({ statusCode, contentType: String(res.headers['content-type'] || '') });
+          res.destroy();
+          return;
+        }
+        const out = fs.createWriteStream(destFile);
+        let bytes = 0;
+        const contentType = String(res.headers['content-type'] || '');
+        res.on('data', (chunk) => {
+          bytes += chunk.length;
+          if (bytes > maxBytes) {
+            out.destroy();
+            fail(new Error(`文件超过大小上限（${Math.round(maxBytes / 1024 / 1024)}MB）`));
+            res.destroy();
+          }
+        });
+        res.on('error', fail);
+        res.pipe(out);
+        out.on('error', fail);
+        out.on('finish', () => done({ statusCode, bytes, contentType }));
+      });
+      req.on('timeout', () => { req.destroy(new Error(`下载超时（${Math.round(timeoutMs / 1000)}s）`)); });
+      req.on('error', fail);
+      req.end();
+    } catch (error) {
+      fail(error);
+    }
+  });
+}

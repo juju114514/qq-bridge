@@ -1726,6 +1726,16 @@ function extractMediaFromSegments(segments) {
         summary: sanitizeMediaSummary(d.summary),
         ...emojiFields
       });
+    } else if (seg.type === 'video') {
+      // QQ 视频：OneBot v11 的 video 段给 file/url，个别网关还带 duration/thumb。
+      // 只记定位信息，字节在 fetchMediaData 里按需下载（视频可能几十 MB）。
+      media.push({
+        kind: 'video',
+        file: String(d.file ?? ''),
+        url: String(d.url ?? ''),
+        durationSec: Number(d.duration ?? d.seconds ?? 0) || 0,
+        thumb: String(d.thumb ?? '')
+      });
     } else if (seg.type === 'face') {
       media.push({
         kind: 'face',
@@ -5299,6 +5309,14 @@ async function main() {
           return;
         }
 
+        // 视频走同一个处理器：findMessageMedia 现在也会带出 kind:'video'，
+        // 处理器内部按 mode（storyboard/transcript）决定交付形态。
+        // 单独开一个路径只是为了让 MCP 工具名和语义对得上。
+        if (req.method === 'GET' && url.pathname === '/api/socialV2/video') {
+          await handleImages(req, url);
+          return;
+        }
+
         // ── 统一发送端点（MCP 旧发送工具也走这里） ───────────────────────────
         // ── 统一发送端点（已迁出到 src/api/send.js）──────────────────────────────
         // /api/send/{group,private,reply} 三端点合一
@@ -6014,10 +6032,104 @@ async function main() {
       maxLongEdge: m.maxLongEdge,
       gifFrames: m.gifFrames,
       gifTile: m.gifTile,
+      // 视频（抽帧故事板）：默认 9 帧 3×3，最长看 180 秒
+      videoFrames: m.video?.frames,
+      videoCols: m.video?.cols,
+      videoCellWidth: m.video?.cellWidth,
+      videoMaxSeconds: m.video?.maxSeconds,
       timeoutMs: m.normalizeTimeoutMs,
       ffmpegPath: process.env.FFMPEG_PATH || cfg.socialV2?.voice?.ffmpegPath || null
     };
   })();
+
+  // 视频理解的配置（与图片限制分开，便于单独关掉）
+  const modelVideoConfig = (() => {
+    const v = cfg.socialV2?.media?.video ?? {};
+    return {
+      enabled: v.enabled !== false,
+      maxBytes: Math.min(256 * 1024 * 1024, Math.max(1024 * 1024, Number(v.maxBytes) || 64 * 1024 * 1024)),
+      timeoutMs: Math.max(5000, Number(v.downloadTimeoutMs) || 180000),
+      asr: v.asr !== false,
+      asrUrl: v.asrUrl || '',
+      asrTimeoutMs: Math.max(5000, Number(v.asrTimeoutMs) || 120000),
+      transcriptMaxChars: Math.max(120, Number(v.transcriptMaxChars) || 1200)
+    };
+  })();
+
+  /** 下载视频到临时文件并读元数据；调用方负责 cleanup。 */
+  async function fetchVideoFile(media, index) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `qqb-vid-${process.pid}-`));
+    const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+    const url = String(media?.url ?? '').trim();
+    if (!url) {
+      cleanup();
+      return { ok: false, error: '网关没有给视频地址（只有 file 名），无法下载' };
+    }
+    const dest = path.join(dir, `v${index}.mp4`);
+    try {
+      const got = await safeDownloadToFile(url, dest, { maxBytes: modelVideoConfig.maxBytes, timeoutMs: modelVideoConfig.timeoutMs });
+      const meta = await probeVideo(got.file);
+      if (!meta.ok) { cleanup(); return { ok: false, error: meta.error }; }
+      return { ok: true, file: got.file, meta, cleanup };
+    } catch (error) {
+      cleanup();
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  }
+
+  /**
+   * 视频 → 「一张故事板 + 一段转写」。
+   * mode: storyboard（默认）/ transcript（只要文字）
+   */
+  async function videoToModelParts(media, index, mode) {
+    const label = `视频${index}`;
+    const got = await fetchVideoFile(media, index);
+    if (!got.ok) return { ok: false, error: got.error };
+    try {
+      const { meta } = got;
+      const dur = meta.durationSec > 0 ? meta.durationSec : Number(media.durationSec) || 0;
+      let transcript = '';
+      let asrNote = '';
+      if (modelVideoConfig.asr && meta.hasAudio) {
+        const aud = await extractVideoAudio(got.file, {
+          ffmpegPath: modelVideoLimits.ffmpegPath,
+          videoMaxSeconds: modelVideoLimits.videoMaxSeconds
+        });
+        if (aud.ok) {
+          const tr = await transcribeFile(aud.file, { baseUrl: modelVideoConfig.asrUrl, timeoutMs: modelVideoConfig.asrTimeoutMs });
+          aud.cleanup?.();
+          if (tr.ok) transcript = tr.text;
+          else asrNote = tr.error;
+        } else {
+          asrNote = aud.error;
+        }
+      } else if (modelVideoConfig.asr && !meta.hasAudio) {
+        asrNote = '视频没有音轨';
+      }
+      const transcriptText = formatTranscript(transcript, { durationSec: dur, maxChars: modelVideoConfig.transcriptMaxChars });
+      if (mode === 'transcript') {
+        return {
+          ok: true,
+          textOnly: transcriptText
+            ? `${label}（${dur.toFixed(0)}s）转写：\n${transcriptText}`
+            : `${label}（${dur.toFixed(0)}s）没有可转写的人声${asrNote ? `（${asrNote}）` : ''}`
+        };
+      }
+      const board = await normalizeVideoForModel(got.file, {
+        ...modelVideoLimits,
+        durationSec: dur,
+        width: meta.width,
+        height: meta.height
+      });
+      if (!board.ok) return { ok: false, error: board.error };
+      const notes = [board.note];
+      if (transcriptText) notes.push(`声音转写：${transcriptText}`);
+      else if (asrNote) notes.push(`（没有声音转写：${asrNote}）`);
+      return { ok: true, board, note: notes.join('\n') };
+    } finally {
+      got.cleanup();
+    }
+  }
 
   /**
    * 把一张已抓到的图片整理成模型可安全消费的形态。
@@ -6259,6 +6371,8 @@ async function main() {
     return parts;
   }
 
+  function nounForVideo() { return '视频'; }
+
   async function fetchMediaData(mediaList, opts = {}) {
     // mode（只影响图片，不影响表情）：
     //   auto  = 长图先 OCR（省钱），OCR 拿不到东西再切片
@@ -6300,6 +6414,38 @@ async function main() {
         } else {
           out.push({ index, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: face.text || `[表情#${media.faceId}]` });
         }
+      } else if (media?.kind === 'video') {
+        const base = {
+          index,
+          kind: 'video',
+          ...(media.file ? { file: String(media.file) } : {}),
+          ...(media.url ? { url: String(media.url) } : {})
+        };
+        if (!modelVideoConfig.enabled) {
+          out.push({ ...base, text: '（视频理解未开启：config.json 的 socialV2.media.video.enabled=false）' });
+          continue;
+        }
+        const videoMode = opts.mode === 'transcript' ? 'transcript' : 'storyboard';
+        const got = await videoToModelParts(media, index, videoMode);
+        if (!got.ok) {
+          out.push({ ...base, text: `（视频读取失败：${got.error}）` });
+          continue;
+        }
+        if (got.textOnly) {
+          out.push({ ...base, text: got.textOnly });
+          continue;
+        }
+        if (totalBytes + got.board.buffer.length > MAX_MEDIA_BYTES) {
+          out.push({ ...base, text: `（${nounForVideo()} 故事板总大小超限，已跳过）` });
+          continue;
+        }
+        totalBytes += got.board.buffer.length;
+        out.push({
+          ...base,
+          mimeType: got.board.mimeType,
+          data: got.board.buffer.toString('base64'),
+          text: got.note
+        });
       } else {
         const img = await fetchOneBotImage(media);
         const kind = media.kind === 'sticker' ? 'sticker' : 'image';

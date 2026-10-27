@@ -54,7 +54,14 @@ export const MEDIA_DEFAULTS = Object.freeze({
   // 230×1280，字全糊成一团。详见 planSlices()。
   sliceAspectMin: 2.4,
   sliceShort: 1000,
-  maxSlices: 6
+  maxSlices: 6,
+  // 视频（2026-10-27 新增）：模型只吃静态图，所以视频要降维成「一张故事板 + 一段转写」。
+  // 为什么是拼图而不是散图：9 帧散着给 = 9 张图的 token；拼成一张 3×3 ≈ 1 张图的 token。
+  videoFrames: 9,
+  videoCols: 3,
+  videoCellWidth: 420,
+  videoMaxSeconds: 180,
+  videoTimeoutMs: 60000
 });
 
 /** 硬上限：不管 config 怎么写，都不允许超过 DSH 的实测炸栈线下沿。 */
@@ -305,6 +312,159 @@ export function planSlices(info, limits = {}) {
     count = Math.max(1, Math.ceil((total - overlap) / step));
   }
   return { vertical, short, strip, overlap, count, total, shortSide };
+}
+
+/**
+ * 视频「故事板」布局（纯函数，便于单测）。
+ *
+ * 模型只接受图片，所以视频必须降维：均匀抽 N 帧拼成 cols×rows 网格，每格左上角烧时间戳。
+ * 为什么拼图：9 张散图 = 9 张图的 token；拼成一张 3×3 ≈ 1 张图。
+ *
+ * @param {{durationSec:number, width?:number, height?:number}} info
+ * @param {{videoFrames?:number, videoCols?:number, videoCellWidth?:number, maxLongEdge?:number, videoMaxSeconds?:number}} limits
+ * @returns {{cols:number, rows:number, count:number, cellW:number, cellH:number, durationSec:number,
+ *            fps:number, times:number[], truncated:boolean}}
+ */
+export function planVideoFrames(info, limits = {}) {
+  const rawDur = Number(info?.durationSec);
+  const durationSec = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : 0;
+  const maxSeconds = clampInt(limits.videoMaxSeconds, 5, 3600, MEDIA_DEFAULTS.videoMaxSeconds);
+  const shownSec = Math.min(durationSec || maxSeconds, maxSeconds);
+  const maxFrames = clampInt(limits.videoFrames, 1, 25, MEDIA_DEFAULTS.videoFrames);
+  const cols = clampInt(limits.videoCols, 1, 5, MEDIA_DEFAULTS.videoCols);
+  const rows = Math.max(1, Math.ceil(maxFrames / cols));
+  const count = Math.max(1, Math.min(maxFrames, Math.ceil(shownSec) || 1));
+  // 每格宽度：保证 cols×cellW + 间距 ≤ maxLongEdge，否则整张会被二次缩小（字就糊了）
+  const maxLongEdge = clampInt(limits.maxLongEdge, 256, 2048, MEDIA_DEFAULTS.maxLongEdge);
+  const pad = 4;
+  const fitW = Math.floor((maxLongEdge - pad * (cols + 1)) / cols);
+  const wantW = clampInt(limits.videoCellWidth, 160, 1024, MEDIA_DEFAULTS.videoCellWidth);
+  const cellW = Math.max(120, Math.min(wantW, fitW));
+  const srcW = Number(info?.width) > 0 ? Number(info.width) : 0;
+  const srcH = Number(info?.height) > 0 ? Number(info.height) : 0;
+  const ratio = srcW > 0 && srcH > 0 ? srcH / srcW : 9 / 16;
+  const cellH = Math.max(2, Math.round((cellW * ratio) / 2) * 2);
+  // 采样点：均匀分布，取每段的中点（避免第一帧是黑屏/片头）
+  const step = shownSec / count;
+  const times = Array.from({ length: count }, (_, i) => Number((step * i + step / 2).toFixed(2)));
+  return {
+    cols,
+    rows,
+    count,
+    cellW,
+    cellH,
+    durationSec,
+    shownSec,
+    fps: count / Math.max(0.1, shownSec),
+    times,
+    truncated: durationSec > maxSeconds
+  };
+}
+
+/**
+ * 读视频元数据（时长 / 尺寸 / 有没有音轨）。
+ *
+ * 为什么必须探：抽帧要按**真实时长**均匀取点。拿不到时长就按上限 180s 取 9 帧的话，
+ * 10 秒的短视频会取到 8 个不存在的时刻 —— 故事板会缺格甚至全黑。
+ * 拿不到 ffprobe 时返回 ok:false，调用方应退化为"只给第一帧/放弃视频"。
+ */
+export async function probeVideo(file, opts = {}) {
+  const dir = path.dirname(String(resolveFfmpeg({ ffmpegPath: opts.ffmpegPath ?? null })));
+  const candidates = [opts.ffprobePath, path.join(dir, 'ffprobe.exe'), path.join(dir, 'ffprobe'), 'ffprobe']
+    .filter(Boolean);
+  for (const exe of candidates) {
+    const outFile = path.join(os.tmpdir(), `qqb-probe-${process.pid}-${Date.now()}.json`);
+    const result = await new Promise((resolve) => {
+      let child;
+      try {
+        child = spawn(exe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', String(file)],
+          { windowsHide: true, stdio: ['ignore', fs.openSync(outFile, 'w'), 'ignore'] });
+      } catch (error) {
+        resolve({ ok: false, error: String(error?.message ?? error) });
+        return;
+      }
+      let settled = false;
+      const settle = (o) => { if (!settled) { settled = true; clearTimeout(timer); resolve(o); } };
+      const timer = setTimeout(() => { try { child.kill(); } catch {} ; settle({ ok: false, error: 'ffprobe 超时' }); }, 15000);
+      child.on('error', (error) => settle({ ok: false, error: String(error?.message ?? error) }));
+      child.on('close', (code) => settle({ ok: code === 0, error: code === 0 ? '' : `ffprobe 退出码 ${code}` }));
+    });
+    const raw = readIfExists(outFile);
+    try { fs.unlinkSync(outFile); } catch {}
+    if (!result.ok || !raw) continue;
+    try {
+      const info = JSON.parse(raw.toString('utf8'));
+      const video = (info.streams ?? []).find((s) => s.codec_type === 'video');
+      if (!video) continue;
+      return {
+        ok: true,
+        durationSec: Number(info.format?.duration) || Number(video.duration) || 0,
+        width: Number(video.width) || 0,
+        height: Number(video.height) || 0,
+        hasAudio: (info.streams ?? []).some((s) => s.codec_type === 'audio')
+      };
+    } catch { continue; }
+  }
+  return { ok: false, error: '读不到视频元数据（没装 ffprobe，或文件不是视频）' };
+}
+
+/**
+ * 把视频降维成一张「故事板」JPEG（cols×rows，每格烧时间戳）。
+ *
+ * @param {string} file 本地视频路径
+ * @param {{durationSec?:number, width?:number, height?:number, videoFrames?:number, videoCols?:number,
+ *          videoCellWidth?:number, maxLongEdge?:number, maxBytes?:number, ffmpegPath?:string,
+ *          timeoutMs?:number, tmpDir?:string, label?:string}} opts
+ * @returns {Promise<{ok:boolean, buffer?:Buffer, mimeType?:string, note?:string, layout?:object, error?:string}>}
+ */
+export async function normalizeVideoForModel(file, opts = {}) {
+  const layout = planVideoFrames({ durationSec: opts.durationSec, width: opts.width, height: opts.height }, opts);
+  const ffmpeg = resolveFfmpeg({ ffmpegPath: opts.ffmpegPath ?? null });
+  const dir = makeTempWorkspace(opts.tmpDir);
+  try {
+    // drawtext 烧时间戳：模型能对上"第几秒发生了什么"，比单纯靠格子顺序可靠
+    const font = 'C\\:/Windows/Fonts/consola.ttf';
+    const label = "drawtext=fontfile='" + font + "':text='%{pts\\:hms}':x=6:y=6:fontsize=18"
+      + ':fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=4';
+    const vf = `fps=${Number(layout.fps.toFixed(6))},scale=${layout.cellW}:-2,${label},`
+      + `tile=${layout.cols}x${layout.rows}:padding=4:margin=4:color=black`;
+    let lastError = '';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const outFile = path.join(dir, `board-${attempt}.jpg`);
+      const args = ['-v', 'error', '-y', '-i', file, '-vf', vf, '-frames:v', '1', '-q:v', String(3 + attempt * 2), outFile];
+      const run = await runFfmpeg(ffmpeg, args, { timeoutMs: opts.timeoutMs ?? MEDIA_DEFAULTS.videoTimeoutMs });
+      if (!run.ok) { lastError = run.error; break; }
+      const buf = readIfExists(outFile);
+      if (!buf) { lastError = '故事板输出为空'; continue; }
+      const maxBytes = clampInt(opts.maxBytes, 64 * 1024, HARD_MAX_MODEL_BYTES, MEDIA_DEFAULTS.maxModelBytes);
+      if (buf.length <= maxBytes) {
+        const label2 = `视频 ${layout.shownSec.toFixed(0)}s 抽 ${layout.count} 帧拼成 ${layout.cols}×${layout.rows} 故事板`
+          + `（每格左上角是时间戳，行优先 左上→右下）`;
+        return { ok: true, buffer: buf, mimeType: 'image/jpeg', layout, note: label2 };
+      }
+      lastError = '故事板压缩后仍超限';
+    }
+    return { ok: false, error: `视频故事板生成失败（${lastError}）`, layout };
+  } finally {
+    cleanupWorkspace(dir);
+  }
+}
+
+/** 从视频里抽 16k 单声道音轨（喂 ASR）。返回临时文件路径，调用方负责删。 */
+export async function extractVideoAudio(file, opts = {}) {
+  const ffmpeg = resolveFfmpeg({ ffmpegPath: opts.ffmpegPath ?? null });
+  const dir = makeTempWorkspace(opts.tmpDir);
+  const out = path.join(dir, 'audio16k.wav');
+  const maxSeconds = clampInt(opts.videoMaxSeconds, 5, 3600, MEDIA_DEFAULTS.videoMaxSeconds);
+  const run = await runFfmpeg(ffmpeg, [
+    '-v', 'error', '-y', '-i', file, '-t', String(maxSeconds),
+    '-vn', '-ar', '16000', '-ac', '1', out
+  ], { timeoutMs: opts.timeoutMs ?? MEDIA_DEFAULTS.videoTimeoutMs });
+  if (!run.ok || !readIfExists(out)) {
+    cleanupWorkspace(dir);
+    return { ok: false, error: run.ok ? '音轨为空（视频可能没有声音）' : run.error };
+  }
+  return { ok: true, file: out, cleanup: () => cleanupWorkspace(dir) };
 }
 
 /** 动图拼图布局：帧数 → { cols, rows, fps, sampleFrames }。纯函数。 */

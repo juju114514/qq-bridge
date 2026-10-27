@@ -343,6 +343,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_qzone: 'sendPoke',
   qq_guide: 'sendPoke',
   qq_get_message_images: 'getImages',
+  qq_get_message_video: 'getImages',
   qq_get_forward_msg: 'getForwardMsg',
   qq_list_stickers: 'listStickers',
   qq_get_sticker_image: 'getStickerImage',
@@ -1069,6 +1070,54 @@ server.tool(
     }
   }
 );
+
+// ── 视频理解工具：视频 → 一张故事板（9 帧拼图，带时间戳）+ 声音转写 ────────
+if (cfg.socialV2?.tools?.getImages !== false) {
+  server.tool(
+    'qq_get_message_video',
+    '看一条 QQ 视频消息：桥接会抽帧拼成一张「故事板」（默认 3×3，每格左上角烧时间戳），'
+    + '并把音轨做语音转写一起给你。模型不能直接看视频，所以这是"看视频"的唯一方式。'
+    + '当消息文本里出现 [视频] 或 hasMedia=true 且 kind=video 时调用。'
+    + '**只想知道说了什么**（口播/录屏）传 mode=transcript，省掉抽帧；要看画面就别传。'
+    + '视频超过 180 秒只均匀看前 3 分钟（说明里会写"只看了一部分"）。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      messageId: z.union([z.number(), z.string()]).describe('要查看的消息 id（QQ 消息 id 可为负数；二代也可用本地 seq）'),
+      mode: z.enum(['storyboard', 'transcript']).optional()
+        .describe('storyboard（默认）：故事板 + 转写；transcript：只要转写文字，不抽帧'),
+      token: z.string().optional().describe('二代会话令牌（reserved2 下必填，见唤醒提示中的【会话令牌】）')
+    },
+    async ({ key, messageId, mode, token }) => {
+      try {
+        const q = new URLSearchParams({ key, messageId: String(messageId) });
+        if (mode) q.set('mode', String(mode));
+        const data = await agentApi(`/api/socialV2/video?${q.toString()}`, {
+          headers: token ? { 'x-agent-token': token } : {},
+          timeoutMs: 300000
+        });
+        const items = Array.isArray(data?.images) ? data.images : [];
+        if (!items.length) {
+          return { content: [{ type: 'text', text: `消息 ${messageId} 里没有视频：${data?.note || '未找到视频媒体'}` }] };
+        }
+        const content = [];
+        const textParts = [];
+        for (const item of items) {
+          if (item?.data && item?.mimeType) {
+            textParts.push(`[视频${item.index ?? ''} 故事板]`);
+            if (item.text) content.push({ type: 'text', text: String(item.text) });
+            content.push({ type: 'image', mimeType: item.mimeType, data: item.data });
+          } else {
+            textParts.push(`[视频${item.index ?? ''}${item.text ? ' ' + item.text : '（未取到）'}]`);
+          }
+        }
+        content.unshift({ type: 'text', text: `消息 ${messageId} 的视频（${items.length} 项）：\n${textParts.join('\n')}` });
+        return { content };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `读取视频失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
 
 // ── 图片/表情查看工具（一代/二代仿真共用） ─────────────────────────────────
 if (cfg.socialV2?.tools?.getImages !== false) {

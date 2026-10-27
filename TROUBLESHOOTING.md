@@ -648,6 +648,22 @@ ffmpeg -i in.mp3 -af "loudnorm=I=-16:TP=-1.5:LRA=11" out.mp3
 
 **解决**：让它用 `qq_get_forward_msg(id)` 逐层展开；老的转发过期就没了。
 
+### H5b. 视频看不懂 / 故事板有黑格
+
+模型**没有**视频输入，视频只能被"抽帧拼图 + 音轨转写"。看到黑格或只有几格，几乎一定是
+**拿不到时长**（ffprobe 缺失或文件不是视频），不是 tile 参数问题。
+
+```powershell
+# 1) 配置开着吗
+(Get-Content .\config.json -Raw -Encoding UTF8 | ConvertFrom-Json).socialV2.media.video.enabled
+# 2) ffprobe 在吗（默认和 ffmpeg 同目录）
+Test-Path D:\QQBot\ffmpeg\ffprobe.exe
+# 3) ASR 服务在吗（不在就只有画面、没有转写）
+Invoke-RestMethod http://127.0.0.1:5111/health
+```
+
+完整管线与坑表见 [docs/guides/VIDEO.md](docs/guides/VIDEO.md)。
+
 ### H6. 点歌失败
 
 **原因**：网易云接口风控/该曲无版权。

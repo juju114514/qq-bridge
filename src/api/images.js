@@ -70,14 +70,17 @@ export function createImagesHandler(deps) {
 
     const media = findMessageMedia(key, messageId);
     if (!media.length) {
-      sendJson({ ok: true, messageId, media: [], images: [], note: '该消息没有可读取的图片/表情元数据' });
+      sendJson({ ok: true, messageId, media: [], images: [], note: '该消息没有可读取的图片/表情/视频元数据' });
       return true;
     }
-    // mode: auto（默认，长图先 OCR）/ text（只要文字）/ image（只要图，长图切片）
+    // mode: auto（默认，长图先 OCR）/ text（只要文字）/ image（只要图，长图切片）/
+    //       transcript（视频只要转写）。
+    // 视频：kind:'video' 的条目由 fetchMediaData 走"故事板 + 转写"，返回的仍是 images[] 里的一项。
     // 为什么给模型这个开关：长截图切成 5 片 ≈1.5 万 token，而 OCR 出文字只要几百 token。
     // 群里的结论也是这个——「只想知道写了什么就先 OCR，看图才需要切片，两套一起用也行」。
     const rawMode = String(url?.searchParams?.get('mode') ?? '').toLowerCase();
-    const mode = ['auto', 'text', 'image'].includes(rawMode) ? rawMode : 'auto';
+    // transcript 是视频专用（只要转写、不抽帧）；图片遇到它按 auto 处理
+    const mode = ['auto', 'text', 'image', 'transcript'].includes(rawMode) ? rawMode : 'auto';
     try {
       const images = await fetchMediaData(media, { mode });
       sendJson({ ok: true, messageId, media, mode, images });

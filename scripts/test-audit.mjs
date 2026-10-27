@@ -106,6 +106,8 @@ const tests = [
   'test-long-image.mjs',
   // 长图 OCR：空格归一律、降级不抛异常、bridge/api/MCP 三处接线。
   'test-ocr.mjs',
+  // 视频理解：故事板布局 / ffprobe 探元数据 / 真抽帧 / ASR 降级 / 接线契约。
+  'test-video-frames.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

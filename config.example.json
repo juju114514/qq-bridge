@@ -266,7 +266,21 @@
       "maxLongEdge": 1280,
       "gifFrames": 6,
       "gifTile": 240,
-      "normalizeTimeoutMs": 25000
+      "normalizeTimeoutMs": 25000,
+      "video": {
+        "enabled": true,
+        "frames": 9,
+        "cols": 3,
+        "cellWidth": 420,
+        "maxSeconds": 180,
+        "maxBytes": 67108864,
+        "downloadTimeoutMs": 180000,
+        "asr": true,
+        "asrUrl": "http://127.0.0.1:5111",
+        "asrTimeoutMs": 120000,
+        "transcriptMaxChars": 1200,
+        "_说明": "视频理解：抽 frame 帧拼 cols 格故事板 + 音轨转写。asrUrl 指向 asr_server.py（不在则降级只看画面）"
+      }
     },
     "privateLimit": {
       "dailyPerUser": 0,
