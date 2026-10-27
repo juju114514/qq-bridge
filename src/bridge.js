@@ -38,6 +38,7 @@ import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js'
 import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
+import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { createStatusHandler } from './api/status.js';
@@ -3068,6 +3069,57 @@ async function main() {
   const QUEUE_HINT_COOLDOWN_MS = 30_000;
   const queueRetries = new Map(); // key -> 连续补投失败次数（用于退避/暂停恢复）
 
+  // ── 排队消息落盘 ─────────────────────────────────────────────────────────
+  // 为什么：队列原来只在内存里，桥接一重启（换端口/守护拉起/手动重启）就没了，
+  // 用户那条消息**永久丢失且没有任何提示**（2026-10-28 真的吞掉了一条抖音链接）。
+  // 现在每次变更 debounce 写 state/pending-queue.json；启动时按"24 小时 / 每会话 50 条"剪枝后恢复。
+  const QUEUE_FILE = path.join(ROOT, 'state', 'pending-queue.json');
+  let queuePersistTimer = null;
+  let queuePersistFailLogged = '';
+
+  const persistQueueSoon = () => {
+    if (queuePersistTimer) return; // 已安排
+    queuePersistTimer = setTimeout(() => {
+      queuePersistTimer = null;
+      try {
+        const payload = serializeQueue(queued.entries());
+        fs.mkdirSync(path.dirname(QUEUE_FILE), { recursive: true });
+        const tmp = `${QUEUE_FILE}.tmp`;
+        // 先写 .tmp 再 rename：写一半被打断也不会留下坏掉的队列文件
+        fs.writeFileSync(tmp, JSON.stringify(payload, null, 1) + '\n', 'utf8');
+        fs.renameSync(tmp, QUEUE_FILE);
+        queuePersistFailLogged = '';
+      } catch (error) {
+        const msg = String(error?.message ?? error);
+        if (msg !== queuePersistFailLogged) {
+          queuePersistFailLogged = msg;
+          log(`排队消息落盘失败（不影响内存队列）：${msg}`);
+        }
+      }
+    }, 300);
+    if (typeof queuePersistTimer.unref === 'function') queuePersistTimer.unref();
+  };
+
+  const restoreQueueFromDisk = () => {
+    let raw = '';
+    try {
+      if (!fs.existsSync(QUEUE_FILE)) return;
+      raw = fs.readFileSync(QUEUE_FILE, 'utf8');
+    } catch (error) {
+      log(`读取排队消息失败，按空队列处理：${error?.message ?? error}`);
+      return;
+    }
+    const result = deserializeQueue(raw);
+    if (result.error) log(`排队消息未恢复：${result.error}（${QUEUE_FILE}）`);
+    for (const [key, list] of result.entries) queued.set(key, list);
+    if (result.restored > 0) {
+      const dropped = result.droppedExpired + result.droppedOverCap;
+      log(`已恢复 ${result.restored} 条排队消息（${result.entries.length} 个会话）` +
+        (dropped > 0 ? `，丢弃 ${dropped} 条（过期/超量）` : '') + '；DSH 就绪后自动补投');
+    }
+  };
+  restoreQueueFromDisk();
+
   // reset 竞态导致 ensureSession 抛「会话创建期间已重置」时，把消息放回队列稍后重试。
   // 已在队列中的相同文本不重复入队。
   const enqueueForRetry = (key, promptText, opts = {}) => {
@@ -3079,6 +3131,7 @@ async function main() {
       }
       items.push({ promptText, farewell: !!opts.farewell, silent: !!opts.silent, media: opts.media ?? [], wakeReason: opts.wakeReason });
       queued.set(key, items);
+      persistQueueSoon();
     }
     queueRetries.delete(key); // 新消息入队视为新的机会，重置退避计数
     setTimeout(() => { flushQueue(); }, 3000);
@@ -3337,6 +3390,7 @@ async function main() {
               const rest = items.slice(i);
               const existing = queued.get(key) ?? [];
               queued.set(key, rest.concat(existing));
+              persistQueueSoon();
               break;
             }
             queueRetries.delete(key);
@@ -3348,6 +3402,7 @@ async function main() {
             const rest = items.slice(i);
             const existing = queued.get(key) ?? [];
             queued.set(key, rest.concat(existing));
+            persistQueueSoon();
             break;
           }
         }
@@ -3369,6 +3424,10 @@ async function main() {
       }
     } finally {
       flushingQueue = false;
+      // 关键：flush 结束时**必须**落盘一次。
+      // flushQueue 开头 queued.clear()、只把失败项放回去 —— 全成功时内存已空，
+      // 但磁盘上还是旧内容；下次重启会把「已经发过」的消息再发一遍（重复投递，真实踩过）。
+      persistQueueSoon();
       if (flushQueueAgain) {
         flushQueueAgain = false;
         // 队列里还有东西才继续；用 setTimeout 让出一次事件循环，避免同步递归。
@@ -3457,6 +3516,11 @@ async function main() {
         dshReady = true;
         lastMode = currentMode;
         log(`DSH 已就绪（模式: ${currentMode}）`);
+        // 启动时恢复的排队消息要主动补投；否则要等到"下一条新消息"才会被顺带 flush
+        if (queued.size > 0) {
+          log(`DSH 已就绪，开始补投 ${queued.size} 个会话的排队消息`);
+          setTimeout(() => { flushQueue(); }, 500);
+        }
         if (currentMode === 'reserved2') {
           // 首次确定模式为 reserved2 后再恢复持久化的有限睡眠定时器，
           // 避免在 initial chat 模式下设置定时器导致 timeout 唤醒被模式守卫吞掉。
@@ -8100,6 +8164,7 @@ async function main() {
       }
       items.push({ promptText, farewell: !!opts.farewell, silent: !!opts.silent, media: opts.media ?? [], wakeReason: opts.wakeReason });
       queued.set(key, items);
+      persistQueueSoon();
       return { ok: true, queued: true };
     }
     let sessionId;
@@ -10278,6 +10343,7 @@ async function main() {
           }
           pending.delete(key);
           queued.delete(key);
+          persistQueueSoon();
           queuedHintAt.delete(key);
           sessionPromises.delete(key);
           drainPromptQueue(key, '会话已重置');
@@ -10485,6 +10551,7 @@ async function main() {
       }
       items.push({ promptText, media: mediaList });
       queued.set(key, items);
+      persistQueueSoon();
       const now = Date.now();
       if ((queuedHintAt.get(key) ?? 0) + QUEUE_HINT_COOLDOWN_MS < now) {
         queuedHintAt.set(key, now);

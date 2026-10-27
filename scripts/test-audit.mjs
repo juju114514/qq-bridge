@@ -114,6 +114,8 @@ const tests = [
   'test-video-resolve.mjs',
   // DSH 端口自动发现：平台闸门 / HTTP 探活 / 候选顺序 / 自愈接线。
   'test-dsh-port.mjs',
+  // 排队消息落盘/恢复：序列化、剪枝、坏文件降级、接线。
+  'test-pending-queue.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

@@ -694,6 +694,10 @@ Invoke-RestMethod http://127.0.0.1:5111/health
 如果一直看到「连不上，也没探测到新的 DSH 端口」，那是 DSH 真的没起来（没登录/被关掉），
 不是端口问题 —— 去 [docs/guides/FRESH-INSTALL.md](docs/guides/FRESH-INSTALL.md) 阶段 4。
 
+**排队的消息不会因为重启而丢**（2026-10-28 起）：队列落盘在 `state/pending-queue.json`，
+启动时恢复（超过 24 小时或每会话超 50 条的会被丢弃并写日志），DSH 就绪后自动补投。
+日志里会看到 `已恢复 N 条排队消息（M 个会话）` 与 `DSH 已就绪，开始补投 M 个会话的排队消息`。
+
 ### H6. 点歌失败
 
 **原因**：网易云接口风控/该曲无版权。
