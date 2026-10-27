@@ -182,6 +182,17 @@ check('MCP 暴露 qq_open_video（storyboard / transcript）', () => {
   assert.match(mcp, /只白名单 B站\/抖音|B站 \/ 抖音/, '描述里要提醒不支持其他站点');
 });
 
+check('工具可见性可诊断：MCP 启动汇总 + /api/socialV2/tools 端点', () => {
+  const mcp = read('src/mcp-snowluma-safe.js');
+  assert.match(mcp, /registeredTools\.push/, '要记录已注册的工具');
+  assert.match(mcp, /工具注册完成：/, '启动时要打一行汇总（否则"关了哪个"是静默的）');
+  assert.match(mcp, /按配置关闭（未注册/, '被关掉的工具要列出来');
+  assert.match(mcp, /qq_open_video 未注册 ⇒/, '缺少视频工具时要给可操作的提示');
+  const bridge = read('src/bridge.js');
+  assert.match(bridge, /'\/api\/socialV2\/tools'/, '要有只读自检端点');
+  assert.match(bridge, /socialV2\.tools\.getImages=false/, '端点要解释 getImages=false 的后果');
+});
+
 check('配置项齐全（links 可整体关掉）', () => {
   const cfg = JSON.parse(read('config.example.json'));
   const links = cfg?.socialV2?.media?.video?.links;

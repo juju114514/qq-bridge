@@ -355,6 +355,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_set_sticker_remark: 'setStickerRemark',
 };
 const disabledTools = [];
+const registeredTools = [];
 {
   const registerTool = server.tool.bind(server);
   server.tool = (name, ...rest) => {
@@ -363,6 +364,7 @@ const disabledTools = [];
       disabledTools.push(`${name}(${flag})`);
       return undefined;
     }
+    registeredTools.push(name);
     return registerTool(name, ...rest);
   };
 }
@@ -1737,5 +1739,31 @@ if (cfg.socialV2?.tools?.getForwardMsg !== false) {
     }
   );
 }
+
+
+// 启动汇总：**必须有**。以前被关掉的工具是静默消失的（disabledTools 收完就没打印），
+
+// 于是「模型为什么没有 qq_open_video」只能靠猜 —— 真实案例里对方 AI 得出
+
+// 「作者没把工具放进清单」的结论，而实际是开关关了 / 没重启 DSH。
+
+const __videoTools = ['qq_get_message_images', 'qq_get_message_video', 'qq_open_video'];
+
+const __vState = __videoTools.map((n) => `${n}${registeredTools.includes(n) ? ' ✓' : ' ✗'}`).join('  ');
+
+console.error(`[snowluma-safe] 工具注册完成：${registeredTools.length} 个｜视频/图片：${__vState}`);
+
+if (disabledTools.length > 0) {
+
+  console.error(`[snowluma-safe] 按配置关闭（未注册，模型看不到）：${disabledTools.join(', ')}`);
+
+}
+
+if (!registeredTools.includes('qq_open_video')) {
+
+  console.error('[snowluma-safe] 提示：qq_open_video 未注册 ⇒ 查 config.json 的 socialV2.tools.getImages（false 会同时关掉视频/图片三件套）；改完必须重启 DSH 才会刷新工具清单');
+
+}
+
 
 await server.connect(new StdioServerTransport());

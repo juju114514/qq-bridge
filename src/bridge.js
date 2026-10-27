@@ -5474,6 +5474,28 @@ async function main() {
           return;
         }
 
+        // 工具可见性自检（只读）：回答「模型为什么没有 qq_open_video」这类问题。
+        // 真实案例（2026-10-28）：对方 AI 断言"作者没把工具放进清单"，实际是
+        // `socialV2.tools.getImages=false`（一次关掉图片/视频/链接三件套），或者改完代码没重启 DSH。
+        if (req.method === 'GET' && url.pathname === '/api/socialV2/tools') {
+          const flags = cfg.socialV2?.tools ?? {};
+          const getImagesOn = flags.getImages !== false;
+          writeJson(res, {
+            ok: true,
+            getImages: getImagesOn,
+            tools: {
+              image: { name: 'qq_get_message_images', flag: 'getImages', registered: getImagesOn },
+              video: { name: 'qq_get_message_video', flag: 'getImages', registered: getImagesOn },
+              link: { name: 'qq_open_video', flag: 'getImages', registered: getImagesOn }
+            },
+            otherDisabled: Object.entries(flags).filter(([, v]) => v === false).map(([k]) => k),
+            hint: getImagesOn
+              ? '这三个工具会注册；如果模型看不到，多半是改完代码/开关后没重启 DSH（MCP 工具清单是启动快照）'
+              : 'socialV2.tools.getImages=false ⇒ 图片/视频/链接三件套都不会注册（模型看不到、也不占 token）；要用来改回 true 并重启 DSH'
+          });
+          return;
+        }
+
         // cookie 体检（只读）：抖音能不能取到流取决于这份 cookies.txt 是否还新鲜
         if (req.method === 'GET' && url.pathname === '/api/socialV2/video-cookies') {
           try {

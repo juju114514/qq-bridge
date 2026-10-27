@@ -205,7 +205,7 @@ GET /api/socialV2/video-cookies        # 只读，需要控制台令牌
 | 工具 | 输入 | 用在哪 |
 | --- | --- | --- |
 | `qq_get_message_video` | 会话 `key` + `messageId`（或 seq） | 用户**发了个视频文件** |
-| `qq_open_video` | `url`（B站/抖音链接） | 用户**贴了个链接** |
+| `qq_open_video` | `url`（B站/抖音链接） | 用户**贴了个链接**（模型看不到这个工具时，先查 [TROUBLESHOOTING H5b-2](../TROUBLESHOOTING.md) 与 `/api/socialV2/tools`） |
 
 共同参数 `mode`：`storyboard`（默认，故事板 + 转写）/ `transcript`（只要文字）。
 

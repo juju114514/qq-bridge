@@ -674,6 +674,33 @@ Invoke-RestMethod http://127.0.0.1:5111/health
 
 完整管线与坑表见 [docs/guides/VIDEO.md](docs/guides/VIDEO.md)。
 
+### H5b-2. 模型说「没有 `qq_open_video` / `qq_get_message_video` 这个工具」
+
+**这不是功能没做**（2026-10-28 真实误判过一次：对方 AI 断言「作者还没把工具放进模型能调用的清单」，
+实际三种情况之一）。按顺序查：
+
+| 可能 | 怎么确认 | 怎么修 |
+| --- | --- | --- |
+| **① 开关关了**：`socialV2.tools.getImages=false` 会**一次关掉三件套**（图片 / 视频消息 / 视频链接） | `curl -H "X-Console-Token: <token>" http://127.0.0.1:3100/api/socialV2/tools` → 看 `getImages` 与 `registered` | 改回 `true`，然后**重启 DSH**（工具清单是启动快照） |
+| **② 改完代码没重启 DSH** | MCP 的启动日志有汇总行；看不到就说明用的是旧进程 | 重启 DSH（桥接重启**不够**，MCP 进程是 DSH 拉起的） |
+| **③ 版本太旧**（`< 8d18fc6` 才有这两个工具） | `grep -c qq_open_video src/mcp-snowluma-safe.js` | `git pull` 后再装一次 preset |
+
+**怎么一眼确认（推荐）**：
+
+```powershell
+# 桥接侧：这三个工具会不会注册
+curl -H "X-Console-Token: $(Get-Content .\state\console-token -Raw).Trim()" http://127.0.0.1:3100/api/socialV2/tools
+
+# MCP 侧：启动汇总（DSH 日志或直接手动跑一次）
+node src\mcp-snowluma-safe.js
+# → [snowluma-safe] 工具注册完成：41 个｜视频/图片：qq_get_message_images ✓  qq_get_message_video ✓  qq_open_video ✓
+# → [snowluma-safe] 按配置关闭（未注册，模型看不到）：qq_set_sticker_remark(setStickerRemark)
+```
+
+> 关键区别：**「视频能看」不等于「视频工具已注册」**。桥接对消息里的图片/视频有**自动内联**
+> （不需要模型调工具），所以关掉 `getImages` 后仍然「能看抽帧」，但**链接类**（`qq_open_video`）
+> 一定用不了 —— 这正是那次误判的场景。
+
 ### H5c. QQ 里回「⏳ 系统服务重启中，消息已排队」
 
 这句话来自桥接：**DSH 连不上**（`dshReady=false`），消息进队列等它恢复。
