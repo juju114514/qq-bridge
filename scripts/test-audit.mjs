@@ -89,6 +89,9 @@ const tests = [
   // 兼容契约的「文档 ↔ 代码」一致性：COMPAT.md / compat.json 里声明的 OneBot 动作、
   //   平台能力、已移除的依赖，必须与代码真实情况一致（别人照着文档适配，写错就是坑）。
   'test-compat.mjs',
+  // 角色卡 id 化：身份存在文件里（front matter），文件名随便改 —— 绑定不再随改名/搬机器失效。
+  //   覆盖 front matter 解析、id 与文件名解耦、老卡片确定性 id、注入路径剥离元数据。
+  'test-role-id.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

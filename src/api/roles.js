@@ -19,7 +19,13 @@ export function createRolesHandler(deps) {
     writeRoleState,
     roleSummaries,
     readRoleContent,
+    readRoleRaw,
     writeRoleContent,
+    roleName,
+    roleEntry,
+    createRoleCard,
+    renameRoleCard,
+    deleteRoleCard,
     roleWarnings,
     roleCharStats,
     roleSectionReport,
@@ -83,9 +89,13 @@ export function createRolesHandler(deps) {
       sendJson({
         // roles 保持「人格名字符串数组」的既有契约（scripts/test-console.mjs 等调用方依赖它）；
         // 富信息放在 summaries 里，新老调用方互不影响。
+        // ⚠️ 2026-10 起身份是 summaries[].id（front matter 里的 id），name 只是显示名：
+        //    roles/current 用 name 保证控制台文案不变，items/currentId 给需要精确绑定的调用方。
         roles: summaries.map((role) => role.name),
+        items: summaries.map((role) => ({ id: role.id, name: role.name, hasMeta: role.hasMeta })),
         summaries,
-        current: rs.role ?? null,
+        current: rs.role ? roleName(rs.role) : null,
+        currentId: rs.role ?? null,
         limits: {
           nameMax: limits.ROLE_NAME_MAX,
           contentMaxBytes: limits.ROLE_CONTENT_MAX_BYTES,
@@ -103,7 +113,9 @@ export function createRolesHandler(deps) {
       const content = readRoleContent(name);
       sendJson({
         ok: true,
-        name,
+        name: roleName(name),
+        id: name,
+        raw: readRoleRaw(name),
         content,
         chars: content.length,
         bytes: Buffer.byteLength(content, 'utf8'),
@@ -132,10 +144,14 @@ export function createRolesHandler(deps) {
         name = validateRoleName(body.name);
         content = validateRoleContent(body.content);
       } catch (error) { return fail(error); }
-      if (roleExists(name)) { sendJson({ ok: false, error: `人格「${name}」已存在` }, 400); return true; }
-      writeRoleContent(name, content);
-      log(`控制台：创建人格「${name}」（${content.length} 字符）`);
-      sendJson({ ok: true, role: name, warnings: roleWarnings(content) });
+      // 名字可以重名（id 才是身份），但同名卡会让人困惑，仍然给个提示性拦截
+      if (roleSummaries().some((r) => r.name === name)) {
+        sendJson({ ok: false, error: `人格「${name}」已存在` }, 400);
+        return true;
+      }
+      const created = createRoleCard(name, content);
+      log(`控制台：创建人格「${created.name}」（id=${created.id}，${content.length} 字符）`);
+      sendJson({ ok: true, role: created.name, id: created.id, warnings: roleWarnings(content) });
       return true;
     }
 
@@ -149,8 +165,8 @@ export function createRolesHandler(deps) {
       } catch (error) { return fail(error); }
       if (!roleExists(name)) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return true; }
       writeRoleContent(name, content);
-      log(`控制台：更新人格「${name}」（${content.length} 字符）`);
-      sendJson({ ok: true, role: name, chars: content.length, warnings: roleWarnings(content) });
+      log(`控制台：更新人格「${roleName(name)}」（id=${name}，${content.length} 字符）`);
+      sendJson({ ok: true, role: roleName(name), id: name, chars: content.length, warnings: roleWarnings(content) });
       return true;
     }
 
@@ -159,18 +175,20 @@ export function createRolesHandler(deps) {
       const body = await readBody();
       let from; let to;
       try {
-        from = resolveExistingRole(body.from) ?? validateRoleName(body.from);
+        from = resolveExistingRole(body.from);
         to = validateRoleName(body.to);
       } catch (error) { return fail(error); }
-      if (from === to) { sendJson({ ok: true, role: to, renamed: false }); return true; }
-      if (!roleExists(from)) { sendJson({ ok: false, error: `人格「${from}」不存在` }, 404); return true; }
-      if (roleExists(to)) { sendJson({ ok: false, error: `人格「${to}」已存在` }, 400); return true; }
-      fs.renameSync(roleFilePath(from), roleFilePath(to));
-      const rs = readRoleState();
-      const switched = rs.role === from;
-      if (switched) writeRoleState(to, rs.mode);
-      log(`控制台：人格重命名「${from}」→「${to}」${switched ? '（当前启用中，已跟随切换）' : ''}`);
-      sendJson({ ok: true, role: to, renamed: true, currentFollowed: switched });
+      if (!from) { sendJson({ ok: false, error: `人格「${body.from}」不存在` }, 404); return true; }
+      const before = roleName(from);
+      if (before === to) { sendJson({ ok: true, role: to, renamed: false }); return true; }
+      if (roleSummaries().some((r) => r.name === to)) {
+        sendJson({ ok: false, error: `人格「${to}」已存在` }, 400);
+        return true;
+      }
+      // 只改 front matter 的 name：state 里存的是 id，所以绑定**不需要跟着改**
+      renameRoleCard(from, to);
+      log(`控制台：人格改名「${before}」→「${to}」（id=${from} 不变，绑定未受影响）`);
+      sendJson({ ok: true, role: to, id: from, renamed: true, currentFollowed: false });
       return true;
     }
 
@@ -180,12 +198,13 @@ export function createRolesHandler(deps) {
       let name;
       try { name = resolveExistingRole(body.name) ?? validateRoleName(body.name); } catch (error) { return fail(error); }
       if (!roleExists(name)) { sendJson({ ok: false, error: `人格「${name}」不存在` }, 404); return true; }
-      fs.rmSync(roleFilePath(name));
+      const displayName = roleName(name);
+      deleteRoleCard(name);
       const rs = readRoleState();
       const cleared = rs.role === name;
       if (cleared) writeRoleState(null, rs.mode);
-      log(`控制台：删除人格「${name}」${cleared ? '（该人格正在启用，已同时清除当前人格）' : ''}`);
-      sendJson({ ok: true, deleted: name, clearedCurrent: cleared });
+      log(`控制台：删除人格「${displayName}」（id=${name}）${cleared ? '（正在启用，已同时清除当前人格）' : ''}`);
+      sendJson({ ok: true, deleted: displayName, id: name, clearedCurrent: cleared });
       return true;
     }
 

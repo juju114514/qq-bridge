@@ -13,7 +13,10 @@ import crypto from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import yaml from 'js-yaml';
 import { extractPresetPrefix, presetPromptBlockers, presetPromptWarnings, renderPresetPromptYaml } from './preset-prompt.js';
-import { GEN1_ROLE_LINE_RE, parseRoleSections, roleCharStats, roleSectionReport, selectRoleText } from './role-card.js';
+import {
+  GEN1_ROLE_LINE_RE, buildRoleFrontMatter, hashRoleId, parseRoleFrontMatter,
+  parseRoleSections, roleCharStats, roleSectionReport, selectRoleText, slugifyRoleId,
+} from './role-card.js';
 import { fileURLToPath } from 'node:url';
 import { OneBotWsClient, text } from './onebot-ws.js';
 import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } from './dsh-client.js';
@@ -281,18 +284,6 @@ function readActivityTail(n) {
 // 不该出现在人格列表里。少一个排除项，控制台就会多出「ATTRIBUTION」这种可以被
 // 选中、然后当成人格注入的假角色（实测踩过）。
 const ROLE_NON_CARD_FILES = new Set(['README.md', 'ATTRIBUTION.md']);
-function listRoles() {
-  try {
-    return fs.readdirSync(path.join(ROOT, 'roles'))
-      .filter((f) => f.endsWith('.md')
-        && !ROLE_NON_CARD_FILES.has(f)
-        && !f.startsWith('.') && !f.startsWith('_'))
-      .map((f) => f.slice(0, -3))
-      .sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  } catch {
-    return [];
-  }
-}
 
 // ── 人格文件读写 ────────────────────────────────────────────────────────────
 // 人格提示词 = roles/<名称>.md，由桥接在每条消息前注入（热生效，无需重启 DSH）。
@@ -321,45 +312,109 @@ const WINDOWS_RESERVED_NAMES = new Set([
 ]);
 
 /**
- * 宽松解析角色名：允许用「小鲸鱼」匹配「小鲸鱼（已测试）」这种带标注的文件名。
- * 规则：完全一致 → 前缀匹配（唯一）→ 包含匹配（唯一）→ null
- */
-/**
- * 解析**已存在**的角色卡名：先在磁盘上的真实文件名里精确匹配，再退回 sanitize。
+ * 角色卡索引：一次扫描目录，得到 `id → { id, name, file, hasMeta }`。
  *
- * 为什么需要：`sanitizeRoleName` 只保留 [\w 中文 -]，而历史卡片名里带全角括号
- * （`小鲸鱼（已测试）`）—— 于是 /api/roles/content?name=小鲸鱼（已测试） 会被
- * sanitize 成 `小鲸鱼已测试` 再判存在性，直接 404（控制台读不到、也改不了这些卡）。
- * 这里让"已经存在的名字"原样通过，只有**新建**才走严格校验。
+ * 为什么要有索引而不是直接拼路径：
+ *   · 身份在文件的 front matter 里（`id:` / `name:`），文件名只是存放位置；
+ *   · 注入路径**每条消息**都会走一次 → 给索引加 1 秒 TTL，既不每消息 readdir，
+ *     又保证「改了卡/加了卡」最多 1 秒后生效；
+ *   · 老文件没有 front matter 时，id 用文件名的确定性哈希（同机换机一致），
+ *     name 用文件名，并标记 hasMeta=false 让控制台提示补元数据。
  */
-function resolveExistingRole(raw) {
-  const want = String(raw ?? '').trim();
-  if (!want) return null;
-  try {
-    if (listRoles().includes(want)) return want;
-    // 再退一步走「前缀 / 包含」解析：这样 `name=小鲸鱼` 也能读到
-    // `小鲸鱼（已测试）.md`（读接口宽容、写接口严格 —— 新建仍然只认 validateRoleName）。
-    return resolveRoleName(want);
-  } catch {
-    return null;
+const ROLE_INDEX_TTL_MS = 1000;
+let roleIndexCache = null;
+function invalidateRoleIndex() { roleIndexCache = null; }
+
+function buildRoleIndex() {
+  const byId = new Map();
+  const list = [];
+  let files = [];
+  try { files = fs.readdirSync(ROLES_DIR); } catch { return { byId, list }; }
+  const taken = new Set();
+  for (const file of files.sort()) {
+    if (!file.endsWith('.md') || ROLE_NON_CARD_FILES.has(file)) continue;
+    if (file.startsWith('.') || file.startsWith('_')) continue;
+    const full = path.join(ROLES_DIR, file);
+    let text;
+    try { text = fs.readFileSync(full, 'utf8'); } catch { continue; }
+    const meta = parseRoleFrontMatter(text);
+    const stem = file.slice(0, -3);
+    let id = meta.id || hashRoleId(stem);
+    // id 撞车时加后缀：宁可多一张「重名」也不静默覆盖别人的卡
+    let unique = id;
+    let n = 2;
+    while (taken.has(unique)) { unique = `${id}-${n}`; n += 1; }
+    taken.add(unique);
+    id = unique;
+    const entry = {
+      id,
+      name: (meta.name || stem).trim(),
+      file: full,
+      hasMeta: meta.hasMeta,
+    };
+    byId.set(id, entry);
+    list.push(entry);
   }
+  list.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  return { byId, list };
 }
 
+function roleIndex() {
+  const now = Date.now();
+  if (roleIndexCache && now - roleIndexCache.at < ROLE_INDEX_TTL_MS) return roleIndexCache.index;
+  const index = buildRoleIndex();
+  roleIndexCache = { at: now, index };
+  return index;
+}
+
+function roleEntry(id) {
+  const key = String(id ?? '');
+  const hit = roleIndex().byId.get(key);
+  if (hit) return hit;
+  // 兼容：state/role-state.json 与 roles-by-key.json 里可能还存着**旧显示名**
+  // （迁移脚本跑之前的存量）。这里按名字再解析一次，保证升级不打断正在用的卡。
+  const resolved = resolveRoleName(key);
+  return resolved ? roleIndex().byId.get(resolved) ?? null : null;
+}
+function roleName(id) { return roleEntry(id)?.name ?? String(id ?? ''); }
+function listRoles() { return roleIndex().list.map((entry) => entry.id); }
+
+/**
+ * 解析角色引用：**id 与显示名都接受**，顺序为
+ *   精确 id → 精确 name → 前缀（id/name 唯一）→ 包含（id/name 唯一）
+ * 返回 id（内部一律用 id）；解析不到返回 null。
+ */
 function resolveRoleName(raw) {
   const want = String(raw ?? '').trim();
   if (!want) return null;
-  const roles = listRoles();
-  const exact = roles.find((r) => r === want);
-  if (exact) return exact;
-  const prefixed = roles.filter((r) => r.startsWith(want));
-  if (prefixed.length === 1) return prefixed[0];
-  const contained = roles.filter((r) => r.includes(want));
-  if (contained.length === 1) return contained[0];
+  const { list } = roleIndex();
+  const byId = list.find((e) => e.id === want);
+  if (byId) return byId.id;
+  const byName = list.find((e) => e.name === want);
+  if (byName) return byName.id;
+  const probes = [
+    (e) => e.id.startsWith(want),
+    (e) => e.name.startsWith(want),
+    (e) => e.name.includes(want),
+    (e) => e.id.includes(want),
+  ];
+  for (const probe of probes) {
+    const hits = list.filter(probe);
+    if (hits.length === 1) return hits[0].id;
+  }
   return null;
 }
 
-function roleFilePath(name) {
-  return path.join(ROLES_DIR, name + '.md');
+/** 读接口的宽容解析：能解析到就返回 id，否则 null（写接口仍然只认 validateRoleName）。 */
+function resolveExistingRole(raw) {
+  try { return resolveRoleName(raw); } catch { return null; }
+}
+
+function roleFilePath(id) {
+  const entry = roleEntry(id);
+  if (entry) return entry.file;
+  // 新建时还没进索引：给一个确定的安全文件名（id 已由 validateRoleId 校验过）
+  return path.join(ROLES_DIR, `${id}.md`);
 }
 
 function firstMeaningfulLine(content) {
@@ -393,14 +448,17 @@ function roleWarnings(content, mode = 'v2') {
 }
 
 function roleSummaries() {
-  return listRoles().map((name) => {
-    const file = roleFilePath(name);
+  return roleIndex().list.map((entry) => {
+    const { id, name, file } = entry;
     try {
       const stat = fs.statSync(file);
-      const content = fs.readFileSync(file, 'utf8');
+      const content = readRoleContent(id);
       const stats = roleCharStats(content);
       return {
+        id,
         name,
+        file: path.relative(ROOT, file),
+        hasMeta: entry.hasMeta,
         bytes: stat.size,
         chars: content.length,
         lines: content.split('\n').length,
@@ -416,18 +474,40 @@ function roleSummaries() {
         warnings: roleWarnings(content).length,
       };
     } catch {
-      return { name, bytes: 0, chars: 0, lines: 0, mtime: 0, excerpt: '', injectedV1: 0, injectedV2: 0, charsV1: 0, charsV2: 0, hasModeTags: false, truncated: false, warnings: 0 };
+      return { id, name, file: path.relative(ROOT, file), hasMeta: entry.hasMeta, bytes: 0, chars: 0, lines: 0, mtime: 0, excerpt: '', injectedV1: 0, injectedV2: 0, charsV1: 0, charsV2: 0, hasModeTags: false, truncated: false, warnings: 0 };
     }
   });
 }
 
+/**
+ * 校验**显示名**：现在名字是自由文本（可以带括号、空格、标点），因为身份已经移到
+ * 文件内的 `id:` 里 —— 改名不再影响任何绑定，所以没必要再限制字符集。
+ * 只拦三类真正会出事的东西：
+ *   · 空名 / 过长；
+ *   · 路径分隔符与控制字符（会破坏文件名与日志）；
+ *   · README / ATTRIBUTION（说明文档占用的名字）与 Windows 设备名（CON、NUL…）。
+ */
 function validateRoleName(raw) {
-  const name = sanitizeRoleName(raw);
-  if (!name) throw new Error('人格名不能为空（仅限中文 / 字母 / 数字 / 横线）');
+  // 制表/换行先压成空格，再删掉会破坏文件名与日志的字符（Windows 与 POSIX 都不允许的那些）
+  const name = String(raw ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\\/:*?"<>|]/g, '')
+    .trim();
+  if (!name) throw new Error('人格名不能为空');
   if (name.length > ROLE_NAME_MAX) throw new Error(`人格名过长（最多 ${ROLE_NAME_MAX} 字）`);
-  if (ROLE_RESERVED_NAMES.has(name)) throw new Error(`「${name}」是保留名称`);
+  if (ROLE_RESERVED_NAMES.has(name.toUpperCase())) throw new Error(`「${name}」是保留名称`);
   if (WINDOWS_RESERVED_NAMES.has(name.toUpperCase())) throw new Error(`「${name}」是系统保留名称（Windows 设备名），请换一个`);
   return name;
+}
+
+/** 生成一个没被占用的稳定 id（ASCII；中文名压不出可读 slug 时回退到哈希）。 */
+function allocateRoleId(name) {
+  const used = new Set(listRoles());
+  const base = slugifyRoleId(name) || hashRoleId(name);
+  let id = base;
+  let n = 2;
+  while (used.has(id)) { id = `${base}-${n}`; n += 1; }
+  return id;
 }
 
 function validateRoleContent(raw) {
@@ -440,13 +520,62 @@ function validateRoleContent(raw) {
   return content;
 }
 
-function readRoleContent(name) {
-  return fs.readFileSync(roleFilePath(name), 'utf8');
+/**
+ * 读角色卡**正文**（去掉 front matter）。
+ *
+ * 为什么必须剥掉：`id:` / `name:` 是给桥接自己看的元数据，混进人格提示词会白占预算，
+ * 还可能在对话里被模型复述出来（实测过把元信息写进正文后，模型会自我介绍"本卡为同人设定"）。
+ */
+function readRoleContent(id) {
+  const raw = fs.readFileSync(roleFilePath(id), 'utf8');
+  return parseRoleFrontMatter(raw).body;
 }
 
-function writeRoleContent(name, content) {
+/** 读原始文件（含 front matter）：控制台「查看源码」与迁移脚本用。 */
+function readRoleRaw(id) {
+  return fs.readFileSync(roleFilePath(id), 'utf8');
+}
+
+/** 写入正文，保留原有 front matter（id/name 不因编辑正文而丢）。 */
+function writeRoleContent(id, content) {
   fs.mkdirSync(ROLES_DIR, { recursive: true });
-  atomicWriteText(roleFilePath(name), content + (content.endsWith('\n') ? '' : '\n'));
+  const entry = roleEntry(id);
+  const head = entry && entry.hasMeta
+    ? buildRoleFrontMatter({ id: entry.id, name: entry.name })
+    : buildRoleFrontMatter({ id, name: entry?.name || id });
+  const body = String(content ?? '').replace(/\r\n/g, '\n').replace(/^\n+/, '');
+  atomicWriteText(roleFilePath(id), head + '\n' + body + (body.endsWith('\n') ? '' : '\n'));
+  invalidateRoleIndex();
+}
+
+/** 新建角色卡：生成 id、写 front matter 与正文，返回 { id, name }。 */
+function createRoleCard(rawName, content) {
+  const name = validateRoleName(rawName);
+  const id = allocateRoleId(name);
+  fs.mkdirSync(ROLES_DIR, { recursive: true });
+  const body = String(content ?? '').replace(/\r\n/g, '\n').trim();
+  atomicWriteText(roleFilePath(id), buildRoleFrontMatter({ id, name }) + '\n' + body + '\n');
+  invalidateRoleIndex();
+  return { id, name };
+}
+
+/** 改名：**只改 front matter 的 name，不动文件名** —— 这就是 id 化的全部意义。 */
+function renameRoleCard(id, rawName) {
+  const name = validateRoleName(rawName);
+  const entry = roleEntry(id);
+  if (!entry) throw new Error(`人格「${id}」不存在`);
+  const body = readRoleContent(id);
+  atomicWriteText(entry.file, buildRoleFrontMatter({ id: entry.id, name }) + '\n' + body + (body.endsWith('\n') ? '' : '\n'));
+  invalidateRoleIndex();
+  return { id: entry.id, name };
+}
+
+function deleteRoleCard(id) {
+  const entry = roleEntry(id);
+  if (!entry) throw new Error(`人格「${id}」不存在`);
+  fs.rmSync(entry.file);
+  invalidateRoleIndex();
+  return entry;
 }
 
 // ── 二代仿真预设提示词（「仿真」层）────────────────────────────────────────
@@ -3688,6 +3817,7 @@ async function main() {
             getCfg: () => cfg,
             snowlumaHealthSnapshot,
             readActivityTail,
+            roleName,
           });
           handleStatus(req);
           return;
@@ -3765,6 +3895,8 @@ async function main() {
             sendJson, readBody, log, fs, path, ROOT,
             readRoleState, writeRoleState,
             roleSummaries, readRoleContent, writeRoleContent,
+            roleName, roleEntry, readRoleRaw,
+            createRoleCard, renameRoleCard, deleteRoleCard,
             roleWarnings, roleCharStats, roleSectionReport,
             validateRoleName,
             resolveExistingRole, validateRoleContent, sanitizeRoleName, roleFilePath,
@@ -7975,15 +8107,13 @@ async function main() {
     try {
       const rs = readRoleStateForKey(key);
       if (!rs.role) return '';
-      // 读取点也必须校验人格名：写入点（控制台 /role 命令）都过 sanitizeRoleName，
-      // 但 state/current-role.json 是**用户可直接编辑**的文件。没有这道校验时，
-      // {"role":"../../../../Users/Public/x"} 会让 roles/ 之外的文件被读进来并注入每一条提示词。
-      const safeName = sanitizeRoleName(rs.role);
-      if (!safeName || safeName.includes('..')) return '';
-      const roleFile = path.join(ROLES_DIR, safeName + '.md');
-      const resolved = path.resolve(roleFile);
-      if (!resolved.startsWith(path.resolve(ROLES_DIR) + path.sep)) return '';
-      if (!fs.existsSync(resolved)) return '';
+      // 安全模型：**只从角色卡索引里读**。索引只扫 roles/ 目录，所以即使
+      // state/role-state.json 被手改成 {"role":"../../../../Users/Public/x"}，
+      // 也解析不到任何条目 → 直接返回空，注入路径上没有"拼路径"这一步了。
+      const entry = roleEntry(rs.role);
+      if (!entry) return '';
+      const roleFile = entry.file;
+      if (!fs.existsSync(roleFile)) return '';
       const stateStat = fs.statSync(ROLE_STATE_FILE);
       const roleStat = fs.statSync(roleFile);
       // 缓存 key 必须带上**文件名与文件大小**，不能只看 mtime：
@@ -7992,9 +8122,10 @@ async function main() {
       //    带上名字后，切换角色（例如 a.md → b.md）永远不会误命中。
       // ② 同名的原地重写若长度变了（大多数编辑都会变），size 变化也能击穿缓存。
       // 代价只是多几次 stat，比"热注入路径上一直发旧人格"划算得多。
-      const cacheKey = `${safeName}:${stateStat.mtimeMs}:${stateStat.size}:${roleStat.mtimeMs}:${roleStat.size}`;
+      const cacheKey = `${entry.id}:${stateStat.mtimeMs}:${stateStat.size}:${roleStat.mtimeMs}:${roleStat.size}`;
       if (roleHintCache.key === cacheKey) return roleHintCache.raw;
-      const raw = fs.readFileSync(roleFile, 'utf8');
+      // 剥掉 front matter（id/name 是桥接元数据，不该进人格提示词）
+      const raw = parseRoleFrontMatter(fs.readFileSync(roleFile, 'utf8')).body;
       roleHintCache = { key: cacheKey, raw };
       return raw;
     } catch {
@@ -9575,7 +9706,7 @@ async function main() {
     if (/^\/role\s*$/i.test(cmdText)) {
       const roles = listRoles();
       const rs = readRoleState();
-      const cur = rs.role ? `「${rs.role}」` : '默认人格（未指定角色卡）';
+      const cur = rs.role ? `「${roleName(rs.role)}」` : '默认人格（未指定角色卡）';
       const lines = [
         `当前人设：${cur}`,
         `可用角色卡（${roles.length} 张）：`,
@@ -9849,7 +9980,7 @@ async function main() {
       }
       if (plainContent === '/status') {
         const rs = readRoleState();
-        await sendToQQ(key, `会话 ${state.sessions[key] ?? '未创建'}；白名单 ${allowed(kind, id, cfg) ? '通过' : '拦截'}；角色 ${rs.role ?? '无'}；模式 ${rs.mode}`);
+        await sendToQQ(key, `会话 ${state.sessions[key] ?? '未创建'}；白名单 ${allowed(kind, id, cfg) ? '通过' : '拦截'}；角色 ${rs.role ? roleName(rs.role) : '无'}；模式 ${rs.mode}`);
         return;
       }
       if (plainContent === '/role' || plainContent.startsWith('/role ')) {
@@ -9864,7 +9995,7 @@ async function main() {
         } else {
           const resolved = resolveRoleName(rawName) || resolveRoleName(name);
           if (!resolved) {
-            await sendToQQ(key, `角色「${rawName}」不存在。现有：${listRoles().join('、') || '（无）'}`);
+            await sendToQQ(key, `角色「${rawName}」不存在。现有：${listRoles().map((id) => roleName(id)).join('、') || '（无）'}`);
           } else {
             writeRoleStateForKey(key, resolved, roleState.mode);
             await sendToQQ(key, kind === 'group'

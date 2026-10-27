@@ -74,7 +74,7 @@
 | `pause`/`.bat` 启动器 | Windows 专有，Linux 用 `deploy/install-server.sh` + systemd |
 | 语音/点歌/唱歌 | 依赖 PowerShell ⇒ 直接不可用（接口会明确告知），需要自己换成平台脚本 |
 | 路径大小写 | Linux 区分大小写：`roles/小鲸鱼（已测试）.md` 里的括号是全角，复制时别改名 |
-| 角色卡命名 | 文件名即 ID。移植时**保持文件名不变**，否则 `/role`、会话绑定会失效 |
+| 角色卡命名 | 身份在文件的 `id:` 里（2026-10 起），**文件名可以随便改**；旧卡先跑 `node scripts/migrate-roles-to-ids.mjs --apply` 补齐元数据并把 `state/` 里的旧名字改写成 id |
 
 ## 七、最后：让旧机器"下线"
 

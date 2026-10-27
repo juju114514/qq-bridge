@@ -26,6 +26,7 @@ export function createStatusHandler(deps) {
     getCfg,
     snowlumaHealthSnapshot,
     readActivityTail,
+    roleName,
   } = deps;
 
   /**
@@ -40,7 +41,8 @@ export function createStatusHandler(deps) {
     if (req.headers['x-agent-token'] || req.headers['x-agent-call'] !== undefined) {
       sendJson({
         mode: getMode(),
-        role: rs.role ?? null,
+        role: rs.role ? roleName(rs.role) : null,
+        roleId: rs.role ?? null,
         roleMode: rs.mode ?? 'active',
         dshReady: isDshReady(),
         socialV2Paused: socialV2.paused,
@@ -53,7 +55,8 @@ export function createStatusHandler(deps) {
     sendJson({
       mode: getMode(),
       closedAgentPreset: getClosedAgentPreset(),
-      role: rs.role ?? null,
+      role: rs.role ? roleName(rs.role) : null,
+      roleId: rs.role ?? null,
       roleMode: rs.mode ?? 'active',
       dshReady: isDshReady(),
       ownerQQ: cfg.ownerQQ ?? null,

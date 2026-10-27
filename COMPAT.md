@@ -70,7 +70,29 @@ HTTP: http://<host>:3000/<action>  Authorization: Bearer <token>
 | `meta_event` + `heartbeat` | `interval` | 心跳判活（不参与业务） |
 | `request` | `request_type`、`flag` | 只旁路统计，**不自动同意** |
 
-### 3.4 配置键（换 DSH/换机器要重配的）
+### 3.4 角色卡契约（换机器/搬迁时最容易坏的一块）
+
+```
+roles/<任意文件名>.md
+  ---
+  id: xiaojingyu        ← 身份（ASCII 小写，唯一）；state 只存它
+  name: 小鲸鱼（已测试）    ← 显示名，自由文本
+  ---
+  正文…
+```
+
+| 规则 | 原因 |
+| --- | --- |
+| `id` 必须 ASCII 小写、唯一 | 要能安全当状态键与文件名；中文名做 id 会在不同平台/编码下出岔子 |
+| 改 `name` **不影响** `state/current-role.json` / `roles-by-key.json` | 绑定存的是 id，不是名字 |
+| 改文件名**不影响**任何绑定 | id 在文件里；桥接靠索引找 `entry.file`，不靠拼路径 |
+| 老卡（无 front matter）用文件名哈希当 id | 保证同一份文件在任何机器上得到同一个 id |
+| 元数据不得出现在注入文本里 | `selectRoleText` / `parseRoleSections` 统一剥 front matter |
+
+迁移工具：`node scripts/migrate-roles-to-ids.mjs`（`--dry-run` 默认；`--apply` 真写）。
+回归：`scripts/test-role-id.mjs`（9 项，含「改文件名 id 不变」）。
+
+### 3.5 配置键（换 DSH/换机器要重配的）
 
 `compat.json` 的 `contracts.configKeys` 有完整清单。最常需要改的四个：
 
