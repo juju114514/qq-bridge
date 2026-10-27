@@ -3,13 +3,24 @@
 > 场景：别人拿到这份仓库，在一台**从没跑过 qq-bridge** 的电脑上从零装起来。
 > 这份文档按「阶段」把所有能踩的坑列全，并标注**有没有对应的排查入口**。
 >
-> 先跑一条命令再往下看：
->
-> ```bash
-> node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能跑
-> ```
->
-> 它会逐项告诉你 OK / WARN / FAIL，每条都带「下一步看哪一节」。
+**最省事的路径**：一条命令走完准备（幂等，失败了修完可重跑）：
+
+```powershell
+.\scripts\first-run.ps1            # 体检 → 装依赖 → 生成 config → 装 DSH preset →（可选）启动
+.\scripts\first-run.ps1 -DryRun    # 只看会做什么
+```
+
+它按顺序调用 `preflight.mjs` → `npm install` → 复制 `config.example.json` → `setup-dsh.mjs`
+→ `start-bridge.ps1`，任一步失败就停并给出文档锚点。两条保证：**不覆盖已有 `config.json`**、
+**不代启 SnowLuma**（都有测试钉住）。
+
+想只体检、不装任何东西：
+
+```bash
+node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能跑
+```
+
+它会逐项告诉你 OK / WARN / FAIL，每条都带「下一步看哪一节」。
 
 ---
 

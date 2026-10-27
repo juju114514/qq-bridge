@@ -161,7 +161,20 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 
 手装流程见 [SETUP.md](SETUP.md)。
 
-## 全新机器装之前：先跑体检
+## 全新机器：一条命令走完准备
+
+```powershell
+.\scripts\first-run.ps1            # 体检 → 装依赖 → 生成 config → 装 DSH preset →（可选）启动
+.\scripts\first-run.ps1 -DryRun    # 只看会做什么，不装不改不启动
+```
+
+它**只调用权威工具**（`preflight.mjs` / `npm install` / `setup-dsh.mjs` / `start-bridge.ps1`），
+任一步失败就停，并打印「下一步看哪一节」。两条硬边界写进了测试：
+
+- **绝不覆盖已存在的 `config.json`**（你的配置永远是你的）
+- **不启动、不安装 SnowLuma**（第三方程序，设计不变量 L6）
+
+只想单独体检（不装任何东西）：
 
 ```bash
 node scripts/preflight.mjs

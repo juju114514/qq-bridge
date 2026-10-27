@@ -64,6 +64,8 @@ DSH/                         ← 工作区根（不是仓库根）
 | `test-compat.mjs` | 兼容契约一致性：`compat.json` 的动作清单 ↔ 代码实际使用（双向）、平台能力表 ↔ 平台闸门 | 保留 |
 | `test-portability.mjs` | 换机器审计：硬编码盘符、示例配置里的本机值、`powershell.exe` 前的平台闸门、迁移清单完整性 | 保留 |
 | `migrate-roles-to-ids.mjs` | 一次性迁移（幂等）：给老角色卡补 front matter，并把 `state/` 里以旧显示名记录的绑定改写成 id。默认 dry-run，`--apply` 才写 | 保留（老仓库升级用） |
+| `first-run.ps1` | **首次运行引导**：体检 → `npm install` → 生成/校验 `config.json` → `setup-dsh.mjs` →（可选）`start-bridge.ps1`。任一步失败即停并给文档锚点；幂等；`-DryRun` 只打印计划。**绝不覆盖已有 config.json、不代启 SnowLuma** | 保留（新用户入口） |
+| `test-first-run.mjs` | 上面那个脚本的契约测试（结构 + DryRun 行为 + 两条硬边界） | 保留 |
 | `preflight.mjs` | **全新机器环境体检**（不依赖 node_modules，装依赖前就能跑）：Node 版本、仓库完整性、依赖、config.json 与关键字段、state 可写、端口占用、DSH/SnowLuma 可达性、人格卡元数据；每条带 TROUBLESHOOTING 锚点。退出码 0/1/2 | 保留（首次安装/换机器必跑） |
 | `probe-dsh-providers.mjs` | **模型接入探针**：打印 `session.modelCatalog` 的 provider 分组与 settings 里与模型接入有关的路径（`providers.*` / `apiKeyEnv` / `baseURL` / `allowedModels`），值一律脱敏 | 接新 provider / 换 DSH 版本时先跑 |
 | `route-list-all.mjs` | 路由清单（`bridge.js` + `src/api/*` + `src/http/*`）。注：`route-inventory.mjs` 只扫 `bridge.js`，重构后它会漏报 | 保留（对账用） |

@@ -36,6 +36,7 @@
 | 人格 | 身份在文件 front matter：`roles/<任意文件名>.md` 里 `id:` + `name:`。state 只存 id，**改名不影响绑定**（`test-role-id.mjs` 钉住） |
 | 协议层 | 自带 `src/onebot-ws.js`（Node 内置 WebSocket）；**不依赖 `@snowluma/*`**，也不修改任何第三方包 |
 | 契约 | [COMPAT.md](COMPAT.md)（人读）+ [compat.json](compat.json)（机器读），`test-compat.mjs` 保证两者与代码一致 |
+| 首次安装 | `.\scripts\first-run.ps1`（体检→装依赖→生成 config→装 preset→可选启动；`-DryRun` 只打印计划）。**不覆盖已有 config.json、不代启 SnowLuma**（`test-first-run.mjs` 钉住） |
 | 全新环境体检 | `node scripts/preflight.mjs`（不依赖 node_modules）：Node/仓库完整性/依赖/config/state 可写/端口/DSH/SnowLuma/人格卡 逐项 OK-WARN-FAIL，每条带文档锚点。清单见 [guides/FRESH-INSTALL.md](docs/guides/FRESH-INSTALL.md) |
 | 模型 | `dsh.provider` 透传给 DSH。`deepseek-official` **已测试**；`openai`（GPT）**已接入但未测试**（计价/档位/工具/人格均未验证）→ [guides/MODELS.md](docs/guides/MODELS.md)，探针 `scripts/probe-dsh-providers.mjs` |
 

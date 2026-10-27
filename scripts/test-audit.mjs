@@ -98,6 +98,8 @@ const tests = [
   // 启动器与守护：设计不变量 L6（不代启 SnowLuma）、退出码契约、单实例/停止信号/
   //   退避重启/ExitCode 归一化、.ps1 必须带 BOM、文档与入口互链。
   'test-launcher-scripts.mjs',
+  // 首次运行引导 first-run.ps1：不覆盖 config.json、不代启 SnowLuma、DryRun 行为。
+  'test-first-run.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
