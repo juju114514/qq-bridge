@@ -41,6 +41,7 @@ import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
+import { appendDropped, summarizeDropped } from './dead-letter.js';
 import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
@@ -3123,6 +3124,19 @@ async function main() {
   // 用户那条消息**永久丢失且没有任何提示**（2026-10-28 真的吞掉了一条抖音链接）。
   // 现在每次变更 debounce 写 state/pending-queue.json；启动时按"24 小时 / 每会话 50 条"剪枝后恢复。
   const QUEUE_FILE = path.join(ROOT, 'state', 'pending-queue.json');
+  // 死信：队列满/白名单变更时被丢弃的消息写这里，不再凭空消失
+  const DROPPED_FILE = path.join(ROOT, 'state', 'pending-queue-dropped.jsonl');
+  let droppedNoticeAt = 0;
+  const dropToDeadLetter = (key, item, reason) => {
+    const r = appendDropped(DROPPED_FILE, { key, reason, promptText: item?.promptText ?? '' });
+    const now = Date.now();
+    if (now - droppedNoticeAt > 60000) {
+      droppedNoticeAt = now;
+      log(`消息被丢弃但已写入死信 ${path.relative(ROOT, DROPPED_FILE)}（${reason}，key=${key}）`
+        + (r.ok ? '' : `；写死信失败：${r.error}`));
+    }
+    return r.ok;
+  };
   let queuePersistTimer = null;
   let queuePersistFailLogged = '';
 
@@ -3177,6 +3191,8 @@ async function main() {
       if (items.length >= QUEUE_MAX) {
         items.shift();
         log(`队列满（${QUEUE_MAX}），丢弃最旧消息 (${key})`);
+        // 丢弃前先落死信：宁可多一个文件，也不要用户消息凭空消失
+        dropToDeadLetter(key, items[0], 'queue-full');
       }
       items.push({ promptText, farewell: !!opts.farewell, silent: !!opts.silent, media: opts.media ?? [], wakeReason: opts.wakeReason });
       queued.set(key, items);
@@ -3433,7 +3449,9 @@ async function main() {
             const [kind, idStr] = key.split(':');
             const id = Number(idStr);
             if (!modeAllowed(key, kind, id, cfg, currentMode)) {
-              log(`补投跳过未授权会话 ${key}（当前模式 ${currentMode}）`);
+              // 恢复队列后会话已不在白名单：不能静默丢，写死信（含原文）便于事后补偿
+              dropToDeadLetter(key, item, `unauthorized@${currentMode}`);
+              log(`补投跳过未授权会话 ${key}（当前模式 ${currentMode}），已写死信`);
               continue;
             }
             const result = await deliverPrompt(key, item.promptText, { farewell: item.farewell, silent: item.silent, media: item.media ?? [], wakeReason: item.wakeReason });
@@ -8276,6 +8294,8 @@ async function main() {
       if (items.length >= QUEUE_MAX) {
         items.shift();
         log(`队列满（${QUEUE_MAX}），丢弃最旧消息 (${key})`);
+        // 丢弃前先落死信：宁可多一个文件，也不要用户消息凭空消失
+        dropToDeadLetter(key, items[0], 'queue-full');
       }
       items.push({ promptText, farewell: !!opts.farewell, silent: !!opts.silent, media: opts.media ?? [], wakeReason: opts.wakeReason });
       queued.set(key, items);
@@ -10678,6 +10698,8 @@ async function main() {
       if (items.length >= QUEUE_MAX) {
         items.shift();
         log(`队列满（${QUEUE_MAX}），丢弃最旧消息 (${key})`);
+        // 丢弃前先落死信：宁可多一个文件，也不要用户消息凭空消失
+        dropToDeadLetter(key, items[0], 'queue-full');
       }
       items.push({ promptText, media: mediaList });
       queued.set(key, items);

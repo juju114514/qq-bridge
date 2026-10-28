@@ -126,6 +126,8 @@ const tests = [
   'test-conv-key.mjs',
   // 官方主动消息：cron / 配额 / 权限降级 / 接线。
   'test-official-proactive.mjs',
+  // 死信：被丢弃的消息要能查回来（append/轮转/坏行/分组统计/接线）。
+  'test-dead-letter.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
