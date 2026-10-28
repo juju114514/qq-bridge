@@ -20,6 +20,7 @@
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
 | [guides/FRESH-INSTALL.md](guides/FRESH-INSTALL.md) | **全新机器安装**（入口：Windows `.\scripts\first-run.ps1` / Linux `./deploy/first-run.sh`，或 `node scripts/preflight.mjs` 只体检）：按阶段（系统准备→取代码→装依赖→配置→装 DSH/SnowLuma→首次启动→首次对话）列出会踩的坑，每条标「有没有对应排查」；含本次补的 4 个缺口（没有 npm / PowerShell 执行策略 / preset 没装 / postinstall 提示不是错误）。入口命令 `node scripts/preflight.mjs` | ✅ 2026-10-27 |
 | [guides/INJECT.md](guides/INJECT.md) | **外部触发入口**：webhook/cron 推机器人（独立令牌、白名单、限流、prompt\|say 两种模式） | ✅ 2026-10-29 |
+| [../QUICKSTART.md](../QUICKSTART.md) | **一页版快速开始**：体检 → 三条路线 → 验证 → 卡住了怎么办 | ✅ 2026-10-29 |
 | [guides/DOCKER.md](guides/DOCKER.md) | **Docker 部署**：能跑什么/不能跑什么（只跑官方通道）、三步起、必须改的三处、健康检查与排障 | ✅ 2026-10-29 |
 | [guides/TWO-TRACKS.md](guides/TWO-TRACKS.md) | **两套实现方案**：本地注入（个人号）vs 官方机器人（q.qq.com）。为什么必须分开、注册难度、配置怎么切、共同层是什么 | ✅ 2026-10-29 |
 | [guides/MEMORY.md](guides/MEMORY.md) | **长期记忆**：原子结构、衰减/强化公式、打分检索、合并与归档、迁移策略 | ✅ 2026-10-29 |
