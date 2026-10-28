@@ -10034,7 +10034,7 @@ async function main() {
     // textContent 带引用对象信息，供 DSH 判断“这句话在对谁说”；
     // plainContent 只保留当前消息自己的文字，用于命令/指向性判断，避免被引用原文干扰。
     const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply });
-    const plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false });
+    let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false });
     const mediaList = extractMediaFromSegments(event.message ?? []);
     const messageRef = String(event.message_id ?? event.msg_id ?? event.message_seq ?? '');
     const seqRef = event.message_seq != null ? String(event.message_seq) : '';
@@ -10057,7 +10057,16 @@ async function main() {
     // 因此必须先解析 quoteTargetIsSelf 再做空文本过滤，避免“只引用不附文”被漏掉。
     const quoteTargetIsSelf = await isQuoteTargetSelf(event.message ?? [], kind, id, event.self_id);
     if (!isSessionAllowedInCurrentMode(key)) return;
-    if (!plainContent && !quoteTargetIsSelf) return;
+    // 官方通道常见形态：用户只 @ 了一下、没打字（事件里 content 为空）。
+    // 这里**不能**按"空消息"丢弃 —— 群里看到的就是"叫了它一声，它一声不吭"。
+    // 合成一句上下文，让模型自己决定怎么应（它看到的仍然是"有人叫我"）。
+    if (!plainContent && event?.__official?.atBot === true) {
+      plainContent = '（在群里 @ 了我，但这次没打字）';
+    }
+    if (!plainContent && !quoteTargetIsSelf) {
+      if (String(key).includes('official-')) log(`[official] 消息为空且不是 @/引用，丢弃：${key}`);
+      return;
+    }
     const isOwner = String(event.user_id) === String(cfg.ownerQQ ?? '');
     const roleState = readRoleState();
 
@@ -11415,13 +11424,19 @@ async function main() {
   if (officialTransport) {
     officialTransport.start({
       onMessage: async (event, oneBotEvent) => {
-        if (!officialTransport.allowed(event.kind, event.id)) {
+        const allowedNow = officialTransport.allowed(event.kind, event.id);
+        // 诊断：官方链路每一步都留痕（静默丢弃是最难查的，宁可多两行日志）
+        log(`[official] 进入处理：kind=${event.kind} openid=${stripOfficialId(event.id).slice(0, 6)}… `
+          + `atBot=${event.atBot} 文本长度=${String(event.text ?? '').length} 白名单=${allowedNow ? '通过' : '拒绝'}`);
+        if (!allowedNow) {
           log(`忽略未授权的官方会话（${event.kind} openid=${stripOfficialId(event.id).slice(0, 6)}…）——`
             + '把该 openid 加进 config.official.allow，或临时设 official.allowAll=true');
           return;
         }
+        const t0 = Date.now();
         try {
           await handleIncoming(event.kind, oneBotEvent.group_id ?? oneBotEvent.user_id, oneBotEvent, cfg);
+          log(`[official] 处理返回（${Date.now() - t0}ms，kind=${event.kind}）`);
         } catch (error) {
           log(`处理官方消息出错：${error?.message ?? error}`);
         }
