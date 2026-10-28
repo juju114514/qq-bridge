@@ -59,6 +59,7 @@ import { createStickersHandler } from './api/stickers.js';
 import { buildBoundedStickerHint } from './sticker-hint.js';
 import { loadStickerNotes } from './sticker-notes.js';
 import { createPendingQueue, renderPendingHint } from './sticker-pending.js';
+import { decideFromOneBot, describeGatewayCapability } from './private-access.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -113,6 +114,18 @@ function stickerScopeOf(key) {
 // 待判表情：只挂 id，不存图。写入口在 segmentsToText 的 onSticker 回调里，
 // 由调用方按会话判定 scope —— 队列自己不做猜测，避免群聊内容串到私聊。
 const stickerPending = createPendingQueue();
+
+// 私聊准入：**只在 config.socialV2.privateAccess.enabled=true 时生效**，
+// 默认关闭 → 完全沿用旧的白名单逻辑，行为零变化。
+//
+// 关键点：OneBot 的 sub_type='friend' 本身就代表"对方是我好友"，
+// 所以**不需要再调 get_friend_list** —— 这对 SnowLuma（主程序）特别重要，
+// 因为它不一定实现好友列表接口。
+function privateAccessVerdict(cfgIn, event, allowList) {
+  const opts = cfgIn?.socialV2?.privateAccess;
+  if (!opts || opts.enabled !== true) return null;   // null = 不接管，走旧逻辑
+  return decideFromOneBot(opts, event, { friends: null, allowList: allowList || [] });
+}
 
 function stickerCuratorEnabled(cfgIn) {
   // 依次尝试：内存 cfg → config.json（ROOT）→ config.json（cwd）。
