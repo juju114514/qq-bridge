@@ -25,6 +25,8 @@ services:
       - ./config.json:/app/config.json
     environment:
       - TZ=Asia/Shanghai
+      # 容器内必须绑 0.0.0.0，否则宿主机端口映射进不来（宿主机侧仍只映射到 127.0.0.1）
+      - QQB_CONSOLE_HOST=0.0.0.0
     # 桥接进程本身很轻，但要跑 ffmpeg 抽帧/转码
     deploy:
       resources:

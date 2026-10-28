@@ -977,7 +977,10 @@ function loadConfig() {
     ackMessage: file.ackMessage ?? '🤔 收到，正在思考…',
     sendDelayMs: file.sendDelayMs ?? 300,
     questionTimeoutMs: file.questionTimeoutMs ?? 5 * 60 * 1000,
-    consolePort: file.consolePort ?? 3100,
+    // 端口也可用环境变量覆盖：容器里端口映射改了，这里必须跟着改（否则 Host 校验/健康检查全对不上）
+    consolePort: file.consolePort ?? (Number(process.env.QQB_CONSOLE_PORT) || 3100),
+    // 控制台监听地址：默认只绑回环。**容器里必须改成 0.0.0.0**，否则宿主机端口映射进不来。
+    consoleHost: file.consoleHost ?? process.env.QQB_CONSOLE_HOST ?? '127.0.0.1',
     consoleToken: file.consoleToken ?? '',
     // 价目表覆盖项（可选）。留空即用 src/model-prices.js 的官方默认价。
     pricing: file.pricing ?? null,
@@ -5763,7 +5766,7 @@ async function main() {
         sendJson({ ok: false, error: error?.message ?? String(error) }, status);
       }
     });
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, cfg.consoleHost || '127.0.0.1', () => {
       log(`本地控制台已启动：http://127.0.0.1:${port}`);
     });
     // 端口被占用说明已有实例在跑：以 exit 2 退出，守护脚本会识别为"已有实例"而不是无限重启

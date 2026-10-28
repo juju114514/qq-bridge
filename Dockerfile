@@ -19,12 +19,15 @@ COPY scripts ./scripts
 COPY docs ./docs
 COPY config.example.json verify.ps1 README.md LICENSE* ./
 COPY plugins ./plugins
+COPY docker/healthcheck.sh /app/docker/healthcheck.sh
+RUN chmod +x /app/docker/healthcheck.sh
 
 # state 挂 volume；首次启动会把 config.example.json 复制成 config.json
 RUN mkdir -p /app/state && cp /app/config.example.json /app/config.json
 
 EXPOSE 3100
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-  CMD curl -fsS http://127.0.0.1:3100/api/status >/dev/null || exit 1
+# /api/status 需要令牌：401 也说明 HTTP 活着，不能当成不健康。端口跟随 QQB_CONSOLE_PORT。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s \
+  CMD ["sh", "/app/docker/healthcheck.sh"]
 
 CMD ["node", "src/bridge.js"]

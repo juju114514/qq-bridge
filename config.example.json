@@ -371,5 +371,7 @@
         "_说明": "互动召回（is_wakeup）：只有单聊；30 天内 4 个周期各 1 条"
       }
     }
-  }
+  },
+  "consoleHost": "127.0.0.1",
+  "_consoleHost说明": "控制台监听地址。Docker 里设 QQB_CONSOLE_HOST=0.0.0.0（compose 已带），宿主机保持 127.0.0.1"
 }

@@ -81,7 +81,29 @@ node scripts/check-health.mjs --skip-audit
 | 收得到但不回 | `official.allow` 没加 openid | 加白名单并重启 |
 | 主动消息 403 | 群主没开「主动推送消息」 | 群主在群机器人设置里打开 |
 
-## 八、验证状态（诚实版）
+## 八、验证状态（真机跑过）
+
+| 项 | 结果 |
+| --- | --- |
+| `docker compose config` | ✅ |
+| `docker compose build` | ✅ 镜像 `qq-bridge:latest` 1.05GB |
+| `docker run` + 端口映射 | ✅ 宿主机 `http://127.0.0.1:3102/api/status` → 401（无令牌）/ 200（带令牌） |
+| `HEALTHCHECK` | ✅ `Up (healthy)`，日志 ExitCode 0 |
+| 数据卷 | ✅ `config.json` + `state/` 挂载生效 |
+
+### 容器里必须对齐的两件事
+
+1. **`consoleHost` 必须是 `0.0.0.0`**（否则容器内只绑回环，宿主机映射不进来）
+   compose 已用环境变量 `QQB_CONSOLE_HOST=0.0.0.0` 解决
+2. **`consolePort` 必须和端口映射一致**（否则 Host 头校验 403）
+   用 `QQB_CONSOLE_PORT` 环境变量与 `-p` 映射同步；默认映射 `3100:3100` 时无需设置
+
+### 健康检查为什么接受 401
+
+`/api/status` 需要令牌，未带令牌返回 401 —— 401 说明 HTTP 活着，不能当"不健康"。
+早期用 `curl -fsS` 会因此一直 unhealthy，现已改为 `docker/healthcheck.sh`（200 或 401 都算健康）。
+
+## 九、旧版验证记录（C: 空间不足那次）
 
 | 项 | 结果 |
 | --- | --- |
@@ -96,5 +118,17 @@ node scripts/check-health.mjs --skip-audit
 docker compose build
 ```
 
-若 C: 长期吃紧，可在 Docker Desktop → Settings → Resources → Disk image location
-把镜像位置改到 D:（本项目 D: 尚有余量）。
+若 C: 长期吃紧，两条路（都验证过）：
+
+1. **GUI**：Docker Desktop → Settings → Resources → Advanced → Disk image location → 改到别的盘
+2. **目录联接**（本次采用，无需重启 Docker Desktop 的数据迁移向导）：
+
+```powershell
+docker desktop stop
+wsl --shutdown
+Move-Item "$env:LOCALAPPDATA\Docker\wsl" "D:\Docker\wsl"
+cmd /c mklink /J "$env:LOCALAPPDATA\Docker\wsl" "D:\Docker\wsl"
+docker desktop start
+```
+
+> 实测：C: 从 0.06GB 释放到 4.05GB，镜像/容器/数据全部保留（Docker 仍按原路径找，只是指向 D）。
