@@ -230,7 +230,11 @@
         "minSendRelevance": 0.6,
         "maxCollectPerDay": 20,
         "maxSendPerHour": 6,
-        "_说明": "表情策展：AI 自己判断表情含义并决定收藏/丢弃，闲聊时主动发表情。默认关闭，确认人格合适再开"
+        "_说明": "表情策展：AI 自己判断表情含义并决定收藏/丢弃，闲聊时主动发表情。默认关闭，确认人格合适再开",
+        "pendingStyle": "hard",
+        "autoInspect": false,
+        "_pendingStyle说明": "soft=建议式(会被忽略) / hard=要求先看再决定(默认) / inspect=桥接代为辨认，模型只判收不收",
+        "_autoInspect说明": "true 时桥接先调视觉模型认出含义再塞进 pending（每图一次调用，费余额但行为确定）"
       }
     },
     "voice": {

@@ -53,6 +53,20 @@ check('renderPendingHint：空 → 空串；有内容 → 带工具名与说明'
   assert.match(s, /m1、m2/);
 });
 
+check('renderPendingHint：hard 默认带"别直接忽略"，soft 带"没意思就忽略"', () => {
+  const soft = m.renderPendingHint([{ id: 'a' }], { style: 'soft' });
+  const hard = m.renderPendingHint([{ id: 'a' }]);
+  assert.match(soft, /没意思就忽略/);
+  assert.match(hard, /别直接忽略/);
+  assert.match(hard, /qq_collect_sticker/);
+});
+
+check('renderPendingHint：inspect 档展示桥接给的描述', () => {
+  const s = m.renderPendingHint([{ id: 'a', note: '无语到翻白眼' }], { style: 'inspect' });
+  assert.match(s, /无语到翻白眼/);
+  assert.match(s, /只需决定收不收/);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

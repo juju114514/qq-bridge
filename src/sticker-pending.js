@@ -47,10 +47,38 @@ export function createPendingQueue({ max = PENDING_MAX } = {}) {
   };
 }
 
-/** 渲染成给模型看的一小段（空则不出现）。 */
-export function renderPendingHint(items, { max = PENDING_MAX } = {}) {
+/**
+ * 渲染成给模型看的一小段（空则不出现）。
+ *
+ * pendingStyle 三档 —— 决定"这张图 AI 会不会真的去看"：
+ *   soft    建议式（最省，模型常常直接忽略）
+ *   hard    硬要求：本轮先看再决定（默认，实测前 soft 被忽略）
+ *   inspect 桥接已代为看过并给了描述，模型只需判断收/不收
+ */
+export function renderPendingHint(items, { max = PENDING_MAX, style = 'hard' } = {}) {
   const list = (Array.isArray(items) ? items : []).slice(0, max);
   if (!list.length) return '';
   const ids = list.map((x) => x.id).join('、');
-  return `【新收到的表情】${ids}（想看就用 qq_get_sticker_image，觉得有用再 qq_collect_sticker 并说明它表达什么；没意思就忽略）`;
+
+  if (style === 'soft') {
+    return `【新收到的表情】${ids}（想看就用 qq_get_sticker_image，觉得有用再 qq_collect_sticker 并说明它表达什么；没意思就忽略）`;
+  }
+
+  if (style === 'inspect') {
+    const lines = list.map((x) => `- ${x.id}${x.note ? `：${String(x.note).slice(0, 40)}` : ''}`).join('\n');
+    return [
+      '【新收到的表情】（桥接已代为辨认，你只需决定收不收）',
+      lines,
+      '有用 → qq_collect_sticker 并说一句它表达什么；没用 → 直接跳过，不要评论。'
+    ].join('\n');
+  }
+
+  // hard（默认）
+  return [
+    `【新收到的表情】${ids}`,
+    '本轮先看一眼它表达什么（qq_get_sticker_image），再决定：',
+    '- 有用 → qq_collect_sticker，并说一句它表达什么',
+    '- 没用 → 直接跳过，不要评论',
+    '这张图本轮还没看过，别直接忽略。'
+  ].join('\n');
 }

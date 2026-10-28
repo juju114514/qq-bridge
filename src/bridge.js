@@ -5110,7 +5110,7 @@ async function main() {
                   if (!stickerCuratorEnabled(cfg)) return '';
                   const scope = stickerScopeOf(key);
                   const items = stickerPending.take(scope, { clear: false });
-                  return renderPendingHint(items);
+                  return renderPendingHint(items, { style: cfg?.socialV2?.sticker?.curator?.pendingStyle || 'hard' });
                 } catch { return ''; }
               })(),
               // 只影响"发不发/发哪张"，且严格按会话 scope 取（群聊的绝不进私聊）
