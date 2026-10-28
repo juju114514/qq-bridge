@@ -24,6 +24,7 @@ const PORT = Number(process.env.PORT || 3181);
 const HOST = '127.0.0.1';
 
 const curator = await import(pathToFileURL(path.join(ROOT, 'src', 'sticker-curator.js')).href);
+const notes = await import(pathToFileURL(path.join(ROOT, 'src', 'sticker-notes.js')).href);
 
 function readConfig() {
   try {
@@ -32,6 +33,7 @@ function readConfig() {
 }
 
 function tokenPath() { return path.join(ROOT, 'state', 'sticker-curate-token'); }
+function notesPath() { return path.join(ROOT, 'state', 'sticker-notes.json'); }
 
 function loadToken() {
   try {
@@ -117,9 +119,20 @@ const server = http.createServer(async (req, res) => {
     mood: String(body.mood ?? '')
   }, opts);
 
+  // 落一条笔记（像 QQ 黑话那样单独存），不碰 prompt、不碰 bridge
+  let noteId = String(body.id ?? '').trim();
+  if (!noteId) noteId = 'auto-' + crypto.createHash('sha1').update(meaning).digest('hex').slice(0, 10);
+  let store = notes.loadStickerNotes(notesPath());
+  notes.upsertStickerNote(store, {
+    id: noteId, meaning, tags, score,
+    status: notes.STICKER_NOTE_STATUS.PENDING, source: 'curate'
+  });
+  if (apply && send.send) notes.markStickerUsed(store, noteId);
+  try { notes.saveStickerNotes(notesPath(), store); } catch (e) { console.error('[curate] 笔记落盘失败:', e?.message ?? e); }
+
   // 本服务只做决策，不代替桥接执行收藏/发送（避免两处都能往群里发东西）
   json(res, {
-    ok: true, applied: false, meaning, score, collect, send,
+    ok: true, applied: false, meaning, score, collect, send, noteId,
     hint: '决策结果交回桥接执行；本服务不直接调用 OneBot，避免双通道刷屏'
   });
 });
