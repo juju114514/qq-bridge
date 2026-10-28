@@ -314,6 +314,13 @@
     "privateLimit": {
       "dailyPerUser": 0,
       "note": "非管理员私聊每天最多条数，0=不限（开源默认不限；按需自己设，例如 50）"
+    },
+    "privateAccess": {
+      "enabled": false,
+      "allowFriends": true,
+      "allowStrangers": false,
+      "friendListTtlMs": 600000,
+      "_说明": "私聊准入：只接好友私聊，临时会话一律拒（网关不稳）。新装默认关闭，确认要接私聊再开"
     }
   },
   "webSearch": {

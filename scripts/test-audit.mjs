@@ -146,6 +146,8 @@ const tests = [
   'test-sticker-hint.mjs',
   // 待判表情队列：scope 隔离 / FIFO / 提示渲染。
   'test-sticker-pending.mjs',
+  // 私聊准入：好友放行 / 临时会话拒 / 默认关。
+  'test-private-access.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
