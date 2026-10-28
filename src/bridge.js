@@ -41,6 +41,7 @@ import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
+import { enrichBili, formatBiliEnrich } from './bili-enrich.js';
 import { appendDropped, summarizeDropped, readDropped, takeDropped } from './dead-letter.js';
 import { createDeadLetterHandler } from './api/dead-letter.js';
 import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
@@ -6600,6 +6601,23 @@ async function main() {
     try {
       const label = `${siteLabel(detectVideoLinks(url, { sites: videoLinkConfig().sites })[0]?.site ?? '') || '视频'}链接`;
       const got = await analyzeVideoFile(dl.file, mode, label);
+      // B 站增强：元数据 + 字幕 + 高赞评论（只读，失败安静降级）
+      // 字幕通常要登录 B 站；没登录就用我们自己的 ASR，不报错。
+      if (got.ok && /bilibili\.com|b23\.tv/i.test(url) && videoLinkConfig().biliEnrich !== false) {
+        try {
+          const enriched = await enrichBili(url, {
+            exePath: videoLinkConfig().biliExe || '',
+            timeoutMs: 20000
+          });
+          const text = formatBiliEnrich(enriched);
+          if (text) {
+            got.note = `${got.note ? `${got.note}\n` : ''}${text}`;
+            log(`[bili] 增强完成：${enriched.subtitle ? '含字幕' : '无字幕'}、${enriched.comments?.length ?? 0} 条热评`);
+          }
+        } catch (error) {
+          log(`[bili] 增强失败（不影响看视频）：${error?.message ?? error}`);
+        }
+      }
       if (got.ok && dl.partial) {
         got.note = `${got.note}\n（只取了视频前 ${videoLinkConfig().maxSeconds} 秒做分析）`;
       }

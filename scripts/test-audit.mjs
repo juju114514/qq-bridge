@@ -132,6 +132,8 @@ const tests = [
   'test-instance-lock.mjs',
   // 外部触发入口：鉴权/白名单/限流/prompt|say。
   'test-inject.mjs',
+  // B 站增强：bvid 提取/字幕/热评/拼装/降级接线。
+  'test-bili-enrich.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
