@@ -142,6 +142,8 @@ const tests = [
   'test-sticker-curate-api.mjs',
   // 表情笔记：独立存储 / 状态机 / 上限 / 默认不进提示词。
   'test-sticker-notes.mjs',
+  // 表情提示词限幅 + /curate 客户端 fail-open。
+  'test-sticker-hint.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
