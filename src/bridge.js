@@ -10222,6 +10222,18 @@ async function main() {
   // QQ 消息 → DSH prompt
   async function handleIncoming(kind, id, event, cfg) {
     const key = convKey(kind, id);
+    // 私聊准入：只在 config.socialV2.privateAccess.enabled=true 时接管。
+    // 不依赖 get_friend_list —— OneBot 的 sub_type='friend' 本身就代表"好友"，SnowLuma 也认。
+    if (kind === 'private') {
+      const pv = privateAccessVerdict(cfg, event, cfg?.allow?.private ?? []);
+      if (pv) {
+        if (!pv.allowed) {
+          log(`[private] 拒绝 ${key}（${pv.reason}）${pv.hint ? `：${pv.hint}` : ''}`);
+          return;
+        }
+        log(`[private] 放行 ${key}（${pv.reason}）`);
+      }
+    }
     if (!modeAllowed(key, kind, id, cfg, currentMode)) {
       log(`忽略未授权会话 ${key}（当前模式 ${currentMode}，来自 ${event.user_id}）`);
       return;
