@@ -12,6 +12,7 @@
  */
 
 import os from 'node:os';
+import { CONV_KEY_RE, convId } from '../conv-key.js';
 import { spawn } from 'node:child_process';
 
 export function createSocialV2SendHandler(deps) {
@@ -217,10 +218,10 @@ export function createSocialV2SendHandler(deps) {
       if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
       if (getSocialV2().paused) { sendJson({ ok: false, error: '二代 AI 已暂停，不能点赞' }, 403); return true; }
       if (!/^[1-9]\d*$/.test(targetUserId)) { sendJson({ ok: false, error: 'targetUserId 必须是正整数 QQ 号' }, 400); return true; }
-      const km2 = /^(group|private):(\d+)$/.exec(key);
-      if (!km2) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const km2 = CONV_KEY_RE.exec(key);
+      if (!km2) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       if (km2[1] === 'group') {
-        const memberError = await assertGroupMember(Number(km2[2]), targetUserId);
+        const memberError = await assertGroupMember(convId(km2[2]), targetUserId);
         if (memberError) {
           sendJson({ ok: false, error: String(memberError).replace('已拒绝拍一拍', '已拒绝点赞') }, 403);
           return true;
@@ -297,8 +298,8 @@ export function createSocialV2SendHandler(deps) {
       if (agentToken && !agentTokenOk(key, agentToken)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return true; }
       if (agentToken && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
       if (agentToken && !v2ToolEnabled('collectSticker')) { sendJson({ ok: false, error: '工具未启用：qq_collect_sticker' }, 403); return true; }
-      const keyMatch = /^(group|private):(\d+)$/.exec(key);
-      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const keyMatch = CONV_KEY_RE.exec(key);
+      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const st = getSocialV2State(key);
       const collectCfg = getCfg().socialV2?.sticker?.collect ?? {};
       if (collectCfg.enabled === false) { sendJson({ ok: false, error: 'AI 收藏表情功能已关闭' }, 403); return true; }
@@ -390,10 +391,10 @@ export function createSocialV2SendHandler(deps) {
       if (!v2ToolEnabled('sendVoice')) { sendJson({ ok: false, error: '工具未启用：qq_send_voice' }, 403); return true; }
       if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
       if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return true; }
-      const keyMatch = /^(group|private):(\d+)$/.exec(key);
-      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const keyMatch = CONV_KEY_RE.exec(key);
+      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
-      const id = Number(keyMatch[2]);
+      const id = convId(keyMatch[2]);
       if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
@@ -463,10 +464,10 @@ export function createSocialV2SendHandler(deps) {
       if (agentToken && !v2ToolEnabled('sendSticker')) { sendJson({ ok: false, error: '工具未启用：qq_send_sticker' }, 403); return true; }
       if (getMode() !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return true; }
       if (!agentToken) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return true; }
-      const keyMatch = /^(group|private):(\d+)$/.exec(key);
-      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const keyMatch = CONV_KEY_RE.exec(key);
+      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
-      const id = Number(keyMatch[2]);
+      const id = convId(keyMatch[2]);
       if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
@@ -563,10 +564,10 @@ export function createSocialV2SendHandler(deps) {
       if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
       if (!v2ToolEnabled('sendPoke')) { sendJson({ ok: false, error: '工具未启用：qq_send_poke' }, 403); return true; }
       if (getSocialV2().paused) { sendJson({ ok: false, error: '二代 AI 已暂停，不能发送拍一拍' }, 403); return true; }
-      const keyMatch = /^(group|private):(\d+)$/.exec(key);
-      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const keyMatch = CONV_KEY_RE.exec(key);
+      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
-      const id = Number(keyMatch[2]);
+      const id = convId(keyMatch[2]);
       if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '当前模式不允许操作该会话' }, 403);
         return true;
@@ -702,13 +703,13 @@ export function createSocialV2SendHandler(deps) {
         return true;
       }
       if (!agentToken) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return true; }
-      const keyMatch = /^(group|private):(\d+)$/.exec(key);
+      const keyMatch = CONV_KEY_RE.exec(key);
       if (!keyMatch) {
-        sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400);
+        sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400);
         return true;
       }
       const kind = keyMatch[1];
-      const id = Number(keyMatch[2]);
+      const id = convId(keyMatch[2]);
       if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
@@ -832,10 +833,10 @@ export function createSocialV2SendHandler(deps) {
       if (agentToken && !v2ToolEnabled('sendMessage')) { sendJson({ ok: false, error: '工具未启用：qq_send_message' }, 403); return true; }
       if (getMode() !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return true; }
       if (!agentToken) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return true; }
-      const keyMatch = /^(group|private):(\d+)$/.exec(key);
-      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return true; }
+      const keyMatch = CONV_KEY_RE.exec(key);
+      if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
-      const id = Number(keyMatch[2]);
+      const id = convId(keyMatch[2]);
       if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;

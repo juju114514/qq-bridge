@@ -1,3 +1,4 @@
+import { CONV_KEY_RE, convId } from '../conv-key.js';
 /**
  * 统一发送端点：POST /api/send/{group,private,reply}（MCP 发送工具走这里）。
  *
@@ -71,10 +72,10 @@ export function createSendHandler(deps) {
       sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403);
       return true;
     }
-    const keyMatch = /^(group|private):(\d+)$/.exec(key);
+    const keyMatch = CONV_KEY_RE.exec(key);
     if (!keyMatch) { sendJson({ ok: false, error: 'key 格式无效' }, 400); return true; }
     const kind = keyMatch[1];
-    const id = Number(keyMatch[2]);
+    const id = convId(keyMatch[2]);
     if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
       sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
       return true;

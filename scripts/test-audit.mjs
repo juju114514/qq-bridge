@@ -122,6 +122,8 @@ const tests = [
   'test-official-transport.mjs',
   // 长期记忆：衰减/强化/打分/预算/合并/容量/归档/迁移。
   'test-memory-store.mjs',
+  // 会话 key 解析：官方 openid 与数字 QQ 号共存（发送工具的总闸）。
+  'test-conv-key.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
