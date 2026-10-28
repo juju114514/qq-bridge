@@ -56,6 +56,8 @@ import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
+import { buildBoundedStickerHint } from './sticker-hint.js';
+import { loadStickerNotes } from './sticker-notes.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -101,6 +103,28 @@ const STATE_DIR = path.join(ROOT, 'state');
 const STATE_FILE = path.join(STATE_DIR, 'sessions.json');
 const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
 const SLANG_FILE = path.join(STATE_DIR, 'slang.json');
+// 表情笔记（独立存储，和 slang.json 同级）。群聊/私聊严格隔离：
+// scope 由会话 key 前缀决定，笔记层不传 scope 就返回空，双保险。
+const STICKER_NOTES_FILE = path.join(STATE_DIR, 'sticker-notes.json');
+function stickerScopeOf(key) {
+  return String(key ?? '').startsWith('group:') ? 'group' : 'private';
+}
+function stickerCuratorEnabled() {
+  try {
+    if (cfg?.socialV2?.sticker?.curator?.enabled === true) return true;
+    // loadConfig 是按字段显式装配的，新加的 curator 段可能还没登记（踩过一次）。
+    // 这里直接回读 config.json 兜底，避免"改了配置却不生效"的假死。
+    const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8').replace(/^\uFEFF/, ''));
+    return raw?.socialV2?.sticker?.curator?.enabled === true;
+  } catch { return false; }
+}
+function stickerHintFor(key) {
+  try {
+    if (!stickerCuratorEnabled()) return '';   // 默认关：行为零变化
+    const store = loadStickerNotes(STICKER_NOTES_FILE);
+    return buildBoundedStickerHint(store.notes, stickerScopeOf(key));
+  } catch { return ''; }
+}
 const SLANG_SESSION_FILE = path.join(STATE_DIR, 'slang-session.json');
 const SOCIAL_V2_FILE = path.join(STATE_DIR, 'social-v2.json');
 // 操作者为每个会话预写的「初始提示词」（见 main() 里的 initialPrompts）。
@@ -5033,7 +5057,9 @@ async function main() {
               enabled: cfg.socialV2?.sticker?.enabled !== false,
               total: stickerEntries.length,
               context: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerContext(stickerEntries, cfg.socialV2?.sticker?.promptMaxStickers ?? 8) : '',
-              strategy: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerStrategyHint() : ''
+              strategy: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerStrategyHint() : '',
+              // 只影响"发不发/发哪张"，且严格按会话 scope 取（群聊的绝不进私聊）
+              hint: stickerHintFor(key)
             },
             // 语音库摘要：让 AI 一开始就知道有哪些语音可发（真发之前用 qq_list_voices 看详情）。
             voices: cfg.socialV2?.voice?.enabled === false ? { enabled: false } : {
