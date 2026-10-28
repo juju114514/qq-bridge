@@ -136,6 +136,8 @@ const tests = [
   'test-bili-enrich.mjs',
   // 装机体检：四个卡点的诊断与修法（离线）。
   'test-doctor.mjs',
+  // 表情策展：含义识别 / 收藏判定 / 主动发送配额（离线）。
+  'test-sticker-curator.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

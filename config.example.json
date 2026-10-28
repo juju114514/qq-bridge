@@ -221,6 +221,16 @@
         "maxPerMinute": 2,
         "maxPerHour": 10,
         "maxRemarkChars": 20
+      },
+      "curator": {
+        "enabled": false,
+        "autoCollect": true,
+        "proactiveSend": true,
+        "minMeaningScore": 0.55,
+        "minSendRelevance": 0.6,
+        "maxCollectPerDay": 20,
+        "maxSendPerHour": 6,
+        "_说明": "表情策展：AI 自己判断表情含义并决定收藏/丢弃，闲聊时主动发表情。默认关闭，确认人格合适再开"
       }
     },
     "voice": {
