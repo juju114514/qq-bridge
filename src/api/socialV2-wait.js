@@ -68,12 +68,24 @@ export function createSocialV2WaitHandler(deps) {
     // 首回复闸门：本轮还没发过话就想要 5 分钟的"沉睡前观察"，一律压到 30 秒。
     // 真实踩过（2026-10-29 01:03）：模型被唤醒后先做 preSleep 观察，群里 5 分钟没有任何回复，
     // 用户看到的就是"它卡住了"。观察是**收尾**动作，不是回复的前置条件。
-    const wantsPreSleepObservation = timeoutMs >= (Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
-    const replySinceWake = (Number(st.lastAiReplyAt) || 0) > (Number(st.lastWakeAt) || 0);
-    let firstReplyGateMs = 0;
+    const preSleepBudgetMs = Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000;
+    // 只有 messages 用途才谈得上"沉睡前观察"；reply 用途本来就是短静默，绝不能被闸门拦。
+    const wantsPreSleepObservation = !replyWait && timeoutMs >= preSleepBudgetMs;
+    // 没有 lastWakeAt（老会话/测试环境）时无法判断"这轮发没发过" → 不拦，避免误伤。
+    const hasWakeMark = Number(st.lastWakeAt) > 0;
+    const replySinceWake = !hasWakeMark || (Number(st.lastAiReplyAt) || 0) > Number(st.lastWakeAt);
     if (wantsPreSleepObservation && !replySinceWake) {
-      firstReplyGateMs = Math.min(timeoutMs, 30000);
-      timeoutMs = firstReplyGateMs;
+      // 首回复闸门：**明确拒绝**，而不是偷偷把预算压到 30 秒。
+      // 压预算是错的：观察闸门要求"单次满 300 秒"，压缩后永远凑不满，
+      // 模型会反复重试、剩余时间原地打转（2026-10-29 01:0x 真实踩过，日志 258→226→194 秒）。
+      // 注意：这里还没拿到租约（lease 在下面才 set），不能调 finishWait() —— 会 TDZ 报错。
+      sendJson({
+        ok: false,
+        error: '本轮还没发过话：沉睡前观察必须在你第一次发言之后。先回复（qq_send_message），再观察收尾。',
+        firstReplyGate: true,
+        preSleepWaitMs: preSleepBudgetMs
+      }, 409);
+      return true;
     }
     // 同一会话只允许一个长轮询等待，避免并发挂起耗尽 HTTP handler。
     // 租约按归一后的 key 记账；过期则视为残留，允许接管而不是永久 429。

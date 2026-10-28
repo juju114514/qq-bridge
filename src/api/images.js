@@ -55,7 +55,7 @@ export function createImagesHandler(deps) {
 
     const kind = keyMatch[1];
     const id = Number(keyMatch[2]);
-    if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
+    if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, cfg, currentMode)) {
       sendJson({ ok: false, error: '当前模式不允许读取该会话' }, 403);
       return true;
     }

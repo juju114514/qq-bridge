@@ -76,7 +76,7 @@ export function createSendHandler(deps) {
     if (!keyMatch) { sendJson({ ok: false, error: 'key 格式无效' }, 400); return true; }
     const kind = keyMatch[1];
     const id = convId(keyMatch[2]);
-    if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
+    if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, cfg, currentMode)) {
       sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
       return true;
     }

@@ -395,7 +395,7 @@ export function createSocialV2SendHandler(deps) {
       if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
       const id = convId(keyMatch[2]);
-      if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
+      if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
       }
@@ -468,7 +468,7 @@ export function createSocialV2SendHandler(deps) {
       if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
       const id = convId(keyMatch[2]);
-      if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
+      if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
       }
@@ -568,7 +568,7 @@ export function createSocialV2SendHandler(deps) {
       if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
       const id = convId(keyMatch[2]);
-      if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
+      if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '当前模式不允许操作该会话' }, 403);
         return true;
       }
@@ -710,7 +710,7 @@ export function createSocialV2SendHandler(deps) {
       }
       const kind = keyMatch[1];
       const id = convId(keyMatch[2]);
-      if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
+      if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
       }
@@ -837,7 +837,7 @@ export function createSocialV2SendHandler(deps) {
       if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号 / group:official-openid' }, 400); return true; }
       const kind = keyMatch[1];
       const id = convId(keyMatch[2]);
-      if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, getCfg(), getMode())) {
+      if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, getCfg(), getMode())) {
         sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
         return true;
       }
