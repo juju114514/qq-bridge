@@ -114,6 +114,50 @@ check('接线：召回端点是单聊专用，且带 is_wakeup', () => {
   assert.match(official, /is_wakeup/, 'SDK 层要能发 is_wakeup');
 });
 
+// ── 3.8 后续聊天意向 → 开召回 ──────────────────────────────────────────
+check('detectRecallIntent：命中"希望陪伴/约定未来/主动邀约/告别再会"四类', () => {
+  const cases = [
+    ['希望以后都陪着我', '希望陪伴'],
+    ['明天见', '约定未来'],
+    ['我先睡了，明天聊', '约定未来'],
+    ['记得找我啊', '主动邀约'],
+    ['晚安，明天说', '告别+再会']
+  ];
+  for (const [text, want] of cases) {
+    const r = m.detectRecallIntent(text);
+    assert.ok(r, `应命中：${text}`);
+    assert.equal(r.reason, want, `${text} → ${want}`);
+  }
+});
+
+check('detectRecallIntent：普通寒暄不能误判（否则等于给所有人开召回）', () => {
+  for (const text of ['在吗', '哈哈哈哈', '晚安', '今天好热', '', null]) {
+    assert.equal(m.detectRecallIntent(text), null, `不该命中：${text}`);
+  }
+  // 超长文本（引用转发/刷屏）不计，避免整段长文里偶现关键词就开窗
+  assert.equal(m.detectRecallIntent('明天见'.repeat(100)), null);
+});
+
+check('RecallWindow.arm：开窗并记录原因，不改用已有配额', () => {
+  const file = path.join(os.tmpdir(), `qqb-arm-${process.pid}-${Date.now()}.json`);
+  const w = new m.RecallWindow(file);
+  const t0 = Date.now();
+  const r = w.arm('private:official-U9', { reason: '希望陪伴', now: t0 });
+  assert.equal(r.ok, true);
+  assert.equal(r.period, 0);
+  assert.equal(w.armedInfo('private:official-U9').reason, '希望陪伴');
+  assert.equal(w.claim('private:official-U9', t0).ok, true, 'arm 之后仍可正常 claim');
+  fs.rmSync(file, { force: true });
+});
+
+check('接线：官方私聊入站时检测意向并 arm', () => {
+  const bridge = read('src/bridge.js');
+  assert.match(bridge, /detectRecallIntent\(event\.text\)/, '入站要识别意向');
+  assert.match(bridge, /recallWindow\.arm\(/, '命中后要开窗');
+  assert.match(bridge, /event\.kind === 'private'/, '只在单聊上做（召回是单聊能力）');
+  assert.match(bridge, /armOnIntent/, '要有关闭开关');
+});
+
 // ── 4. 接线 ─────────────────────────────────────────────────────────────
 check('接线：端点鉴权走 socialV2 前缀、sendText 支持 proactive、调度器可启动', () => {
   const api = read('src/api/official-say.js');

@@ -40,7 +40,7 @@ import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
-import { QuotaBook, ProactiveScheduler, RecallWindow, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
+import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
@@ -11431,7 +11431,10 @@ async function main() {
     })
     : null;
   // 互动召回窗口（只有单聊；30 天 4 个周期各 1 条）
-  const recallWindow = officialTransport && proactiveCfg.recall?.enabled !== false
+  const recallCfgEnabled = proactiveCfg.recall?.enabled !== false;
+  // 意向识别是否自动开召回（默认开；关掉就只保留手动 recall 端点）
+  const armOnIntent = proactiveCfg.recall?.armOnIntent !== false;
+  const recallWindow = officialTransport && recallCfgEnabled
     ? new RecallWindow(path.join(ROOT, 'state', 'official-recall.json'))
     : null;
   const proactiveScheduler = officialTransport && Array.isArray(proactiveCfg.schedules) && proactiveCfg.schedules.length
@@ -11490,6 +11493,16 @@ async function main() {
           log(`忽略未授权的官方会话（${event.kind} openid=${stripOfficialId(event.id).slice(0, 6)}…）——`
             + '把该 openid 加进 config.official.allow，或临时设 official.allowAll=true');
           return;
+        }
+        // 后续聊天意向（"希望以后都陪着我""明天见""下次聊"…）→ 给这个单聊开召回窗口。
+        // 只在单聊上做：召回（is_wakeup）本身就是单聊能力，群里发会被官方拒。
+        if (event.kind === 'private' && recallWindow && armOnIntent) {
+          const intent = detectRecallIntent(event.text);
+          if (intent) {
+            recallWindow.arm(`private:${event.id}`, { reason: intent.reason });
+            log(`[official] 检测到后续聊天意向（${intent.reason}）→ 已为该单聊开启召回窗口`);
+            appendActivity?.(`private:${event.id} [official] 意向识别：${intent.reason}`);
+          }
         }
         const t0 = Date.now();
         try {

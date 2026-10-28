@@ -176,6 +176,31 @@ export class ProactiveScheduler {
 
 /** 把官方 API 的错误翻译成人话（权限/开关/频控是三种完全不同的处理）。 */
 
+
+/**
+ * 「后续聊天意向」识别：用户说出"希望以后都陪着我 / 明天见 / 下次聊"这类话时，
+ * 说明他愿意再有下一次 —— 这正是**互动召回**的使用场景，可以给这个人开召回窗口。
+ *
+ * 只做保守命中：宁可漏，不要把普通寒暄（"在吗""哈哈"）当意向，
+ * 否则等于给所有人开召回，打扰感立刻上来。
+ */
+export const RECALL_INTENT_PATTERNS = [
+  { reason: '约定未来', re: /明天见|明天聊|明天找你|明儿见|明儿聊|下次见|下次聊|回头聊|改天聊|晚点聊|等我回来/ },
+  { reason: '希望陪伴', re: /(以后|每天|一直|往后).{0,6}(陪我|陪我聊|陪着我|都在|聊|说话)|别走|不要走|常来|你会一直/ },
+  { reason: '主动邀约', re: /记得找我|想聊.{0,4}(就|随时)|随时.{0,4}(找我|喊我)|有事.{0,4}找你|约好/ },
+  { reason: '告别+再会', re: /(晚安|睡了|下线).{0,6}(明天|明儿|下次)/ }
+];
+
+/** 返回 { reason } 或 null（不命中）。 */
+export function detectRecallIntent(text) {
+  const s = String(text ?? '').trim();
+  if (!s || s.length > 200) return null;
+  for (const p of RECALL_INTENT_PATTERNS) {
+    if (p.re.test(s)) return { reason: p.reason };
+  }
+  return null;
+}
+
 /**
  * 互动召回窗口（官方语义：用户聊过之后 30 天内 4 个周期各 1 条）。
  *
@@ -216,6 +241,27 @@ export class RecallWindow {
     if (days < 7) return 2;
     if (days < 30) return 3;
     return -1;
+  }
+
+  /**
+   * 开启召回窗口：由"检测到后续聊天意向"触发。
+   * 不动已用配额，只记下 arm 时间与原因，并确保窗口从此刻起算（若还没有窗口）。
+   */
+  arm(userKey, { reason = '', now = Date.now(), ttlMs = 30 * 86400000 } = {}) {
+    const rec = this.state.users[userKey] ?? { openedAt: now, used: [false, false, false, false] };
+    if (!rec.openedAt || now - Number(rec.openedAt) > ttlMs) rec.openedAt = now;
+    rec.armedAt = now;
+    rec.armedReason = String(reason ?? '');
+    this.state.users[userKey] = rec;
+    this.save();
+    return { ok: true, period: this.periodIndex(userKey, now), reason: rec.armedReason };
+  }
+
+  /** 该用户是否被"意向"开过窗口（供状态/日志用）。 */
+  armedInfo(userKey) {
+    const rec = this.state.users[userKey];
+    if (!rec?.armedAt) return null;
+    return { armedAt: rec.armedAt, reason: rec.armedReason ?? '' };
   }
 
   /** 预占一次召回；成功返回 { ok, period }，否则给原因。 */
