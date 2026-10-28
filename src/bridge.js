@@ -46,6 +46,7 @@ import { createDeadLetterHandler } from './api/dead-letter.js';
 import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
 import { acquireInstanceLock } from './instance-lock.js';
+import { createInjectHandler, makeInjectToken } from './api/inject.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -982,6 +983,13 @@ function loadConfig() {
     consolePort: file.consolePort ?? (Number(process.env.QQB_CONSOLE_PORT) || 3100),
     // 控制台监听地址：默认只绑回环。**容器里必须改成 0.0.0.0**，否则宿主机端口映射进不来。
     consoleHost: file.consoleHost ?? process.env.QQB_CONSOLE_HOST ?? '127.0.0.1',
+    // 外部触发（webhook/cron）：独立令牌，只能注入消息，不能改配置
+    inject: {
+      enabled: true,
+      token: '',
+      maxPerMinute: 30,
+      ...(file.inject ?? {})
+    },
     consoleToken: file.consoleToken ?? '',
     // 价目表覆盖项（可选）。留空即用 src/model-prices.js 的官方默认价。
     pricing: file.pricing ?? null,
@@ -4149,6 +4157,14 @@ async function main() {
           requeue: requeueDeadLetters
         });
 
+        const handleInject = createInjectHandler({
+          sendJson, readBody, log, getCfg: () => cfg, getMode: () => currentMode,
+          modeAllowed, appendActivity,
+          deliverPrompt: (key, text, opts) => deliverPrompt(key, text, opts),
+          sendSay: (key, text) => sendToQQ(key, text),
+          CONV_KEY_RE, convId
+        });
+
         const handleOfficialSay = createOfficialSayHandler({
           sendJson, readBody, log, getCfg: () => cfg,
           officialTransport, proactiveQuota, proactiveScheduler, recallWindow,
@@ -5669,6 +5685,12 @@ async function main() {
         // 单独开一个路径只是为了让 MCP 工具名和语义对得上。
         if (req.method === 'GET' && url.pathname === '/api/socialV2/video') {
           await handleImages(req, url);
+          return;
+        }
+
+        // ── 外部触发入口（webhook / cron → 机器人） ──────────────────────────
+        if (req.method === 'POST' && url.pathname === '/api/inject') {
+          await handleInject(req, url);
           return;
         }
 
@@ -11526,6 +11548,25 @@ async function main() {
     } catch (error) {
       const tip = explainProactiveError(error?.message);
       throw new Error(tip ? `${error.message}（${tip}）` : String(error?.message ?? error));
+    }
+  }
+
+  // 外部触发令牌：没有就生成一份写进 state/inject-token（独立于控制台令牌）
+  if (!String(cfg.inject?.token || '').trim()) {
+    const injectTokenFile = path.join(ROOT, 'state', 'inject-token');
+    try {
+      if (fs.existsSync(injectTokenFile)) {
+        cfg.inject.token = fs.readFileSync(injectTokenFile, 'utf8').trim();
+      } else {
+        const token = makeInjectToken();
+        fs.mkdirSync(path.dirname(injectTokenFile), { recursive: true });
+        fs.writeFileSync(injectTokenFile, token, 'utf8');
+        cfg.inject.token = token;
+        log('[inject] 已生成外部触发令牌：state/inject-token（用于 POST /api/inject）');
+      }
+    } catch (error) {
+      log(`[inject] 读取/生成令牌失败，外部触发不可用：${error?.message ?? error}`);
+      cfg.inject.enabled = false;
     }
   }
 

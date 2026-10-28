@@ -102,6 +102,12 @@ export function runPrelude(ctx) {
     return deny(403, `Host 头不被允许（${hostHeader || '缺失'}）：控制台只接受本机回环访问`);
   }
 
+  // 2.5) 外部触发入口：它有自己的令牌（state/inject-token），故意**不接受**控制台令牌，
+  //      免得 CI/监控拿到能改配置的权限。鉴权在 handler 里用定长比较做；Host 已在上面校验过。
+  if (pathname === '/api/inject') {
+    return null;
+  }
+
   // 3) 控制台令牌
   const suppliedToken = String(url.searchParams.get('token') ?? req.headers['x-console-token'] ?? '');
   const tokenMatches = consoleToken

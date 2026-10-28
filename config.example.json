@@ -373,5 +373,11 @@
     }
   },
   "consoleHost": "127.0.0.1",
-  "_consoleHost说明": "控制台监听地址。Docker 里设 QQB_CONSOLE_HOST=0.0.0.0（compose 已带），宿主机保持 127.0.0.1"
+  "_consoleHost说明": "控制台监听地址。Docker 里设 QQB_CONSOLE_HOST=0.0.0.0（compose 已带），宿主机保持 127.0.0.1",
+  "inject": {
+    "enabled": true,
+    "token": "",
+    "maxPerMinute": 30,
+    "_说明": "外部触发（webhook/cron）入口 POST /api/inject。token 留空则首次启动自动生成到 state/inject-token；该令牌只能注入消息，不能改配置"
+  }
 }

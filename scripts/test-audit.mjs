@@ -130,6 +130,8 @@ const tests = [
   'test-dead-letter.mjs',
   // 实例互斥：同一 bot 只允许一个进程连 gateway（宿主机 + 容器共存）。
   'test-instance-lock.mjs',
+  // 外部触发入口：鉴权/白名单/限流/prompt|say。
+  'test-inject.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
