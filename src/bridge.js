@@ -58,6 +58,7 @@ import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
 import { buildBoundedStickerHint } from './sticker-hint.js';
 import { loadStickerNotes } from './sticker-notes.js';
+import { createPendingQueue, renderPendingHint } from './sticker-pending.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -109,6 +110,10 @@ const STICKER_NOTES_FILE = path.join(STATE_DIR, 'sticker-notes.json');
 function stickerScopeOf(key) {
   return String(key ?? '').startsWith('group:') ? 'group' : 'private';
 }
+// 待判表情：只挂 id，不存图。写入口在 segmentsToText 的 onSticker 回调里，
+// 由调用方按会话判定 scope —— 队列自己不做猜测，避免群聊内容串到私聊。
+const stickerPending = createPendingQueue();
+
 function stickerCuratorEnabled(cfgIn) {
   // 依次尝试：内存 cfg → config.json（ROOT）→ config.json（cwd）。
   // loadConfig 是显式装配字段的，新段容易漏登记；能读到任何一处 true 就算开。
@@ -1710,10 +1715,19 @@ async function segmentsToText(segments, options = {}) {
         }
         break;
       }
-      case 'face': out.push(`[表情${d.id ?? ''}]`); break;
+      case 'face':
+        out.push(`[表情${d.id ?? ''}]`);
+        if (typeof options.onSticker === 'function') { try { options.onSticker({ kind: 'face', id: String(d.id ?? ''), summary: String(d.summary ?? '') }); } catch { /* 不影响转文本 */ } }
+        break;
       // 市场表情（mface）在部分网关实现里出现：有 summary 就用它，别让模型只看到 "[mface]"。
-      case 'mface': out.push(`[表情${d.summary ? `:${d.summary}` : ''}]`); break;
-      case 'image': out.push('[图片]'); break;
+      case 'mface':
+        out.push(`[表情${d.summary ? `:${d.summary}` : ''}]`);
+        if (typeof options.onSticker === 'function') { try { options.onSticker({ kind: 'mface', id: String(d.emoji_id ?? d.id ?? ''), summary: String(d.summary ?? '') }); } catch { /* ignore */ } }
+        break;
+      case 'image':
+        out.push('[图片]');
+        if (typeof options.onSticker === 'function') { try { options.onSticker({ kind: 'image', id: String(d.file ?? d.url ?? ''), summary: '' }); } catch { /* ignore */ } }
+        break;
       case 'record': {
         const voiceUrl = String(seg?.data?.url || seg?.data?.file || '');
         let heard = '';
@@ -5076,6 +5090,15 @@ async function main() {
               total: stickerEntries.length,
               context: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerContext(stickerEntries, cfg.socialV2?.sticker?.promptMaxStickers ?? 8) : '',
               strategy: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerStrategyHint() : '',
+              // 待判表情：只在本会话 scope 内取，且 curator 关闭时恒为空
+              pending: (() => {
+                try {
+                  if (!stickerCuratorEnabled(cfg)) return '';
+                  const scope = stickerScopeOf(key);
+                  const items = stickerPending.take(scope, { clear: false });
+                  return renderPendingHint(items);
+                } catch { return ''; }
+              })(),
               // 只影响"发不发/发哪张"，且严格按会话 scope 取（群聊的绝不进私聊）
               hint: stickerHintFor(key, cfg)
             },
