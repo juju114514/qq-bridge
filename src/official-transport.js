@@ -137,7 +137,8 @@ export function createOfficialTransport(opts = {}) {
     const mayPassive = !opts.proactive && target && Date.now() - target.at <= PASSIVE_WINDOW_MS;
     const msgId = mayPassive ? target.msgId : '';
     if (kind === 'group') return bot.sendGroupText(openid, text, { msgId });
-    return bot.sendC2CText(openid, text, { msgId });
+    // wakeup：互动召回消息（只有单聊支持；群里发会被官方拒）
+    return bot.sendC2CText(openid, text, { msgId, wakeup: opts.wakeup === true });
   }
 
   return {

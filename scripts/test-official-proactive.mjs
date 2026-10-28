@@ -88,6 +88,32 @@ check('explainProactiveError：三类错误给三种人话', () => {
   assert.equal(m.explainProactiveError('something else'), '');
 });
 
+// ── 3.5 互动召回窗口 ───────────────────────────────────────────────────
+check('RecallWindow：30 天 4 个周期各 1 条，同周期重复被拒', () => {
+  const file = path.join(os.tmpdir(), `qqb-recall-${process.pid}-${Date.now()}.json`);
+  const w = new m.RecallWindow(file);
+  const t0 = Date.now();
+  assert.equal(w.claim('private:official-U1', t0).ok, true, '第一个周期');
+  assert.equal(w.claim('private:official-U1', t0 + 3600_000).ok, false, '同周期不能再来一条');
+  assert.equal(w.claim('private:official-U1', t0 + 2 * 86400_000).ok, true, '1-3 天周期');
+  assert.equal(w.claim('private:official-U1', t0 + 4 * 86400_000).ok, true, '3-7 天周期');
+  assert.equal(w.claim('private:official-U1', t0 + 10 * 86400_000).ok, true, '7-30 天周期');
+  assert.equal(w.claim('private:official-U1', t0 + 11 * 86400_000).ok, false, '四个都用完了');
+  const reopened = w.claim('private:official-U1', t0 + 31 * 86400_000);
+  assert.equal(reopened.ok, true, '超过 30 天重新开窗');
+  assert.equal(reopened.period, 0);
+  fs.rmSync(file, { force: true });
+});
+
+check('接线：召回端点是单聊专用，且带 is_wakeup', () => {
+  const api = read('src/api/official-say.js');
+  assert.match(api, /official-recall/, '要有召回端点');
+  assert.match(api, /private:/, '只允许单聊');
+  assert.match(api, /wakeup: true/, '必须带 is_wakeup');
+  const official = read('src/qqbot-official.js');
+  assert.match(official, /is_wakeup/, 'SDK 层要能发 is_wakeup');
+});
+
 // ── 4. 接线 ─────────────────────────────────────────────────────────────
 check('接线：端点鉴权走 socialV2 前缀、sendText 支持 proactive、调度器可启动', () => {
   const api = read('src/api/official-say.js');

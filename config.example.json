@@ -365,7 +365,11 @@
         }
       },
       "schedules": [],
-      "_说明": "主动消息（不带 msg_id）。三道闸：群主要开「主动推送消息」、用户可关「允许主动发送」、频控按官方上限。schedules 示例：[{\"key\":\"group:official-<openid>\",\"cron\":\"0 9 * * *\",\"text\":\"早\",\"enabled\":true}]"
+      "_说明": "主动消息（不带 msg_id）。三道闸：群主要开「主动推送消息」、用户可关「允许主动发送」、频控按官方上限。schedules 示例：[{\"key\":\"group:official-<openid>\",\"cron\":\"0 9 * * *\",\"text\":\"早\",\"enabled\":true}]",
+      "recall": {
+        "enabled": true,
+        "_说明": "互动召回（is_wakeup）：只有单聊；30 天内 4 个周期各 1 条"
+      }
     }
   }
 }

@@ -40,7 +40,7 @@ import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
-import { QuotaBook, ProactiveScheduler, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
+import { QuotaBook, ProactiveScheduler, RecallWindow, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
@@ -4081,7 +4081,7 @@ async function main() {
           });
           const handleOfficialSay = createOfficialSayHandler({
           sendJson, readBody, log, getCfg: () => cfg,
-          officialTransport, proactiveQuota, proactiveScheduler,
+          officialTransport, proactiveQuota, proactiveScheduler, recallWindow,
           appendActivity, CONV_KEY_RE, convId
         });
 
@@ -11429,6 +11429,10 @@ async function main() {
       group: { ...DEFAULT_LIMITS.group, ...(proactiveCfg.limits?.group ?? {}) },
       private: { ...DEFAULT_LIMITS.private, ...(proactiveCfg.limits?.private ?? {}) }
     })
+    : null;
+  // 互动召回窗口（只有单聊；30 天 4 个周期各 1 条）
+  const recallWindow = officialTransport && proactiveCfg.recall?.enabled !== false
+    ? new RecallWindow(path.join(ROOT, 'state', 'official-recall.json'))
     : null;
   const proactiveScheduler = officialTransport && Array.isArray(proactiveCfg.schedules) && proactiveCfg.schedules.length
     ? new ProactiveScheduler({ schedules: proactiveCfg.schedules, log, tickMs: 20000 })

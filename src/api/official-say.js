@@ -15,6 +15,7 @@ export function createOfficialSayHandler(deps) {
     officialTransport,
     proactiveQuota,
     proactiveScheduler,
+    recallWindow,
     appendActivity,
     CONV_KEY_RE,
     convId,
@@ -27,6 +28,7 @@ export function createOfficialSayHandler(deps) {
         enabled: Boolean(officialTransport),
         ready: Boolean(officialTransport?.ready),
         quota: proactiveQuota ? proactiveQuota.snapshot() : null,
+        recall: recallWindow ? { enabled: true, users: Object.keys(recallWindow.snapshot().users).length } : { enabled: false },
         schedules: proactiveScheduler
           ? proactiveScheduler.schedules.map((s) => ({
             key: s.key, cron: s.cron, enabled: s.enabled !== false, lastRunAt: s.lastRunAt ?? null
@@ -34,6 +36,38 @@ export function createOfficialSayHandler(deps) {
           : [],
         hint: '主动消息受三道闸：群主需开「主动推送消息」、用户可关闭「允许主动发送」、频控 30/分 & 1000/天'
       });
+      return true;
+    }
+
+    // ── 互动召回消息（is_wakeup）：只有单聊支持，30 天 4 个周期各 1 条 ──
+    if (url.pathname === '/api/socialV2/official-recall') {
+      const body = await readBody();
+      const key = String(body.key ?? '').trim();
+      const text = String(body.text ?? '').trim();
+      if (!key || !text) { sendJson({ ok: false, error: 'key/text 不能为空' }, 400); return true; }
+      if (!officialTransport) { sendJson({ ok: false, error: '官方通道未启用' }, 400); return true; }
+      if (!key.startsWith('private:')) {
+        sendJson({ ok: false, error: '互动召回只支持单聊（key 必须是 private:official-<openid>）' }, 400);
+        return true;
+      }
+      const openid = key.slice('private:official-'.length);
+      if (!openid) { sendJson({ ok: false, error: 'key 里没有 openid' }, 400); return true; }
+      const id = `official-${openid}`;
+      if (!officialTransport.allowed('private', id)) {
+        sendJson({ ok: false, error: '目标不在 config.official.allow 白名单里' }, 403);
+        return true;
+      }
+      if (!recallWindow) { sendJson({ ok: false, error: '召回未启用（config.official.proactive.recall.enabled=true）' }, 400); return true; }
+      const claim = recallWindow.claim(key);
+      if (!claim.ok) { sendJson({ ok: false, error: claim.reason, recall: recallWindow.snapshot() }, 429); return true; }
+      try {
+        await officialTransport.sendText('private', id, text, { proactive: true, wakeup: true });
+        log(`[official] 互动召回已发送（${key}，第 ${claim.period + 1} 个周期）`);
+        appendActivity?.(`${key} [official] 互动召回：${text.slice(0, 60)}`);
+        sendJson({ ok: true, key, period: claim.period + 1, sent: true });
+      } catch (error) {
+        sendJson({ ok: false, error: String(error?.message ?? error) }, 502);
+      }
       return true;
     }
 

@@ -235,10 +235,15 @@ export class OfficialQqBot {
     return this._post(`/v2/groups/${encodeURIComponent(groupOpenid)}/messages`, body);
   }
 
-  /** 单聊文本，语义同上。 */
-  async sendC2CText(userOpenid, content, { msgId = '', msgSeq = 0 } = {}) {
+  /**
+   * 单聊文本，语义同上。
+   * wakeup=true 时带 `is_wakeup`：官方**互动召回消息**（用户聊过之后 30 天内 4 个周期各 1 条），
+   * 专门用来"叫他回来"，比普通主动消息更不容易被判骚扰。
+   */
+  async sendC2CText(userOpenid, content, { msgId = '', msgSeq = 0, wakeup = false } = {}) {
     const body = { content: String(content ?? ''), msg_type: 0 };
     if (msgId) { body.msg_id = String(msgId); body.msg_seq = Number(msgSeq) || 1; }
+    if (wakeup === true) body.is_wakeup = true;
     return this._post(`/v2/users/${encodeURIComponent(userOpenid)}/messages`, body);
   }
 

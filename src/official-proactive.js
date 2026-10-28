@@ -175,6 +175,74 @@ export class ProactiveScheduler {
 }
 
 /** 把官方 API 的错误翻译成人话（权限/开关/频控是三种完全不同的处理）。 */
+
+/**
+ * 互动召回窗口（官方语义：用户聊过之后 30 天内 4 个周期各 1 条）。
+ *
+ *   period 0：当天         period 1：1–3 天
+ *   period 2：3–7 天       period 3：7–30 天
+ *
+ * 以**第一次成功召回**为锚点开窗；超过 30 天窗口作废、重新计时。
+ * 这样即使调用方乱调，也不会把 4 条配额在一天内打光。
+ */
+export class RecallWindow {
+  constructor(file) {
+    this.file = file;
+    this.state = { users: {} };
+    this.load();
+  }
+
+  load() {
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.file, 'utf8').replace(/^\uFEFF/, ''));
+      if (raw?.users && typeof raw.users === 'object') this.state = raw;
+    } catch { /* 空账本 */ }
+  }
+
+  save() {
+    try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      fs.writeFileSync(this.file, JSON.stringify(this.state), 'utf8');
+    } catch { /* ignore */ }
+  }
+
+  /** 当前应处于第几个周期（0..3）；超过 30 天返回 -1（窗口作废）。 */
+  periodIndex(userKey, now = Date.now()) {
+    const rec = this.state.users[userKey];
+    if (!rec?.openedAt) return 0;
+    const days = (now - Number(rec.openedAt)) / 86400000;
+    if (days < 1) return 0;
+    if (days < 3) return 1;
+    if (days < 7) return 2;
+    if (days < 30) return 3;
+    return -1;
+  }
+
+  /** 预占一次召回；成功返回 { ok, period }，否则给原因。 */
+  claim(userKey, now = Date.now()) {
+    const period = this.periodIndex(userKey, now);
+    if (period < 0) {
+      // 窗口过期：重新开窗，从周期 0 开始
+      this.state.users[userKey] = { openedAt: now, used: [true, false, false, false] };
+      this.save();
+      return { ok: true, period: 0, reopened: true };
+    }
+    const rec = this.state.users[userKey] ?? { openedAt: now, used: [false, false, false, false] };
+    if (rec.used?.[period]) {
+      return { ok: false, reason: `这个周期的召回已用过（第 ${period + 1} 个周期），等下个周期再发` };
+    }
+    rec.used[period] = true;
+    rec.lastAt = now;
+    this.state.users[userKey] = rec;
+    this.save();
+    return { ok: true, period };
+  }
+
+  snapshot() {
+    return { users: { ...this.state.users } };
+  }
+}
+
 export function explainProactiveError(message) {
   const text = String(message ?? '');
   if (/11000|30600[01]|主动消息|no permission|permission denied/i.test(text)) {
