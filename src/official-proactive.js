@@ -185,18 +185,36 @@ export class ProactiveScheduler {
  * 否则等于给所有人开召回，打扰感立刻上来。
  */
 export const RECALL_INTENT_PATTERNS = [
-  { reason: '约定未来', re: /明天见|明天聊|明天找你|明儿见|明儿聊|下次见|下次聊|回头聊|改天聊|晚点聊|等我回来/ },
-  { reason: '希望陪伴', re: /(以后|每天|一直|往后).{0,6}(陪我|陪我聊|陪着我|都在|聊|说话)|别走|不要走|常来|你会一直/ },
-  { reason: '主动邀约', re: /记得找我|想聊.{0,4}(就|随时)|随时.{0,4}(找我|喊我)|有事.{0,4}找你|约好/ },
-  { reason: '告别+再会', re: /(晚安|睡了|下线).{0,6}(明天|明儿|下次)/ }
+  // tier: firm = 真有下文（约好了要聊的事），autoSend 允许用；soft = 礼貌告别，只开窗
+  { reason: '约定未来', tier: 'firm', re: /明天见|明天聊|明天找你|明儿见|明儿聊|下次见|下次聊|回头聊|改天聊|晚点聊|等我回来/ },
+  { reason: '希望陪伴', tier: 'firm', re: /(以后|每天|一直|往后).{0,6}(陪我|陪我聊|陪着我|都在|聊|说话)|别走|不要走|常来|你会一直/ },
+  { reason: '主动邀约', tier: 'firm', re: /记得找我|想聊.{0,4}(就|随时)|随时.{0,4}(找我|喊我)|有事.{0,4}找你|约好/ },
+  { reason: '告别+再会', tier: 'soft', re: /(晚安|睡了|下线).{0,6}(明天|明儿|下次)/ }
 ];
 
-/** 返回 { reason } 或 null（不命中）。 */
+/**
+ * 返回 { reason, tier } 或 null。
+ *
+ * tier 的用途：
+ *   firm —— 用户约定了具体下文（"明天聊那个事""约好"），可以考虑自动召回；
+ *   soft  —— 只是礼貌告别（"晚安，明天见"）：**只开窗、不主动发**，等真有事再说。
+ * 判定顺序上先跑 firm 规则，最后才是 soft，避免"明天见"盖掉"约好了明天见"。
+ */
 export function detectRecallIntent(text) {
   const s = String(text ?? '').trim();
   if (!s || s.length > 200) return null;
+
+  // 先判"礼貌告别"：有告别语 + 有下次见面语，但**没有**具体约定 →
+  // 只开窗、不主动发（"晚安，明天见"属于这一类，不该被"明天见"升级成 firm）。
+  const farewell = /(晚安|睡了|先睡|下线|拜拜|走了|先忙)/.test(s);
+  const future = /(明天|明儿|下次|回头|改天|晚点)/.test(s);
+  const concrete = /(约好|那个事|那件事|那个东西|到时候|提醒|有事|记得|答应|说好)/.test(s);
+  if (farewell && future && !concrete) {
+    return { reason: '告别+再会', tier: 'soft' };
+  }
+
   for (const p of RECALL_INTENT_PATTERNS) {
-    if (p.re.test(s)) return { reason: p.reason };
+    if (p.re.test(s)) return { reason: p.reason, tier: p.tier };
   }
   return null;
 }
@@ -247,11 +265,12 @@ export class RecallWindow {
    * 开启召回窗口：由"检测到后续聊天意向"触发。
    * 不动已用配额，只记下 arm 时间与原因，并确保窗口从此刻起算（若还没有窗口）。
    */
-  arm(userKey, { reason = '', now = Date.now(), ttlMs = 30 * 86400000 } = {}) {
+  arm(userKey, { reason = '', tier = 'firm', now = Date.now(), ttlMs = 30 * 86400000 } = {}) {
     const rec = this.state.users[userKey] ?? { openedAt: now, used: [false, false, false, false] };
     if (!rec.openedAt || now - Number(rec.openedAt) > ttlMs) rec.openedAt = now;
     rec.armedAt = now;
     rec.armedReason = String(reason ?? '');
+    rec.armedTier = tier === 'soft' ? 'soft' : 'firm';
     this.state.users[userKey] = rec;
     this.save();
     return { ok: true, period: this.periodIndex(userKey, now), reason: rec.armedReason };
@@ -261,7 +280,7 @@ export class RecallWindow {
   armedInfo(userKey) {
     const rec = this.state.users[userKey];
     if (!rec?.armedAt) return null;
-    return { armedAt: rec.armedAt, reason: rec.armedReason ?? '' };
+    return { armedAt: rec.armedAt, reason: rec.armedReason ?? '', tier: rec.armedTier === 'soft' ? 'soft' : 'firm' };
   }
 
   /** 预占一次召回；成功返回 { ok, period }，否则给原因。 */

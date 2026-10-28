@@ -119,7 +119,7 @@ check('detectRecallIntent：命中"希望陪伴/约定未来/主动邀约/告别
   const cases = [
     ['希望以后都陪着我', '希望陪伴'],
     ['明天见', '约定未来'],
-    ['我先睡了，明天聊', '约定未来'],
+    ['我先睡了，明天聊', '告别+再会'],
     ['记得找我啊', '主动邀约'],
     ['晚安，明天说', '告别+再会']
   ];
@@ -128,6 +128,14 @@ check('detectRecallIntent：命中"希望陪伴/约定未来/主动邀约/告别
     assert.ok(r, `应命中：${text}`);
     assert.equal(r.reason, want, `${text} → ${want}`);
   }
+});
+
+check('tier：礼貌告别=soft（只开窗），有下文=firm（可召回）', () => {
+  assert.equal(m.detectRecallIntent('晚安，明天见').tier, 'soft');
+  assert.equal(m.detectRecallIntent('我先睡了，明天聊').tier, 'soft');
+  assert.equal(m.detectRecallIntent('明天聊那个事').tier, 'firm', '有具体下文 → firm');
+  assert.equal(m.detectRecallIntent('约好明天聊').tier, 'firm');
+  assert.equal(m.detectRecallIntent('希望以后都陪着我').tier, 'firm');
 });
 
 check('detectRecallIntent：普通寒暄不能误判（否则等于给所有人开召回）', () => {

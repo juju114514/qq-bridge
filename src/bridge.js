@@ -11499,8 +11499,10 @@ async function main() {
         if (event.kind === 'private' && recallWindow && armOnIntent) {
           const intent = detectRecallIntent(event.text);
           if (intent) {
-            recallWindow.arm(`private:${event.id}`, { reason: intent.reason });
-            log(`[official] 检测到后续聊天意向（${intent.reason}）→ 已为该单聊开启召回窗口`);
+            recallWindow.arm(`private:${event.id}`, { reason: intent.reason, tier: intent.tier });
+            // soft（礼貌告别）只开窗不主动发；firm（真有下文）才允许后续自动召回
+            log(`[official] 检测到后续聊天意向（${intent.reason}/${intent.tier === 'soft' ? '礼貌告别·仅开窗' : '有下文·可召回'}）`
+              + '→ 已为该单聊开启召回窗口');
             appendActivity?.(`private:${event.id} [official] 意向识别：${intent.reason}`);
           }
         }
