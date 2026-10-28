@@ -40,6 +40,7 @@ import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
+import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
 import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
@@ -1858,6 +1859,16 @@ let stateDirHardened = null;
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 async function main() {
+  // state/ 的 schema 迁移：升级前先备份旧文件，再按版本逐个迁移。
+  // 放在最前面 —— 后面所有读 state 的地方都假定当前版本。
+  try {
+    const r = ensureStateSchema({ stateDir: path.join(ROOT, 'state'), log: (m) => log(m) });
+    if (r.migrated) log(`[schema] state 已迁移（v${r.from} → v${r.to}，备份 ${r.count ?? 0} 个文件）`);
+  } catch (error) {
+    log(`❌ [schema] 迁移失败，已保留备份：${error?.message ?? error}`);
+    throw error;
+  }
+
   const cfg = loadConfig();
   fs.mkdirSync(STATE_DIR, { recursive: true });
   hardenStateDirAcl();

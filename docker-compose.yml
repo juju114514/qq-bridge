@@ -1,0 +1,37 @@
+# qq-bridge —— 官方通道用（Linux）
+#
+#   docker compose up -d
+#
+# 能力边界（重要）：
+#   ✅ 官方机器人通道（q.qq.com）：收群 @ / 单聊、被动回复、主动消息、互动召回
+#   ❌ 个人号通道（SnowLuma）—— 需要扫码登录 QQ，请留在宿主机跑，
+#      然后在 config.json 里把 snowluma.wsUrl/httpUrl 指到宿主机（或 host.docker.internal）
+#
+# 首次启动后要做的：
+#   1) 把 AppID / AppSecret 写进 ./state/official.json
+#   2) 把机器人 openid 白名单写进 config.json 的 official.allow
+#   3) 群主给机器人开「主动推送消息」+「接收群内全部消息」（要用主动消息/全量才需要）
+
+services:
+  qq-bridge:
+    build: .
+    image: qq-bridge:latest
+    container_name: qq-bridge
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3100"   # 控制台只绑回环，需要远程访问请自行加反代
+    volumes:
+      - ./state:/app/state
+      - ./config.json:/app/config.json
+    environment:
+      - TZ=Asia/Shanghai
+    # 桥接进程本身很轻，但要跑 ffmpeg 抽帧/转码
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
