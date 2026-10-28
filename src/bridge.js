@@ -41,7 +41,8 @@ import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
-import { appendDropped, summarizeDropped } from './dead-letter.js';
+import { appendDropped, summarizeDropped, readDropped, takeDropped } from './dead-letter.js';
+import { createDeadLetterHandler } from './api/dead-letter.js';
 import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
@@ -3137,6 +3138,34 @@ async function main() {
     }
     return r.ok;
   };
+
+  // 死信概览 + 重放（控制台/API 用）
+  const deadLetterSummary = () => summarizeDropped(DROPPED_FILE);
+  const deadLetterRecent = (limit = 20) => readDropped(DROPPED_FILE, { limit });
+
+  /**
+   * 把死信塞回待投队列。key 为空表示全部；limit 限制一次条数。
+   * 重放后立刻 flush 一次，DSH 可用时会马上补投。
+   */
+  const requeueDeadLetters = async ({ key = '', limit = 10 } = {}) => {
+    const { taken, remaining } = takeDropped(DROPPED_FILE, { key, limit });
+    let requeued = 0;
+    for (const row of taken) {
+      const convKey = String(row?.key ?? '');
+      const text = String(row?.promptText ?? '');
+      if (!convKey || !text) continue;
+      const list = queued.get(convKey) ?? [];
+      list.push({ promptText: text, at: Date.now(), fromDeadLetter: true });
+      if (list.length > QUEUE_MAX) list.shift();
+      queued.set(convKey, list);
+      requeued += 1;
+    }
+    if (requeued > 0) {
+      persistQueueSoon();
+      setTimeout(() => { flushQueue(); }, 300);
+    }
+    return { requeued, remaining };
+  };
   let queuePersistTimer = null;
   let queuePersistFailLogged = '';
 
@@ -4108,7 +4137,15 @@ async function main() {
             fetchMediaData,
             log,
           });
-          const handleOfficialSay = createOfficialSayHandler({
+          const handleDeadLetter = createDeadLetterHandler({
+          sendJson, readBody, log,
+          droppedFile: path.relative(ROOT, DROPPED_FILE),
+          summarize: deadLetterSummary,
+          readRecent: deadLetterRecent,
+          requeue: requeueDeadLetters
+        });
+
+        const handleOfficialSay = createOfficialSayHandler({
           sendJson, readBody, log, getCfg: () => cfg,
           officialTransport, proactiveQuota, proactiveScheduler, recallWindow,
           appendActivity, CONV_KEY_RE, convId
@@ -4134,7 +4171,7 @@ async function main() {
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
         .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
-        .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay)
+        .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay).chain(handleDeadLetter)
         .chain(handleStickers).chain(handleTokens);
       // 注意：handleV2Wait / handleImages / handleSend **不进链**。
       //   · handleV2Wait 的签名是 (req, res, url)，它自己写响应，不是布尔分派；

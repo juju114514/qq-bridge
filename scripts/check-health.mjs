@@ -102,6 +102,17 @@ try {
   n === 0 ? ok('待投递队列为空') : warn('待投递队列非空', `${n} 条（重启后会补投）`);
 } catch { /* ignore */ }
 
+// 5.5) 死信
+try {
+  const p = path.join(ROOT, 'state', 'pending-queue-dropped.jsonl');
+  if (!fs.existsSync(p)) ok('死信为空', '没有消息被丢弃');
+  else {
+    const lines = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).length;
+    if (lines === 0) ok('死信为空');
+    else warn('有消息进过死信', `${lines} 条（state/pending-queue-dropped.jsonl，可 POST /api/socialV2/dead-letter/requeue 重放）`);
+  }
+} catch { /* ignore */ }
+
 // 6) 审计
 if (!SKIP_AUDIT) {
   try {

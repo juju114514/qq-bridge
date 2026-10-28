@@ -50,6 +50,37 @@ export function readDropped(file, { limit = 50 } = {}) {
   }
 }
 
+
+/**
+ * 取出死信（用于"重放"）：把匹配的条目从文件里摘掉，返回给调用方重新入队。
+ * 只摘不删错：任何解析失败的行都会原样保留，不会因为一次重放把文件搞坏。
+ *
+ * @param {{ key?: string, limit?: number }} opts  key 为空表示取全部；limit 限制一次最多取几条
+ * @returns {{ taken: object[], remaining: number }}
+ */
+export function takeDropped(file, { key = '', limit = 20 } = {}) {
+  let lines = [];
+  try {
+    lines = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim());
+  } catch {
+    return { taken: [], remaining: 0 };
+  }
+  const taken = [];
+  const keep = [];
+  for (const line of lines) {
+    let row = null;
+    try { row = JSON.parse(line); } catch { keep.push(line); continue; }
+    const match = !key || String(row?.key ?? '') === String(key);
+    if (match && taken.length < Math.max(1, Number(limit) || 20)) taken.push(row);
+    else keep.push(line);
+  }
+  try {
+    if (keep.length) fs.writeFileSync(file, keep.join('\n') + '\n', 'utf8');
+    else if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  } catch { /* 写回失败：保持原样，调用方仍能重放已取出的条目 */ }
+  return { taken, remaining: keep.length };
+}
+
 /** 统计（看有多少条、按原因分组）。 */
 export function summarizeDropped(file) {
   const rows = readDropped(file, { limit: 10000 });

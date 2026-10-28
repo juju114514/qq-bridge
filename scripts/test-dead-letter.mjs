@@ -76,6 +76,47 @@ check('summarizeDropped：按原因分组计数', () => {
   fs.rmSync(path.dirname(f), { recursive: true, force: true });
 });
 
+check('takeDropped：按 key 摘取（重放用），其余原样保留', () => {
+  const f = tmpFile();
+  m.appendDropped(f, { key: 'group:A', reason: 'queue-full', promptText: 'a1' });
+  m.appendDropped(f, { key: 'group:B', reason: 'queue-full', promptText: 'b1' });
+  m.appendDropped(f, { key: 'group:A', reason: 'queue-full', promptText: 'a2' });
+  const r = m.takeDropped(f, { key: 'group:A', limit: 10 });
+  assert.equal(r.taken.length, 2, '取出 A 的两条');
+  assert.deepEqual(r.taken.map((x) => x.promptText), ['a1', 'a2']);
+  const left = m.readDropped(f);
+  assert.equal(left.length, 1, 'B 的那条要留下');
+  assert.equal(left[0].promptText, 'b1');
+  fs.rmSync(path.dirname(f), { recursive: true, force: true });
+});
+
+check('takeDropped：limit 生效；key 为空表示全部；坏行不会被吃掉', () => {
+  const f = tmpFile();
+  m.appendDropped(f, { key: 'k', reason: 'r', promptText: '1' });
+  m.appendDropped(f, { key: 'k', reason: 'r', promptText: '2' });
+  m.appendDropped(f, { key: 'k', reason: 'r', promptText: '3' });
+  fs.appendFileSync(f, '{broken\n', 'utf8');
+  const r = m.takeDropped(f, { key: '', limit: 2 });
+  assert.equal(r.taken.length, 2);
+  assert.equal(r.remaining, 2, '剩 1 条 + 1 行坏行');
+  fs.rmSync(path.dirname(f), { recursive: true, force: true });
+});
+
+check('takeDropped：空文件返回空结果，不抛', () => {
+  const r = m.takeDropped('/definitely/not/exists.jsonl', {});
+  assert.deepEqual(r.taken, []);
+  assert.equal(r.remaining, 0);
+});
+
+check('接线：重放端点 + 概览端点都在', () => {
+  const bridge = read('src/bridge.js');
+  assert.match(bridge, /requeueDeadLetters/, '要能重放');
+  assert.match(bridge, /handleDeadLetter/, '要有死信端点');
+  const api = read('src/api/dead-letter.js');
+  assert.match(api, /dead-letter\/requeue/, '重放路由');
+  assert.match(api, /summarize/, '概览要带统计');
+});
+
 check('接线：三处队列满丢弃 + 补投未授权，都写死信', () => {
   const bridge = read('src/bridge.js');
   const hits = (bridge.match(/dropToDeadLetter\(/g) ?? []).length;
