@@ -400,5 +400,14 @@
     "token": "",
     "maxPerMinute": 30,
     "_说明": "外部触发（webhook/cron）入口 POST /api/inject。token 留空则首次启动自动生成到 state/inject-token；该令牌只能注入消息，不能改配置"
+  },
+  "gateway": {
+    "preferred": "snowluma",
+    "fallback": "napcat",
+    "enableFallback": true,
+    "failThreshold": 3,
+    "recoverThreshold": 5,
+    "switchCooldownMs": 60000,
+    "_说明": "默认用 SnowLuma（主程序）；连续失败 3 次降级 NapCat，连续成功 5 次回切。NapCat 收藏表情只读，功能上不如 SnowLuma"
   }
 }

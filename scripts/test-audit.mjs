@@ -148,6 +148,8 @@ const tests = [
   'test-sticker-pending.mjs',
   // 私聊准入：好友放行 / 临时会话拒 / 默认关。
   'test-private-access.mjs',
+  // 网关自动选择：默认 SnowLuma、连续失败降级、回滞。
+  'test-gateway-select.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
