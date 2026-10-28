@@ -10221,8 +10221,8 @@ async function main() {
     const resolveReply = (messageId) => resolveReplyInfo(kind, id, messageId, event.self_id);
     // textContent 带引用对象信息，供 DSH 判断“这句话在对谁说”；
     // plainContent 只保留当前消息自己的文字，用于命令/指向性判断，避免被引用原文干扰。
-    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply });
-    let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false });
+    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
+    let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
     const mediaList = extractMediaFromSegments(event.message ?? []);
     const messageRef = String(event.message_id ?? event.msg_id ?? event.message_seq ?? '');
     const seqRef = event.message_seq != null ? String(event.message_seq) : '';
