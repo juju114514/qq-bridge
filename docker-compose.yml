@@ -19,14 +19,18 @@ services:
     container_name: qq-bridge
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3100:3100"   # 控制台只绑回环，需要远程访问请自行加反代
+      - "127.0.0.1:3101:3101"   # 容器独立端口（宿主机桥接用 3100），只绑回环
     volumes:
-      - ./state:/app/state
+      # 容器用独立 state：两套实例绝不能共用一个 state（否则队列/令牌互相覆盖）
+      - ./state-docker:/app/state
       - ./config.json:/app/config.json
     environment:
       - TZ=Asia/Shanghai
       # 容器内必须绑 0.0.0.0，否则宿主机端口映射进不来（宿主机侧仍只映射到 127.0.0.1）
       - QQB_CONSOLE_HOST=0.0.0.0
+      # 实例隔离：容器是独立实例，state 与端口都用自己的一套，不跟宿主机抢
+      - QQB_INSTANCE=docker
+      - QQB_CONSOLE_PORT=3101
     # 桥接进程本身很轻，但要跑 ffmpeg 抽帧/转码
     deploy:
       resources:

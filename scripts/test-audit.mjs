@@ -128,6 +128,8 @@ const tests = [
   'test-official-proactive.mjs',
   // 死信：被丢弃的消息要能查回来（append/轮转/坏行/分组统计/接线）。
   'test-dead-letter.mjs',
+  // 实例互斥：同一 bot 只允许一个进程连 gateway（宿主机 + 容器共存）。
+  'test-instance-lock.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

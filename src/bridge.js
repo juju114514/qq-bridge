@@ -45,6 +45,7 @@ import { appendDropped, summarizeDropped, readDropped, takeDropped } from './dea
 import { createDeadLetterHandler } from './api/dead-letter.js';
 import { QuotaBook, ProactiveScheduler, RecallWindow, detectRecallIntent, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
 import { createOfficialSayHandler } from './api/official-say.js';
+import { acquireInstanceLock } from './instance-lock.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -11528,6 +11529,27 @@ async function main() {
     }
   }
 
+  // 官方通道互斥：同一个机器人只允许一个进程连 gateway。
+  // 宿主机桥接 + Docker 容器同时跑时，不隔离会互相踢线（消息时有时无）。
+  let officialLock = null;
+  let officialLockedOut = false;
+  if (officialTransport) {
+    const instanceId = String(process.env.QQB_INSTANCE || 'host');
+    const lock = acquireInstanceLock(path.join(ROOT, 'state', 'official-instance.lock'), { instanceId });
+    if (lock.ok) {
+      officialLock = lock;
+      log(`[official] 实例锁已获取（instance=${instanceId}）`);
+      officialLockedOut = false;
+    } else {
+      officialLockedOut = true;
+      log(`⚠️ [official] 另一个实例正在使用同一个机器人（instance=${lock.holder.instanceId} `
+        + `pid=${lock.holder.pid} host=${lock.holder.hostname}），本实例**不连**官方通道，避免互相踢线。`);
+      log('   想跑两个实例请各用各的机器人 AppID，或停掉另一个实例。');
+      officialTransport.close?.();
+    }
+    process.on('exit', () => { try { officialLock?.release?.(); } catch { /* ignore */ } });
+  }
+
   if (proactiveScheduler) {
     proactiveScheduler.start(async (schedule) => {
       const parsed = /^(group|private):(.+)$/.exec(String(schedule.key ?? ''));
@@ -11555,7 +11577,7 @@ async function main() {
       || String(event?.user_id ?? '') === String(event?.self_id ?? '')) return;
     try { await handleIncoming('group', event.group_id, event, cfg); } catch (error) { log('处理群消息出错:', error?.message ?? error); }
   });
-  if (officialTransport) {
+  if (officialTransport && !officialLockedOut) {
     officialTransport.start({
       onMessage: async (event, oneBotEvent) => {
         const allowedNow = officialTransport.allowed(event.kind, event.id);
