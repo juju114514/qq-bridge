@@ -63,8 +63,18 @@ export function createSocialV2WaitHandler(deps) {
     const defaultMs = Number(waitCfg.defaultMs) || 30000;
     const minMs = Math.max(100, Number(waitCfg.minMs) || 5000);
     const maxMs = Math.max(minMs, Number(waitCfg.maxMs) || 600000);
-    const timeoutMs = Math.min(maxMs, Math.max(minMs, Math.round(Number(body.timeoutMs) || defaultMs)));
+    let timeoutMs = Math.min(maxMs, Math.max(minMs, Math.round(Number(body.timeoutMs) || defaultMs)));
     const st = getSocialV2State(key);
+    // 首回复闸门：本轮还没发过话就想要 5 分钟的"沉睡前观察"，一律压到 30 秒。
+    // 真实踩过（2026-10-29 01:03）：模型被唤醒后先做 preSleep 观察，群里 5 分钟没有任何回复，
+    // 用户看到的就是"它卡住了"。观察是**收尾**动作，不是回复的前置条件。
+    const wantsPreSleepObservation = timeoutMs >= (Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
+    const replySinceWake = (Number(st.lastAiReplyAt) || 0) > (Number(st.lastWakeAt) || 0);
+    let firstReplyGateMs = 0;
+    if (wantsPreSleepObservation && !replySinceWake) {
+      firstReplyGateMs = Math.min(timeoutMs, 30000);
+      timeoutMs = firstReplyGateMs;
+    }
     // 同一会话只允许一个长轮询等待，避免并发挂起耗尽 HTTP handler。
     // 租约按归一后的 key 记账；过期则视为残留，允许接管而不是永久 429。
     const leaseKey = canonicalV2Key(key) ?? key;
