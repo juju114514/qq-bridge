@@ -5,6 +5,9 @@
 > 上游版权归 Derpyu520 与各位贡献者；本分支同样 **MIT**（[LICENSE](LICENSE) 是纯 MIT 正文，
 > 第三方组件与数据出机清单在 [NOTICE.md](NOTICE.md)）。**仓库不含任何真实账号、群号、令牌或 Cookie。**
 
+> **想直接跑起来？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
+> 装不上先跑 `npm run doctor`，它会逐条告诉你缺什么、怎么修。
+
 把 QQ 接进 [DeepSeek Harness](https://github.com/deepseek-ai)（下称 DSH）：群里/私聊的消息变成
 DSH 会话里的用户消息，AI 的回复（分条、表情、语音、拍一拍、点歌）发回 QQ。
 
