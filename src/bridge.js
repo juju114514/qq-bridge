@@ -10237,6 +10237,21 @@ async function main() {
         log(`[private] 放行 ${key}（${pv.reason}）`);
       }
     }
+    // 待判表情：把这条消息里的图/表情挂进队列，交给 AI 自己判断要不要看、要不要收。
+    // 只记 id，不存图；scope 按会话分仓，群聊的绝不喂给私聊。
+    try {
+      if (stickerCuratorEnabled(cfg) && Array.isArray(event?.message)) {
+        const sc = stickerScopeOf(key);
+        const mid = String(event?.message_id ?? event?.messageId ?? 'm');
+        event.message
+          .filter((s) => ['image', 'face', 'mface'].includes(String(s?.type ?? '')))
+          .slice(0, 3)
+          .forEach((s, i) => stickerPending.add(sc, {
+            id: `${mid}:${i}`,
+            from: String(event?.sender?.card ?? event?.sender?.nickname ?? event?.sender?.user_id ?? '').slice(0, 20)
+          }));
+      }
+    } catch { /* 表情记录失败绝不影响收消息 */ }
     if (!modeAllowed(key, kind, id, cfg, currentMode)) {
       log(`忽略未授权会话 ${key}（当前模式 ${currentMode}，来自 ${event.user_id}）`);
       return;
