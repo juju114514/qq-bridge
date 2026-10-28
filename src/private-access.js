@@ -71,3 +71,66 @@ export function toFriendSet(list) {
 export function conversationScopeOf(key) {
   return String(key ?? '').startsWith('group:') ? 'group' : normalizeScope('private');
 }
+
+// ── 与具体网关解耦（SnowLuma / NapCat 都适用）────────────────────────────
+//
+// OneBot v11 的私聊事件里：
+//   message_type = 'private'
+//   sub_type     = 'friend' | 'group' | 'other'
+// 其中 'group' 就是**临时会话**（从群聊发起、非好友）。两家实现都遵循这个字段，
+// 所以判定不必区分网关。
+//
+// 唯一差异是 get_friend_list：SnowLuma 不一定实现。所以：
+//   · 好友名单拿不到（unknown）→ 只认白名单（fail-closed）
+//   · 拿得到 → 按 allowFriends / allowStrangers 判
+
+export function classifyOneBotPrivate(event = {}) {
+  const sub = String(event.sub_type ?? event.subType ?? '').toLowerCase();
+  const id = String(event.user_id ?? event.userId ?? '').trim();
+  return {
+    userId: id,
+    messageType: String(event.message_type ?? event.messageType ?? '').toLowerCase(),
+    subType: sub,
+    // 只有 'friend' 算好友私聊；'group' 是群临时会话，其余按陌生处理
+    isTemp: sub === 'group' || sub === 'other',
+    isFriend: sub === 'friend'
+  };
+}
+
+/**
+ * 从 OneBot 事件直接判定（网关无关）。
+ * @param {{enabled?:boolean, allowFriends?:boolean, allowStrangers?:boolean}} opts
+ * @param {object} event OneBot 私聊事件
+ * @param {{friends?:Set<string>|null, allowList?:string[]}} ctx friends=null 表示网关不支持好友列表
+ */
+export function decideFromOneBot(opts = {}, event = {}, ctx = {}) {
+  const base = classifyOneBotPrivate(event);
+  const allowList = Array.isArray(ctx.allowList) ? ctx.allowList.map(String) : [];
+  const friends = ctx.friends instanceof Set ? ctx.friends : null;
+
+  // 好友名单未知（如 SnowLuma 不实现 get_friend_list）：只信白名单
+  if (friends === null) {
+    if (allowList.includes(base.userId)) return { allowed: true, reason: 'allowlist', userId: base.userId, knownFriends: false };
+    return {
+      allowed: false,
+      reason: base.isTemp ? PRIVATE_DENY.TEMP_SESSION : PRIVATE_DENY.NOT_FRIEND,
+      userId: base.userId,
+      knownFriends: false,
+      hint: '网关不支持好友列表，仅白名单放行（config.allow.private）'
+    };
+  }
+
+  return decidePrivateAccess(opts, {
+    isFriend: friends.has(base.userId) || base.isFriend,
+    isTemp: base.isTemp,
+    inAllowList: allowList.includes(base.userId),
+    userId: base.userId
+  });
+}
+
+/** 网关能力探测结果 → 提示文案（排障时直接打印）。 */
+export function describeGatewayCapability({ hasFriendList } = {}) {
+  return hasFriendList
+    ? '好友列表可用：按 allowFriends / allowStrangers 判定'
+    : '好友列表不可用：仅白名单放行（SnowLuma 常见）';
+}

@@ -62,6 +62,36 @@ check('conversationScopeOf：group 前缀 → group，其余 → private', () =>
   assert.equal(m.conversationScopeOf(''), 'private');
 });
 
+check('classifyOneBotPrivate：friend / group(临时) / other 区分正确', () => {
+  assert.equal(m.classifyOneBotPrivate({ sub_type: 'friend', user_id: 1 }).isFriend, true);
+  const temp = m.classifyOneBotPrivate({ sub_type: 'group', user_id: 1 });
+  assert.equal(temp.isTemp, true);
+  assert.equal(temp.isFriend, false);
+  assert.equal(m.classifyOneBotPrivate({ sub_type: 'other' }).isTemp, true);
+});
+
+check('decideFromOneBot（SnowLuma 场景）：好友列表不可用 → 只认白名单', () => {
+  const r1 = m.decideFromOneBot({ enabled: true }, { sub_type: 'friend', user_id: '9' }, { friends: null, allowList: [] });
+  assert.equal(r1.allowed, false);
+  assert.equal(r1.knownFriends, false);
+  assert.match(String(r1.hint), /白名单/);
+  const r2 = m.decideFromOneBot({ enabled: true }, { sub_type: 'friend', user_id: '9' }, { friends: null, allowList: ['9'] });
+  assert.equal(r2.allowed, true);
+});
+
+check('decideFromOneBot（NapCat 场景）：好友列表可用 → 好友放行、临时会话拒', () => {
+  const friends = new Set(['100']);
+  assert.equal(m.decideFromOneBot({ enabled: true }, { sub_type: 'friend', user_id: '100' }, { friends }).allowed, true);
+  const temp = m.decideFromOneBot({ enabled: true }, { sub_type: 'group', user_id: '100' }, { friends });
+  assert.equal(temp.allowed, false);
+  assert.equal(temp.reason, m.PRIVATE_DENY.TEMP_SESSION);
+});
+
+check('describeGatewayCapability：两种网关各有提示', () => {
+  assert.match(m.describeGatewayCapability({ hasFriendList: true }), /allowFriends/);
+  assert.match(m.describeGatewayCapability({ hasFriendList: false }), /SnowLuma/);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
