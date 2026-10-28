@@ -341,5 +341,13 @@
         "waitMs": 60000
       }
     ]
+  },
+  "official": {
+    "enabled": false,
+    "appid": "",
+    "secret": "",
+    "sandbox": false,
+    "intents": 33554432,
+    "_说明": "QQ 官方机器人（q.qq.com）。protocol 已实现并有离线测试；启用前先跑 scripts\\official-probe.mjs 验证。secret 也可写到 state/official.json（不进仓库）"
   }
 }

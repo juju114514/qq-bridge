@@ -14,6 +14,17 @@
 - **技能**：vendored `caveman`（Apache-2.0，纯 markdown）+ `scripts/install-skills.ps1`；边界是「**只压日志和输出，代码逐字**」。见 [docs/guides/SKILLS.md](docs/guides/SKILLS.md)
 - 排障脚本：`verify-video-live.ps1`（真机验证视频）、`probe-video-cookies.ps1`（探测哪个浏览器能出 cookie）、`set-video-cookies.ps1`（自动发现并接上导出的 cookies.txt）
 
+### 新增（官方通道 · 协议层）
+
+- **QQ 官方机器人客户端** `src/qqbot-official.js`：AppID+AppSecret → access_token（缓存/提前刷新）、
+  gateway、WebSocket（op10 HELLO / op2 IDENTIFY / op6 RESUME / op1 心跳）、事件翻译（群 @ / 群全量 / 单聊）、
+  被动回复自动分配 `msg_seq`（**官方上限 5 次**，超了抛错而不是静默丢）
+- `scripts/official-probe.mjs`：端到端验证（票据 → gateway → 收事件 → 回复一条）
+- `scripts/test-official-client.mjs`：11 项离线契约测试（`<@!id>` 清洗、openid 不当 QQ 号、seq 上限、路由）
+- `docs/guides/OFFICIAL-QQ.md`：两条腿的差异、加群前置（个人主体只能加自己管理的群）、协议要点、接入设计与**诚实状态表**
+
+> 端到端**尚未验证**（缺 AppID/AppSecret）。按仓库规矩，未验证就不写「已支持」。
+
 ### 修复
 
 - **排队消息落盘**：队列原来只在内存里，桥接重启就丢（真实吞过一条消息）。现在写

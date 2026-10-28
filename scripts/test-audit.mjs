@@ -116,6 +116,8 @@ const tests = [
   'test-dsh-port.mjs',
   // 排队消息落盘/恢复：序列化、剪枝、坏文件降级、接线。
   'test-pending-queue.mjs',
+  // QQ 官方机器人客户端：文本清洗 / 事件翻译 / msg_seq 上限 / 路由。
+  'test-official-client.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

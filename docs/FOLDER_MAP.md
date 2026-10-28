@@ -70,6 +70,8 @@ DSH/                         ← 工作区根（不是仓库根）
 | `make-social-preview.py` | 生成 `assets/social-preview.png`（GitHub 分享缩略图 1280×640）：抠背景 + 深色排版。需要 Pillow（只用于这个脚本，桥接运行不需要） | 保留（换文案/配色时重跑） |
 | `video-link.js` | 视频**链接**识别（B站/抖音白名单 + 正则，纯函数）：`detectVideoLinks()` / `isAllowedVideoUrl()` | 保留 |
 | `pending-queue.js` | **排队消息落盘/恢复**（纯函数）：序列化只留可重投字段、反序列化容错（坏 JSON/版本过新/BOM）、按 24h 与每会话 50 条剪枝 | 保留 |
+| `qqbot-official.js` | **QQ 官方机器人客户端**：AppID+Secret→token、gateway、WebSocket（心跳/RESUME）、事件翻译、被动回复（自动 `msg_seq`，5 次上限） | 保留 |
+| `official-probe.mjs` | 官方通道**端到端验证**：票据→gateway→收事件→回复一条；`--send-test` 测主动消息 | 保留 |
 | `dsh-port.js` | **DSH 端口自动发现**：进程名 `DeepSeek|dsh` → `Get-NetTCPConnection` → HTTP 探活（任何状态码算活）；非 Windows 返回空不猜 | 保留 |
 | `douyin-resolve.js` | **抖音专用解析**：短链→aweme_id、分享页 HTML 里抠 `play_addr.url_list`、`playwm→play` 去水印、cookie 按域名过滤。绕开 yt-dlp 的 a_bogus 签名要求 | 保留 |
 | `video-download.js` | 用 yt-dlp 下载链接视频：只取前 N 秒（`--download-sections`，失败退回整段）、限体积/超时、stdio 全 ignore（沙箱下 pipe 会 EPERM） | 保留 |

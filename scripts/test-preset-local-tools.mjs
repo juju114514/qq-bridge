@@ -216,6 +216,17 @@ test('守卫名单里的每个名字都是 DSH 真实注册的工具（防拼错
     console.log('  ⏭  跳过：未找到 DSH 工具包（设 DSH_TOOL_PACKAGES 指向 @deepseek-ai 目录即可启用）');
     return;
   }
+  // 判据不能只看"抽到多少个名字"：DSH 换安装目录后，profile 反查会落到只剩
+  // cosmokit/schemastery 的半个目录，而 ~/.dsh/plugins 里的第三方插件也能凑出几十个
+  // "看起来像工具"的名字 —— 于是名单里的 pwsh/read 全被判成假名，套件直接红
+  // （2026-10-28 真实踩过：60 个真名被判假名，差点逼人去删守卫名单）。
+  // 正确判据是**必须能抽到 DSH 核心工具**（pwsh/read/write 三者之一），否则就是没扫到真包。
+  const CORE_ANCHORS = ['pwsh', 'read', 'write'];
+  if (!CORE_ANCHORS.some((n) => dshNames.has(n))) {
+    console.log(`  ⏭  跳过：抽到 ${dshNames.size} 个名字，但其中没有 pwsh/read/write，说明没扫到 DSH 核心工具包`);
+    console.log('     指路：设 DSH_TOOL_PACKAGES=<DSH安装目录>/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai');
+    return;
+  }
   for (const id of SIMULATION_PRESETS) {
     const { dir } = readPreset(id);
     const mod = await import(pathToFileURL(path.join(dir, 'qq-tool-restrict.mjs')).href);
