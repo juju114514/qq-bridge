@@ -109,21 +109,39 @@ const STICKER_NOTES_FILE = path.join(STATE_DIR, 'sticker-notes.json');
 function stickerScopeOf(key) {
   return String(key ?? '').startsWith('group:') ? 'group' : 'private';
 }
-function stickerCuratorEnabled() {
-  try {
-    if (cfg?.socialV2?.sticker?.curator?.enabled === true) return true;
-    // loadConfig 是按字段显式装配的，新加的 curator 段可能还没登记（踩过一次）。
-    // 这里直接回读 config.json 兜底，避免"改了配置却不生效"的假死。
-    const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8').replace(/^\uFEFF/, ''));
-    return raw?.socialV2?.sticker?.curator?.enabled === true;
-  } catch { return false; }
+function stickerCuratorEnabled(cfgIn) {
+  // 依次尝试：内存 cfg → config.json（ROOT）→ config.json（cwd）。
+  // loadConfig 是显式装配字段的，新段容易漏登记；能读到任何一处 true 就算开。
+  const fromCfg = cfgIn?.socialV2?.sticker?.curator?.enabled;
+  if (fromCfg === true) return true;
+  if (fromCfg === false) return false;
+  for (const p of [path.join(ROOT, 'config.json'), path.join(process.cwd(), 'config.json')]) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, ''));
+      if (raw?.socialV2?.sticker?.curator?.enabled === true) return true;
+    } catch { /* 下一个 */ }
+  }
+  return false;
 }
-function stickerHintFor(key) {
+
+function stickerDebug(msg) {
+  if (process.env.QQB_STICKER_DEBUG !== '1') return;
+  try { fs.appendFileSync(path.join(STATE_DIR, 'sticker-debug.log'), `${new Date().toISOString()} ${msg}\n`, 'utf8'); } catch { /* ignore */ }
+}
+
+function stickerHintFor(key, cfgIn) {
   try {
-    if (!stickerCuratorEnabled()) return '';   // 默认关：行为零变化
+    const enabled = stickerCuratorEnabled(cfgIn);
+    if (!enabled) return '';   // 默认关：行为零变化
     const store = loadStickerNotes(STICKER_NOTES_FILE);
-    return buildBoundedStickerHint(store.notes, stickerScopeOf(key));
-  } catch { return ''; }
+    const hint = buildBoundedStickerHint(store.notes, stickerScopeOf(key));
+    // 排障开关：QQB_STICKER_DEBUG=1 时打印取值链路（默认不输出）
+    stickerDebug(`key=${key} scope=${stickerScopeOf(key)} file=${STICKER_NOTES_FILE} exists=${fs.existsSync(STICKER_NOTES_FILE)} notes=${store.notes.length} hint=${JSON.stringify(hint)}`);
+    return hint;
+  } catch (e) {
+    stickerDebug(`异常：${e?.name} ${e?.message ?? e}`);
+    return '';
+  }
 }
 const SLANG_SESSION_FILE = path.join(STATE_DIR, 'slang-session.json');
 const SOCIAL_V2_FILE = path.join(STATE_DIR, 'social-v2.json');
@@ -5059,7 +5077,7 @@ async function main() {
               context: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerContext(stickerEntries, cfg.socialV2?.sticker?.promptMaxStickers ?? 8) : '',
               strategy: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerStrategyHint() : '',
               // 只影响"发不发/发哪张"，且严格按会话 scope 取（群聊的绝不进私聊）
-              hint: stickerHintFor(key)
+              hint: stickerHintFor(key, cfg)
             },
             // 语音库摘要：让 AI 一开始就知道有哪些语音可发（真发之前用 qq_list_voices 看详情）。
             voices: cfg.socialV2?.voice?.enabled === false ? { enabled: false } : {
