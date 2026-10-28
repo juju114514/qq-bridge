@@ -49,6 +49,7 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 
 | 日期 | 内容 | 看这里 |
 | --- | --- | --- |
+| 2026-10-29 | **装机不再折腾**：`npm run doctor` 逐条诊断四大卡点并给修法；`scripts/setup.ps1` 一键装（含便携 Node、官方凭证当场验证、自动打开扫码页） | [README](#装起来) |
 | 2026-10-29 | **Docker 真机跑通**：镜像构建 + 容器 `healthy`；容器内必须对齐 `consoleHost/consolePort`（已内置环境变量） | [DOCKER.md](docs/guides/DOCKER.md) |
 | 2026-10-29 | **外部触发入口** `POST /api/inject`：独立令牌，webhook/CI 可推机器人说话 | [INJECT.md](docs/guides/INJECT.md) |
 | 2026-10-29 | **实例互斥**：同一 bot 只允许一个进程连官方 gateway，宿主机与容器不再互相踢线 | [DOCKER.md](docs/guides/DOCKER.md) |
@@ -63,6 +64,39 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 | 2026-10-28 | 修复 `package.json` 的 postinstall（少引号 + 乱码，曾让 `npm install` 必失败） | [CHANGELOG](CHANGELOG.md) |
 
 ## 装起来
+
+**先选路线** —— 大多数人卡住，是因为一开始就选了最难的那条：
+
+| 路线 | 适合谁 | 要做的事 | 需要 Node？ |
+| --- | --- | --- | --- |
+| **Docker**（最省事） | 只想跑起来、机器上已有 Docker | `docker compose up -d` | ❌ 不需要 |
+| **一键脚本**（推荐 Windows） | 想用个人号 + 官方通道，能装 Node | `powershell -File scripts\setup.ps1` | ✅ 脚本能帮你装便携版 |
+| **手动** | 要改代码 / 别的系统 | 照下面步骤来 | ✅ 自己装 |
+
+不确定缺什么？先跑体检，它会**逐条告诉你缺什么、怎么修**：
+
+```powershell
+npm run doctor          # 或 node src/doctor.js
+```
+
+```
+✓ Node 24.21.0 —— ≥ 22 满足要求
+✓ DSH 目录：C:\Users\<你>\.dsh
+✓ SnowLuma 在线（端口 5099） —— 扫码页：http://127.0.0.1:5099
+⚠ 官方通道未就绪 —— 未启用；缺 AppID / AppSecret
+   → 跑 scripts/setup.ps1 按提示粘贴 AppID/AppSecret（会当场验证），或手动填 config.official
+```
+
+### 四个常见卡点（以及怎么绕过）
+
+| 卡点 | 症状 | 一键脚本怎么处理 | 手动怎么办 |
+| --- | --- | --- | --- |
+| **Node 版本** | `npm` 报 `EBADENGINE` / 启动就崩 | 检测到 <22 时**下载便携 Node 到 `tools\node`**（不动系统环境） | `winget install OpenJS.NodeJS.LTS` |
+| **DSH 路径** | 装 preset 找不到 `.dsh` | 自动在 `DSH_HOME` / 家目录 / 常见安装目录里找 | 设 `DSH_HOME=<你的 .dsh>` |
+| **SnowLuma 扫码** | 个人号通道永远连不上 | 探到 5099 就**自动打开扫码页** | 起 SnowLuma → 打开 `127.0.0.1:5099` 扫码 |
+| **官方 AppID/Secret** | 官方通道 `100016 invalid appid or secret` | 粘贴后**当场调 `getAppAccessToken` 验证**，通过才写盘 | 填 `config.official.appid/secret` |
+
+> 官方通道完全可选：没有 AppID 也能只跑个人号（`setup.ps1 -SkipOfficial`）。
 
 前提：**DSH 已安装并登录**、**SnowLuma 已启动并扫码登录 QQ 小号**。这两个都是外部程序，仓库里不含，
 本项目**不会代为安装或启动**（设计不变量 L6）。

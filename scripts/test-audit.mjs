@@ -134,6 +134,8 @@ const tests = [
   'test-inject.mjs',
   // B 站增强：bvid 提取/字幕/热评/拼装/降级接线。
   'test-bili-enrich.mjs',
+  // 装机体检：四个卡点的诊断与修法（离线）。
+  'test-doctor.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
