@@ -2,6 +2,13 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-29 — 网关可替换：NapCat 实测通过 + 登录体验修复
+
+- 实测 NapCat（OneBot v11）替代 SnowLuma：桥接零改动，只改 `snowluma.wsUrl`
+- 踩坑记录写进 QUICKSTART：HTTP+WS 都要开、不能与 QQ 客户端同时登录、二维码要放大
+- `scripts/napcat-login.ps1`：一键拉起 + 二维码放大 4 倍（147px 手机扫不动）
+- 登录助手里的示例账号是占位符，仓库不含真实 QQ 号与 token
+
 ## 2026-10-29 — 装机体验：体检 + 一键安装 + 一页版快速开始
 
 - `npm run doctor`：逐条诊断四大卡点（Node / DSH 路径 / SnowLuma / 官方凭证），**每条失败都带修法**

@@ -133,3 +133,48 @@ npm run doctor
 | 端口 3100 被占 | 已有一个实例在跑 | 停掉旧实例；官方通道还抢同一个 bot，见「实例互斥」 |
 
 更多排障：[TROUBLESHOOTING.md](TROUBLESHOOTING.md) ｜ 完整文档目录：[docs/README.md](docs/README.md)
+
+---
+
+## 用 NapCat 替代 SnowLuma（实测通过）
+
+SnowLuma 连不上 / 想换网关时可以换 **NapCat**：两者都是 OneBot v11，
+**桥接零改动**，只改 config.json 的 `snowluma.wsUrl`。
+
+### 接线步骤
+
+```powershell
+# 1) 彻底退出 QQ 客户端（含 QQProtect），否则 NapCat 注入失败
+# 2) 启动 NapCat（-q 复用登录态，或直接扫码）
+D:\QQBot\tools\napcat\napcat\launcher-win10.bat -q <机器人QQ号>
+
+# 3) 确认 OneBot 两个服务都在监听
+Get-NetTCPConnection -LocalPort 3000,3001 -State Listen
+```
+
+config.json（**字段名是 `snowluma.*`，不是 `onebot`** —— 写错了不会报错，只是不生效）：
+
+```json
+"snowluma": {
+  "httpUrl": "http://127.0.0.1:3000",
+  "wsUrl": "ws://127.0.0.1:3001",
+  "accessToken": "<NapCat 里那个 token>"
+}
+```
+
+### 四个必踩的坑（都实测过）
+
+| 坑 | 现象 | 解法 |
+| --- | --- | --- |
+| **只开了 HTTP，没开 WS** | 桥接一直 `1006` 重连，但 `get_login_info` 是通的 | NapCat 配置里 `websocketServers` 也要 `enable: true`（端口 3001） |
+| **NapCat 与 QQ 客户端同时登录** | NapCat 启动失败，提示"已经登录，无法重新登录" | 先彻底退出 QQ（含 QQProtect 进程），再启动 NapCat |
+| **二维码只有 147px** | 手机扫不动，终端里的 ASCII 码更不行 | 用 `scripts\napcat-login.ps1 -Qq <号>`，它会把二维码放大 4 倍并打开 |
+| **配置写到 `onebot` 段** | 桥接日志仍报 SnowLuma 连不上 | 字段名是 `snowluma.httpUrl / wsUrl / accessToken` |
+
+### 验证通了的样子
+
+```
+[bridge] SnowLuma 已连接：ws://127.0.0.1:3001
+```
+
+（名字还叫 SnowLuma，因为它是 OneBot 客户端的代称，不代表只能用 SnowLuma。）
