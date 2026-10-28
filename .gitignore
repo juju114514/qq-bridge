@@ -19,3 +19,5 @@ public/*
 _snowluma-catalog.json
 .DS_Store
 .env
+# 本地备份（含 bridge.js.bak-* 等）不要进仓库
+*.bak-*
