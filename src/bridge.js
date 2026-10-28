@@ -39,6 +39,9 @@ import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
+import { CONV_KEY_RE, convId } from './conv-key.js';
+import { QuotaBook, ProactiveScheduler, explainProactiveError, DEFAULT_LIMITS } from './official-proactive.js';
+import { createOfficialSayHandler } from './api/official-say.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -4076,7 +4079,13 @@ async function main() {
             fetchMediaData,
             log,
           });
-          const handleSend = createSendHandler({
+          const handleOfficialSay = createOfficialSayHandler({
+          sendJson, readBody, log, getCfg: () => cfg,
+          officialTransport, proactiveQuota, proactiveScheduler,
+          appendActivity, CONV_KEY_RE, convId
+        });
+
+        const handleSend = createSendHandler({
             sendJson, readBody, log,
             unquoteJsonString,
             getMode: () => currentMode,
@@ -4096,7 +4105,7 @@ async function main() {
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
         .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
-        .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone)
+        .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay)
         .chain(handleStickers).chain(handleTokens);
       // 注意：handleV2Wait / handleImages / handleSend **不进链**。
       //   · handleV2Wait 的签名是 (req, res, url)，它自己写响应，不是布尔分派；
@@ -11412,6 +11421,41 @@ async function main() {
       log: (m) => log(m)
     })
     : null;
+
+  // 主动消息：配额账本（state/official-proactive.json）+ 定时播报器
+  const proactiveCfg = officialCfg.proactive ?? {};
+  const proactiveQuota = officialTransport && proactiveCfg.enabled !== false
+    ? new QuotaBook(path.join(ROOT, 'state', 'official-proactive.json'), {
+      group: { ...DEFAULT_LIMITS.group, ...(proactiveCfg.limits?.group ?? {}) },
+      private: { ...DEFAULT_LIMITS.private, ...(proactiveCfg.limits?.private ?? {}) }
+    })
+    : null;
+  const proactiveScheduler = officialTransport && Array.isArray(proactiveCfg.schedules) && proactiveCfg.schedules.length
+    ? new ProactiveScheduler({ schedules: proactiveCfg.schedules, log, tickMs: 20000 })
+    : null;
+
+  // 主动消息统一出口：白名单 → 配额 → 发送；错误翻成人话
+  async function sendOfficialProactive(kind, id, text) {
+    if (!officialTransport) throw new Error('官方通道未启用');
+    if (!officialTransport.allowed(kind, id)) throw new Error('目标不在 config.official.allow 白名单里');
+    const q = proactiveQuota?.take(kind, `${kind}:${id}`);
+    if (q && !q.ok) throw new Error(q.reason);
+    try {
+      await officialTransport.sendText(kind, id, text, { proactive: true });
+    } catch (error) {
+      const tip = explainProactiveError(error?.message);
+      throw new Error(tip ? `${error.message}（${tip}）` : String(error?.message ?? error));
+    }
+  }
+
+  if (proactiveScheduler) {
+    proactiveScheduler.start(async (schedule) => {
+      const parsed = /^(group|private):(.+)$/.exec(String(schedule.key ?? ''));
+      if (!parsed) throw new Error(`schedule.key 格式不对：${schedule.key}`);
+      await sendOfficialProactive(parsed[1], parsed[2], String(schedule.text ?? ''));
+    });
+    log(`[official] 定时播报已启用（${proactiveScheduler.schedules.length} 条）`);
+  }
 
   // QQ 侧（SnowLuma OneBot WebSocket 客户端）
   const bot = new OneBotWsClient({

@@ -1484,7 +1484,19 @@ Get-Content "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" | Select-S
 本轮还没发过话就请求 >= `preSleepWaitMs` 的观察 → 直接 409 并提示「先回复再观察」。
 若仍出现，检查日志里有没有 `firstReplyGate`；没有说明闸门未生效（版本旧）。
 
-### S4. `qq_wait_for_messages` 报 `[object Object]`
+### S4. 主动消息发不出去（定时播报/手动播报）
+
+三类错误要分开看（`explainProactiveError` 会直接给中文原因）：
+
+| 报错特征 | 含义 | 处理 |
+| --- | --- | --- |
+| `11000` / `no permission` / 「主动消息」 | 群主没勾「主动推送消息」 | 让群主在群机器人设置里打开；**别人的群你开不了** |
+| 「用户关闭」「not allowed」 | 对方关了「允许主动发送」 | 无解，等他先说话 |
+| 「频率」「too many」「2200」 | 撞频控 | 降低频率；配额已由 `QuotaBook` 兜住（30/分、1000/天） |
+
+检查配额与定时任务：`GET /api/socialV2/official-proactive`。
+
+### S5. `qq_wait_for_messages` 报 `[object Object]`
 
 错误体被 `String()` 化的老问题（长轮询非 2xx 分支）。看到时按 429 处理：
 先看是不是「同一会话已有等待」，等上一次返回再重试；不要连续重试（会烧 token）。

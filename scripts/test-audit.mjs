@@ -124,6 +124,8 @@ const tests = [
   'test-memory-store.mjs',
   // 会话 key 解析：官方 openid 与数字 QQ 号共存（发送工具的总闸）。
   'test-conv-key.mjs',
+  // 官方主动消息：cron / 配额 / 权限降级 / 接线。
+  'test-official-proactive.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

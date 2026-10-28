@@ -128,11 +128,13 @@ export function createOfficialTransport(opts = {}) {
    * 发文本。能被动回复就带 msg_id（5 次上限由 OfficialQqBot 内部计数），
    * 否则退回主动消息（可能因用户关闭"允许主动发送"而失败，错误原样抛给调用方）。
    */
-  async function sendText(kind, id, text) {
+  async function sendText(kind, id, text, opts = {}) {
     const openid = stripOfficialId(id);
     if (!openid) throw new Error(`官方通道发送失败：id 里没有 openid（${id}）`);
     const target = lastInbound.get(officialId(openid));
-    const mayPassive = target && Date.now() - target.at <= PASSIVE_WINDOW_MS;
+    // opts.proactive = 主动消息：**强制**不带 msg_id（哪怕还在 5 分钟窗口内），
+    // 用于控制台手动播报/定时播报；否则按窗口自动选被动或主动。
+    const mayPassive = !opts.proactive && target && Date.now() - target.at <= PASSIVE_WINDOW_MS;
     const msgId = mayPassive ? target.msgId : '';
     if (kind === 'group') return bot.sendGroupText(openid, text, { msgId });
     return bot.sendC2CText(openid, text, { msgId });

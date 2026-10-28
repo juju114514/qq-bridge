@@ -1,0 +1,112 @@
+// 官方通道「主动消息」的契约测试：cron / 配额 / 权限降级 / 接线，全离线。
+//
+// 主动消息是唯一会"打扰用户"的出口，闸门写错就是封号级事故，所以逐条钉住。
+
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
+const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+const m = await import(new URL('../src/official-proactive.js', import.meta.url).href);
+
+let failures = 0;
+const check = (name, fn) => {
+  try { fn(); console.log(`  ok   ${name}`); }
+  catch (e) { failures++; console.error(`  FAIL ${name}\n       ${e.message}`); }
+};
+
+// ── 1. cron ─────────────────────────────────────────────────────────────
+check('parseCron：*/5、范围、列表、步长都支持', () => {
+  const c = m.parseCron('*/5 9-18 1,15 * 1-5');
+  assert.ok(c.minutes.has(0) && c.minutes.has(55) && !c.minutes.has(3));
+  assert.ok(c.hours.has(9) && c.hours.has(18) && !c.hours.has(19));
+  assert.ok(c.doms.has(1) && c.doms.has(15) && !c.doms.has(2));
+  assert.ok(c.dows.has(1) && c.dows.has(5) && !c.dows.has(0));
+});
+
+check('parseCron：段数/越界/非法步长要报错，不能静默当 0', () => {
+  assert.throws(() => m.parseCron('* * *'), /5 段/);
+  assert.throws(() => m.parseCron('60 * * * *'), /越界/);
+  assert.throws(() => m.parseCron('*/0 * * * *'), /步长/);
+});
+
+check('cronMatches：分钟/小时/月/周都参与；日与周同时限定时按"或"', () => {
+  const d = new Date(2026, 9, 29, 9, 5); // 2026-10-29 09:05 周四
+  assert.equal(m.cronMatches('5 9 * * *', d), true);
+  assert.equal(m.cronMatches('6 9 * * *', d), false);
+  assert.equal(m.cronMatches('5 9 * * 4', d), true, '周四命中 dow=4');
+  assert.equal(m.cronMatches('5 9 1 * 4', d), true, '日不匹配但周匹配 → 或');
+  assert.equal(m.cronMatches('5 9 29 10 *', d), true);
+  assert.equal(m.cronMatches('5 9 * 11 *', d), false);
+});
+
+check('isDue：同一分钟只跑一次；disabled 不跑；坏 cron 不炸', () => {
+  const now = new Date(2026, 9, 29, 9, 5);
+  const s = { key: 'group:official-X', cron: '*/1 * * * *', enabled: true };
+  assert.equal(m.isDue(s, now), true);
+  s.lastRunStamp = '2026-10-29 9:5';
+  assert.equal(m.isDue(s, now), false, '同一分钟不能重复触发');
+  assert.equal(m.isDue({ ...s, lastRunStamp: '', enabled: false }, now), false);
+  assert.equal(m.isDue({ key: 'x', cron: 'bad', enabled: true }, now), false, '坏 cron 只跳过，不抛');
+});
+
+// ── 2. 配额 ─────────────────────────────────────────────────────────────
+check('QuotaBook：每分钟与每日上限都生效，超额给原因', () => {
+  const file = path.join(os.tmpdir(), `qqb-quota-${process.pid}-${Date.now()}.json`);
+  const q = new m.QuotaBook(file, { group: { perMinute: 2, perDay: 3 } });
+  const t = new Date(2026, 9, 29, 9, 0);
+  assert.equal(q.take('group', 'group:official-A', t).ok, true);
+  assert.equal(q.take('group', 'group:official-A', t).ok, true);
+  const third = q.take('group', 'group:official-A', t);
+  assert.equal(third.ok, false);
+  assert.match(third.reason, /本分钟/);
+  // 下一分钟恢复
+  assert.equal(q.take('group', 'group:official-A', new Date(2026, 9, 29, 9, 1)).ok, true);
+  const fourth = q.take('group', 'group:official-A', new Date(2026, 9, 29, 9, 2));
+  assert.equal(fourth.ok, false);
+  assert.match(fourth.reason, /今日/);
+  fs.rmSync(file, { force: true });
+});
+
+check('QuotaBook：单聊与群各自独立计数（不互相挤占）', () => {
+  const file = path.join(os.tmpdir(), `qqb-quota2-${process.pid}-${Date.now()}.json`);
+  const q = new m.QuotaBook(file, { group: { perMinute: 1, perDay: 9 }, private: { perMinute: 1, perDay: 9 } });
+  const t = new Date(2026, 9, 29, 9, 0);
+  assert.equal(q.take('group', 'group:official-A', t).ok, true);
+  assert.equal(q.take('private', 'private:official-B', t).ok, true, '单聊不该被群的额度挡住');
+  fs.rmSync(file, { force: true });
+});
+
+// ── 3. 错误翻译（权限 / 用户关闭 / 频控 三种要分开）─────────────────────
+check('explainProactiveError：三类错误给三种人话', () => {
+  assert.match(m.explainProactiveError('code 11000 no permission'), /群主.*主动推送/);
+  assert.match(m.explainProactiveError('用户已关闭 not allowed'), /关闭.*允许主动发送/);
+  assert.match(m.explainProactiveError('频率超限 2200'), /频控/);
+  assert.equal(m.explainProactiveError('something else'), '');
+});
+
+// ── 4. 接线 ─────────────────────────────────────────────────────────────
+check('接线：端点鉴权走 socialV2 前缀、sendText 支持 proactive、调度器可启动', () => {
+  const api = read('src/api/official-say.js');
+  assert.match(api, /\/api\/socialV2\/official-say/, '挂 socialV2 前缀才能继承 prelude 鉴权');
+  assert.match(api, /proactive: true/, '必须强制主动（不带 msg_id）');
+  assert.match(api, /proactiveQuota\.take/, '必须过配额');
+
+  const transport = read('src/official-transport.js');
+  assert.match(transport, /opts\.proactive/, 'sendText 要支持 proactive 开关');
+
+  const bridge = read('src/bridge.js');
+  assert.match(bridge, /handleOfficialSay/, '路由链要注册');
+  assert.match(bridge, /ProactiveScheduler/, '调度器要实例化');
+  assert.match(bridge, /sendOfficialProactive/, '要有统一出口');
+
+  const cfg = JSON.parse(read('config.example.json'));
+  assert.ok(cfg.official.proactive, '示例配置要有 proactive 段');
+});
+
+console.log('');
+if (failures === 0) console.log('  全部通过');
+else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
