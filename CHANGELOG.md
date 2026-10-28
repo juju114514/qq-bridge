@@ -23,7 +23,9 @@
 - `scripts/test-official-client.mjs`：11 项离线契约测试（`<@!id>` 清洗、openid 不当 QQ 号、seq 上限、路由）
 - `docs/guides/OFFICIAL-QQ.md`：两条腿的差异、加群前置（个人主体只能加自己管理的群）、协议要点、接入设计与**诚实状态表**
 
-> 端到端**尚未验证**（缺 AppID/AppSecret）。按仓库规矩，未验证就不写「已支持」。
+> **2026-10-28 端到端已实测通过**（真机器人 1906089685 + 真群）：
+> token ✓ → gateway ✓ → WS 鉴权 ✓ → 收到群 @ 事件（「测试」）✓ → **被动回复成功** ✓。
+> 复现：`node scripts\official-probe.mjs --creds <state/official.json> --seconds 180`
 
 ### 修复
 

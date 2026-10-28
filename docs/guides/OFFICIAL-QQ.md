@@ -69,12 +69,25 @@ node scripts\official-probe.mjs --seconds 120
 | 项 | 状态 |
 | --- | --- |
 | 协议实现（token / gateway / WS / 事件 / 回复） | ✅ 已完成，**11 项离线测试通过** |
-| 端到端实测（真机器人 + 真群） | ⏳ **待填 AppID/AppSecret**（`scripts/official-probe.mjs` 一跑就有结论） |
+| **端到端实测（真机器人 + 真群）** | ✅ **2026-10-28 已通过**：`access_token` ✓ → gateway `wss://api.sgroup.qq.com/websocket` ✓ → WS 鉴权 `机器人1906089685` ✓ → 收到群 @ 事件（作者「居居」，内容「测试」）✓ → **被动回复成功（msg_id 链路通）** ✓ |
 | 接入 qq-bridge（作为第二 transport） | ⏳ 未接；设计见下一节 |
 | 腾讯频道（帖子/成员）那套 skill | ✅ 已装并实测（建频道→发帖→读回），但**那是频道，不是群聊** |
 
-> 按本仓库的规矩：**没端到端跑过的，不写"已支持"**。所以 README 里官方通道目前标的是「协议已实现，端到端待验证」，
-> 等 `official-probe` 跑出「收到事件 + 回复成功」再改成「✅ 已测试」。
+> 按本仓库的规矩：**没端到端跑过的，不写"已支持"**。2026-10-28 23:5x 实测通过后，状态已改为 ✅。
+> 复现命令（凭证放 `state/official.json`，跑完去群里 @ 一次）：
+>
+> ```powershell
+> node scripts\official-probe.mjs --creds "D:\deepseek工作区\qq-bridge\state\official.json" --seconds 180
+> ```
+>
+> 成功的样子：
+>
+> ```
+> [official] WebSocket 已连接
+> [official] 鉴权成功：机器人1906089685
+> · [群@] id=7132C…8B3（长 32） 作者=居居 内容「测试」
+>   ✓ 被动回复成功（msg_id 链路通）
+> ```
 
 ## 六、接进 qq-bridge 的设计（下一步）
 
