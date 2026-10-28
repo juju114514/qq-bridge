@@ -73,12 +73,14 @@ export function renderPendingHint(items, { max = PENDING_MAX, style = 'hard' } =
     ].join('\n');
   }
 
-  // hard（默认）
+  // hard（默认）—— 关键修正：**图已经在上下文里了**，别再要求它多调一次看图工具。
+  // 之前写成"先调 qq_get_sticker_image 再决定"，模型心想"我已经看到了"，
+  // 于是这一步跳过、判断也一起跳过（两次实测都没收藏）。
   return [
     `【新收到的表情】${ids}`,
-    '本轮先看一眼它表达什么（qq_get_sticker_image），再决定：',
-    '- 有用 → qq_collect_sticker，并说一句它表达什么',
-    '- 没用 → 直接跳过，不要评论',
-    '这张图本轮还没看过，别直接忽略。'
+    '（这张图已经在消息里，你看到了，不必再调看图工具）',
+    '直接判断：',
+    '- 能说出它表达什么、且对以后的聊天有用 → qq_collect_sticker，并说一句它的意思',
+    '- 说不出或没价值 → 跳过，不要评论'
   ].join('\n');
 }

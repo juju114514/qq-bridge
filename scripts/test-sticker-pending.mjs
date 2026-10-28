@@ -57,8 +57,9 @@ check('renderPendingHint：hard 默认带"别直接忽略"，soft 带"没意思�
   const soft = m.renderPendingHint([{ id: 'a' }], { style: 'soft' });
   const hard = m.renderPendingHint([{ id: 'a' }]);
   assert.match(soft, /没意思就忽略/);
-  assert.match(hard, /别直接忽略/);
+  assert.match(hard, /不必再调看图工具/);
   assert.match(hard, /qq_collect_sticker/);
+  assert.ok(!/本轮先看一眼/.test(hard), '不能再要求先调看图工具（实测会被整个跳过）');
 });
 
 check('renderPendingHint：inspect 档展示桥接给的描述', () => {
