@@ -37,6 +37,8 @@ QQ ──► SnowLuma（OneBot v11）──► 本桥接 ──► DSH ──►
 | --- | --- | --- |
 | 2026-10-28 | **视频理解**：故事板 + 转写；五站链接识别；抖音专用解析器；cookie 体检 | [CHANGELOG](CHANGELOG.md) / [VIDEO.md](docs/guides/VIDEO.md) |
 | 2026-10-28 | **技能**：引入 `caveman`（只压日志和输出，代码逐字）；`scripts/install-skills.ps1` 可装可卸 | [SKILLS.md](docs/guides/SKILLS.md) |
+| 2026-10-29 | **两套实现方案**：本地注入（个人号）与官方机器人是**两条独立轨道**——官方渠道注册难，注册不下来时本地照常可用 → [TWO-TRACKS.md](docs/guides/TWO-TRACKS.md) | [TWO-TRACKS.md](docs/guides/TWO-TRACKS.md) |
+| 2026-10-28 | **长期记忆**：LivingMemory 式原子（权重/衰减/命中强化/打分检索/合并/归档），老数据自动迁移 → [MEMORY.md](docs/guides/MEMORY.md) | [MEMORY.md](docs/guides/MEMORY.md) |
 | 2026-10-28 | **官方通道可用**：QQ 官方机器人（q.qq.com）已实测通过 —— 收群 @ 消息 + 被动回复成功；协议层 + 11 项离线测试 → [OFFICIAL-QQ.md](docs/guides/OFFICIAL-QQ.md) | [OFFICIAL-QQ.md](docs/guides/OFFICIAL-QQ.md) |
 | 2026-10-28 | **稳定性**：DSH 端口漂移自愈（自动发现并写回配置）；排队消息落盘，重启不再丢消息 | [CHANGELOG](CHANGELOG.md) |
 | 2026-10-28 | 修复 `package.json` 的 postinstall（少引号 + 乱码，曾让 `npm install` 必失败） | [CHANGELOG](CHANGELOG.md) |

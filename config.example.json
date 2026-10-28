@@ -348,6 +348,9 @@
     "secret": "",
     "sandbox": false,
     "intents": 33554432,
-    "_说明": "QQ 官方机器人（q.qq.com）。protocol 已实现并有离线测试；启用前先跑 scripts\\official-probe.mjs 验证。secret 也可写到 state/official.json（不进仓库）"
+    "_说明": "QQ 官方机器人（q.qq.com）。protocol 已实现并有离线测试；启用前先跑 scripts\\official-probe.mjs 验证。secret 也可写到 state/official.json（不进仓库）",
+    "allowAll": false,
+    "allow": [],
+    "_白名单说明": "官方会话按 openid 判（不是 QQ 号）：默认全拒。allowAll=true 才放行任意会话；或把 openid 写进 allow。"
   }
 }

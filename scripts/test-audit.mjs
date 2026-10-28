@@ -118,6 +118,10 @@ const tests = [
   'test-pending-queue.mjs',
   // QQ 官方机器人客户端：文本清洗 / 事件翻译 / msg_seq 上限 / 路由。
   'test-official-client.mjs',
+  // 官方通道适配层：ID 前缀隔离 / 事件合成 / 消息段降级 / 白名单 / 发送路由。
+  'test-official-transport.mjs',
+  // 长期记忆：衰减/强化/打分/预算/合并/容量/归档/迁移。
+  'test-memory-store.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

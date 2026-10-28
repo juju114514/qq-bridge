@@ -70,6 +70,8 @@ DSH/                         ← 工作区根（不是仓库根）
 | `make-social-preview.py` | 生成 `assets/social-preview.png`（GitHub 分享缩略图 1280×640）：抠背景 + 深色排版。需要 Pillow（只用于这个脚本，桥接运行不需要） | 保留（换文案/配色时重跑） |
 | `video-link.js` | 视频**链接**识别（B站/抖音白名单 + 正则，纯函数）：`detectVideoLinks()` / `isAllowedVideoUrl()` | 保留 |
 | `pending-queue.js` | **排队消息落盘/恢复**（纯函数）：序列化只留可重投字段、反序列化容错（坏 JSON/版本过新/BOM）、按 24h 与每会话 50 条剪枝 | 保留 |
+| `memory-store.js` | **长期记忆**：原子（权重/衰减/强化）+ 打分检索 + 合并 + 归档 + 旧结构迁移；纯函数无 IO | 保留 |
+| `official-transport.js` | 官方通道**适配层**：ID 前缀隔离（openid≠QQ号）、事件合成、发送路由、被动/主动切换 | 保留 |
 | `qqbot-official.js` | **QQ 官方机器人客户端**：AppID+Secret→token、gateway、WebSocket（心跳/RESUME）、事件翻译、被动回复（自动 `msg_seq`，5 次上限） | 保留 |
 | `official-probe.mjs` | 官方通道**端到端验证**：票据→gateway→收事件→回复一条；`--send-test` 测主动消息 | 保留 |
 | `dsh-port.js` | **DSH 端口自动发现**：进程名 `DeepSeek|dsh` → `Get-NetTCPConnection` → HTTP 探活（任何状态码算活）；非 Windows 返回空不猜 | 保留 |

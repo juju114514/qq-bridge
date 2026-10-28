@@ -22,6 +22,10 @@ import * as tokenLedger from '../src/token-ledger.js';
 import * as voiceLib from '../src/send-voice-lib.js';
 import * as presetPrompt from '../src/preset-prompt.js';
 import * as stateAcl from '../src/state-acl.mjs';
+// 官方通道适配层：bridge.js 会调用 isOfficialId / stripOfficialId / segmentsToOfficialText /
+// createOfficialTransport。VM 里必须按名字注入 —— 否则它们不是 import 报错，
+// 而是运行到发送/白名单时才抛 ReferenceError（真实踩过：三套审计同时红）。
+import * as officialTransport from '../src/official-transport.js';
 import { unwrap, createTurnCollector } from '../src/dsh-client.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -192,7 +196,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     OneBotWsClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...officialTransport,
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,

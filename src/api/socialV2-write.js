@@ -14,6 +14,8 @@
  *   · 已处于潜水配置且有未完成的睡前观察窗口时，必须 400 拒绝（防止「聊两句又去潜水」）
  */
 
+import { addAtom, MAX_ATOMS } from '../memory-store.js';
+
 export function createSocialV2WriteHandler(deps) {
   const {
     sendJson,
@@ -254,6 +256,25 @@ export function createSocialV2WriteHandler(deps) {
       if (agentToken && !v2ToolEnabled('memory')) { sendJson({ ok: false, error: '工具未启用：qq_memory_append' }, 403); return true; }
       const st = getSocialV2State(key);
       appendMemoryV2(st, category, content, extra);
+      // 长期层（LivingMemory 式原子）：话题与群友印象是"能记很久"的事，同步落一份；
+      // pendingThought 是两小时内的临时物，不落长期。权重/衰减/合并由 memory-store 管。
+      try {
+        if (!Array.isArray(st.longTermMemories)) st.longTermMemories = [];
+        if (category === 'activeTopic') {
+          addAtom(st.longTermMemories, { text: content, tags: ['话题'], source: key });
+        } else if (category === 'memberImpression') {
+          const target = String(extra.target ?? '').trim();
+          const traits = Array.isArray(extra.traits) ? extra.traits.map(String) : [content];
+          if (target && traits.length) {
+            addAtom(st.longTermMemories, { text: `${target}：${traits.join('、')}`, tags: ['群友'], source: key });
+          }
+        }
+        if (st.longTermMemories.length > MAX_ATOMS) st.longTermMemories = st.longTermMemories.slice(-MAX_ATOMS);
+      } catch (error) {
+        // 长期层是增强，不能因为它让主流程 500
+        log(`[memory] 长期层写入失败（忽略）：${error?.message ?? error}`);
+      }
+      saveSocialV2State();
       sendJson({ ok: true, key, category, content, memory: formatMemoryV2(st) });
       return true;
     }

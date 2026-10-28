@@ -14,6 +14,8 @@
  * 校验顺序与原实现一致：key 空 → agent token → 会话白名单 → 工具开关。
  */
 
+import { formatLongTerm, migrateFromLegacy } from '../memory-store.js';
+
 export function createSocialV2ReadHandler(deps) {
   const {
     sendJson,
@@ -138,7 +140,21 @@ export function createSocialV2ReadHandler(deps) {
         raw.activeTopics = [];
         raw.pendingThoughts = [];
       }
-      sendJson({ ok: true, key, category, formatted: formatMemoryV2({ ...st, ...raw }), raw });
+      // 长期层：老会话还没迁移过 → 现场用旧结构合成（只读、不写盘），保证"升级即可见"。
+      const longTerm = Array.isArray(st.longTermMemories) && st.longTermMemories.length > 0
+        ? st.longTermMemories
+        : migrateFromLegacy(st);
+      const query = String(url.searchParams.get('q') ?? '').trim();
+      const longTermText = formatLongTerm(longTerm, { query, now: Date.now(), limit: 6, maxChars: 800 });
+      const legacyText = formatMemoryV2({ ...st, ...raw });
+      sendJson({
+        ok: true,
+        key,
+        category,
+        formatted: [legacyText, longTermText].filter(Boolean).join('\n\n'),
+        longTerm: longTerm.slice(-50),
+        raw
+      });
       return true;
     }
 

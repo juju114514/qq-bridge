@@ -38,6 +38,7 @@ import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js'
 import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
+import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { serializeQueue, deserializeQueue } from './pending-queue.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -953,6 +954,18 @@ function loadConfig() {
     },
     // 私聊/群聊均未配置白名单时是否放行所有（true 时启动会打警告）
     allowAllWhenEmpty: file.allowAllWhenEmpty === true,
+    // 官方通道（q.qq.com · QQ Bot）。**必须在这里登记**：loadConfig 是逐字段装配的，
+    // 漏了它 config.json 里写什么都读不到 —— 表现是"启用了但一点日志都没有"（真实踩过）。
+    official: {
+      enabled: false,
+      appid: '',
+      secret: '',
+      sandbox: false,
+      intents: undefined,
+      allowAll: false,
+      allow: [],
+      ...(file.official ?? {})
+    },
     ackMessage: file.ackMessage ?? '🤔 收到，正在思考…',
     sendDelayMs: file.sendDelayMs ?? 300,
     questionTimeoutMs: file.questionTimeoutMs ?? 5 * 60 * 1000,
@@ -1799,6 +1812,15 @@ function extractMediaFromSegments(segments) {
 }
 
 function allowed(kind, id, cfg) {
+  // 官方通道的会话是 `official-<openid>`，与 allow.groups（数字 QQ 号）**完全分开**判：
+  // 把 openid 丢进数字白名单永远匹配不上，还诱导人往里写 openid。
+  if (String(id ?? '').startsWith('official-')) {
+    const off = cfg.official ?? {};
+    if (off.enabled !== true) return false;
+    if (off.allowAll === true) return true;
+    const list = Array.isArray(off.allow) ? off.allow.map((x) => String(x).replace(/^official-/, '')) : [];
+    return list.includes(String(id).replace(/^official-/, ''));
+  }
   // OneBot 事件里的 id 可能是数字也可能是字符串（int64 序列化差异），统一转字符串比较。
   // 配置字段兼容单数（group/private）与复数（groups/privates）两种写法。
   const s = String(id);
@@ -2195,6 +2217,10 @@ async function main() {
 
     const assertSendAllowed = guard ? captureSendGuard(key) : null;
     const [kind, id] = key.split(':');
+    // 官方通道目前只接了文本：语音要走官方富媒体上传（分片/整文件），还没做。
+    if (isOfficialId(id)) {
+      throw new Error('官方通道暂不支持发送语音（富媒体需先上传，尚未接入）');
+    }
     const recordSegment = { type: 'record', data: { file: sendPath } };
     let resolveSend;
     let rejectSend;
@@ -2386,6 +2412,9 @@ async function main() {
       throw new Error(`表情 ${entry.id} 的图片下载失败（QQ CDN 网络异常或地址已失效）：${error?.message ?? error}`);
     }
     segments.push({ type: 'image', data: { file: 'base64://' + image.buffer.toString('base64') } });
+    if (isOfficialId(id)) {
+      throw new Error('官方通道暂不支持发表情包（官方富媒体需先上传，尚未接入）');
+    }
     const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
     const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
     const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
@@ -6113,6 +6142,19 @@ async function main() {
       throw new Error('发送内容包含会话令牌，已阻止发送');
     }
     segments.push({ type: 'text', data: { text: escapeCqText(rawMessage) } });
+    // 官方通道：id 是 `official-<openid>`（openid 不是 QQ 号，Number(id) 会变 NaN）。
+    // 文本直接走官方 API；@ 降级成 "@名字" 文字（官方 @ 需要 tiny_id，另议）。
+    if (isOfficialId(id)) {
+      if (!officialTransport) throw new Error('官方通道未启用（config.official.enabled=false）');
+      const { text, unsupported } = segmentsToOfficialText(segments);
+      if (unsupported.length > 0) {
+        throw new Error(`官方通道暂不支持发送 ${unsupported.join('/')}（目前只有文本与 @）`);
+      }
+      if (!text) throw new Error('官方通道：内容为空，未发送');
+      const sent = await officialTransport.sendText(kind, id, text);
+      log(`[official] 已发送（${kind}）：${text.slice(0, 40)}`);
+      return { message_id: sent?.id ?? '', official: true };
+    }
     const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
     const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
     const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
@@ -11284,6 +11326,24 @@ async function main() {
     }
   }
 
+  // ── 官方通道（q.qq.com · QQ Bot）：第二条腿 ──────────────────────────────
+  // 只有 config.official.enabled=true 才连；未启用时这个变量是 null，所有分支都短路。
+  // 官方会话的 id 一律带 `official-` 前缀（openid 不是 QQ 号），见 official-transport.js。
+  const officialCfg = cfg.official ?? {};
+  const officialTransport = officialCfg.enabled === true
+    ? createOfficialTransport({
+      appid: String(officialCfg.appid ?? ''),
+      secret: String(officialCfg.secret ?? ''),
+      sandbox: officialCfg.sandbox === true,
+      intents: Number(officialCfg.intents) || undefined,
+      allowAll: officialCfg.allowAll === true,
+      allow: Array.isArray(officialCfg.allow) ? officialCfg.allow : [],
+      legacyGroups: cfg.allow?.groups,
+      legacyPrivates: cfg.allow?.private,
+      log: (m) => log(m)
+    })
+    : null;
+
   // QQ 侧（SnowLuma OneBot WebSocket 客户端）
   const bot = new OneBotWsClient({
     url: cfg.snowluma.wsUrl,
@@ -11302,6 +11362,23 @@ async function main() {
       || String(event?.user_id ?? '') === String(event?.self_id ?? '')) return;
     try { await handleIncoming('group', event.group_id, event, cfg); } catch (error) { log('处理群消息出错:', error?.message ?? error); }
   });
+  if (officialTransport) {
+    officialTransport.start({
+      onMessage: async (event, oneBotEvent) => {
+        if (!officialTransport.allowed(event.kind, event.id)) {
+          log(`忽略未授权的官方会话（${event.kind} openid=${stripOfficialId(event.id).slice(0, 6)}…）——`
+            + '把该 openid 加进 config.official.allow，或临时设 official.allowAll=true');
+          return;
+        }
+        try {
+          await handleIncoming(event.kind, oneBotEvent.group_id ?? oneBotEvent.user_id, oneBotEvent, cfg);
+        } catch (error) {
+          log(`处理官方消息出错：${error?.message ?? error}`);
+        }
+      }
+    }).catch((error) => log(`[official] 启动失败：${error?.message ?? error}`));
+  }
+
   bot.onNotice('notify', async (event) => {
     try { await handlePokeNotice(event); } catch (error) { log('处理拍一拍事件出错:', error?.message ?? error); }
   });
