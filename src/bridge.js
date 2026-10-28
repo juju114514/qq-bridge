@@ -964,6 +964,8 @@ function loadConfig() {
       intents: undefined,
       allowAll: false,
       allow: [],
+      // 官方会话在 reserved2 下是否把 AI 最终文本自动发出去（模型没调发送工具时的兜底）
+      autoForward: true,
       ...(file.official ?? {})
     },
     ackMessage: file.ackMessage ?? '🤔 收到，正在思考…',
@@ -5721,11 +5723,32 @@ async function main() {
   // 旧实现把发送失败吞成一行日志后**照常 resolve**，于是调用方以为发言成功，
   // 更新 lastAiReplyAt / 活跃调度，实际群里什么都没收到，而且只有一行滚动日志能看出问题。
   const lastSendFailed = new Map(); // key -> true（下一次成功即清除）
+  // key -> 最近一次成功发送的时间：官方会话在 reserved2 下需要判断"模型这轮到底发没发"
+  const lastSendAtByKey = new Map();
 
   function sendToQQ(key, msg) {
     const assertSendAllowed = captureSendGuard(key);
     const safeMsg = redactKnownTokensOnly(msg);
     const [kind, id] = key.split(':');
+    // 官方通道：不走 OneBot，也**不分条**（官方被动回复每条消息最多 5 次，分条会撞上限）。
+    if (isOfficialId(id)) {
+      lastSendFailed.delete(key);
+      sendChain = sendChain
+        .then(async () => {
+          assertSendAllowed();
+          if (!officialTransport) throw new Error('官方通道未启用（config.official.enabled=false）');
+          const { text: plain, unsupported } = segmentsToOfficialText([{ type: 'text', data: { text: safeMsg } }]);
+          if (unsupported.length) throw new Error(`官方通道暂不支持发送 ${unsupported.join('/')}`);
+          if (!plain) throw new Error('官方通道：内容为空，未发送');
+          await officialTransport.sendText(kind, id, plain);
+          lastSendAtByKey.set(key, Date.now());
+        })
+        .catch((error) => {
+          lastSendFailed.set(key, true);
+          log(`官方发送失败 (${key}): ${error?.message ?? error}`);
+        });
+      return sendChain;
+    }
     const parts = splitForQQ(safeMsg);
     lastSendFailed.delete(key);
     for (const part of parts) {
@@ -11185,8 +11208,21 @@ async function main() {
                     }
                   }
                 } else if (currentMode === 'reserved2') {
-                  log(`[reserved2] AI 内部输出（不自动转发）(${key}): ${plain.slice(0, 80)}`);
-                  appendActivity(`${key} [reserved2] AI 内部输出：${plain.slice(0, 80)}${plain.length > 80 ? '…' : ''}`);
+                  // 官方会话的兜底：官方 API 没有"工具发送"的强约束，而模型可能根本没拿到 qq_* 工具
+                  // （真实踩过：会话里没有 qq_send_message，于是 AI 说"我记下了"但群里什么都没收到）。
+                  // 所以对 official- 会话：只要这一轮**没有人发过消息**（60 秒内无成功发送），
+                  // 就把最终文本自动发出去，保证"它说的话群里能看见"。
+                  const officialKeyId = key.split(':')[1] ?? '';
+                  const offCfg = cfg.official ?? {};
+                  const recentlySent = Date.now() - Number(lastSendAtByKey.get(key) ?? 0) < 60000;
+                  if (isOfficialId(officialKeyId) && offCfg.autoForward !== false && !recentlySent && String(plain ?? '').trim()) {
+                    log(`[official] 模型未自行发送，自动转发最终文本 (${key})`);
+                    await sendToQQ(key, plain);
+                    lastSendAtByKey.set(key, Date.now());
+                  } else {
+                    log(`[reserved2] AI 内部输出（不自动转发）(${key}): ${plain.slice(0, 80)}`);
+                    appendActivity(`${key} [reserved2] AI 内部输出：${plain.slice(0, 80)}${plain.length > 80 ? '…' : ''}`);
+                  }
                 } else {
                   if (shouldBlockSilentReply(key)) {
                     log(`静默模式，拦截在途回复 (${key})`);
