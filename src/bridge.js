@@ -11260,7 +11260,17 @@ async function main() {
                 }
               } else if (ended.reason.kind === 'aborted') {
                 log(`⏹️ 回合被中止 (${key})`);
-                await sendToQQ(key, '⏹️ 已停止');
+                // 官方会话：被中止时**不要只发一句"⏹️ 已停止"**把模型已经说出的话吞掉 ——
+                // 官方通道没有别的出口，用户只会看到一句系统提示。有正文就发正文。
+                const abortedId = String(key.split(':')[1] ?? '');
+                const abortedText = String(ended.text ?? '').trim();
+                if (isOfficialId(abortedId) && abortedText) {
+                  await sendToQQ(key, abortedText);
+                } else {
+                  await sendToQQ(key, '⏹️ 已停止');
+                }
+                // 系统提示不算"模型发过话"：清掉时间戳，避免下一轮 60 秒内的自动转发被误抑制
+                lastSendAtByKey.delete(key);
                 if (isFarewell) {
                   const st = socialState(key);
                   if (st.phase === 'exiting') {
