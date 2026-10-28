@@ -140,6 +140,8 @@ const tests = [
   'test-sticker-curator.mjs',
   // 表情策展端点：决策与副作用分离（离线）。
   'test-sticker-curate-api.mjs',
+  // 表情笔记：独立存储 / 状态机 / 上限 / 默认不进提示词。
+  'test-sticker-notes.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
