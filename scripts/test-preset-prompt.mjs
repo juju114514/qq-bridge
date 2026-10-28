@@ -134,11 +134,21 @@ test('删掉安全不变量或正文过短时阻断保存（保护 AI 效果与�
 
 test('写回沿用文件主导行尾，且不吞掉块尾空行', () => {
   const next = renderPresetPromptYaml(source, originalPrefix);
+  // 行尾必须**跟随源文件**：Windows 检出是 CRLF、Linux 是 LF。
+  // 写死 CRLF 会让 Linux 必红（2026-10-29 Linux 沙箱实测 52/56），这里按源文件判断。
+  const srcCrlf = (source.match(/\r\n/g) ?? []).length;
+  const srcLfOnly = (source.match(/\n/g) ?? []).length - srcCrlf;
+  const wantCrlf = srcCrlf > srcLfOnly;
   const crlf = (next.match(/\r\n/g) ?? []).length;
   const lfOnly = (next.match(/\n/g) ?? []).length - crlf;
-  assert.ok(crlf > 0, 'CRLF 文件写回后应仍使用 CRLF');
-  assert.equal(lfOnly, 0, '写回后不应残留/新增 LF-only 行');
-  assert.ok(next.includes('prefix: |-\r\n'), '新增行应使用 CRLF');
+  if (wantCrlf) {
+    assert.ok(crlf > 0, 'CRLF 文件写回后应仍使用 CRLF');
+    assert.equal(lfOnly, 0, '写回后不应残留/新增 LF-only 行');
+    assert.ok(next.includes('prefix: |-\r\n'), '新增行应使用 CRLF');
+  } else {
+    assert.equal(crlf, 0, 'LF 文件写回后不应新增 CRLF');
+    assert.ok(next.includes('prefix: |-\n'), '新增行应使用 LF');
+  }
   // 块之后的内容（空行、注释、后续条目）必须逐字保留
   const before = locatePresetPromptBlock(source);
   const after = locatePresetPromptBlock(next);

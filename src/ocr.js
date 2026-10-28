@@ -94,8 +94,10 @@ function runPowerShell(args, timeoutMs) {
  *                    width?:number, height?:number, reason?:string, error?:string}>}
  */
 export async function ocrImage(buffer, opts = {}) {
-  if (!ocrAvailable()) return { ok: false, reason: 'unavailable', error: '当前环境没有 Windows OCR（非 Windows 或缺少 scripts/ocr-image.ps1）' };
+  // 先校验输入、再判断引擎：空字节/非 Buffer 在任何平台上都是"坏图"，
+  // 不该因为 Linux 没有 Windows OCR 就变成 'unavailable'（调用方降级路径不同）。
   if (!Buffer.isBuffer(buffer) || !buffer.length) return { ok: false, reason: 'bad-image', error: '图片字节为空' };
+  if (!ocrAvailable()) return { ok: false, reason: 'unavailable', error: '当前环境没有 Windows OCR（非 Windows 或缺少 scripts/ocr-image.ps1）' };
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-ocr-'));
   const ext = String(opts.mimeType ?? '').includes('png') ? '.png' : '.jpg';

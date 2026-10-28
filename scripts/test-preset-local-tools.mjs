@@ -211,7 +211,15 @@ test('守卫名单里的每个名字都是 DSH 真实注册的工具（防拼错
   // 只打日志 ⇒ 拼错的名字 = **静默 no-op**。这正是本名单初版的真实缺陷：
   // pwsh_persistent / bash_persistent / cordis / goal_write / goal_read 五个假名
   // 让整批限制悄悄少生效，而套件当时全绿。
-  const dshNames = collectDshToolNames();
+  // DSH 没装/搬走时 collectDshToolNames() 会抛（dsh-modules 宁可报错也不默默用错版本）。
+  // 那是"本机环境不完整"，不是被测代码的问题 —— 跳过，别把套件染红。
+  let dshNames = null;
+  try {
+    dshNames = collectDshToolNames();
+  } catch (error) {
+    console.log(`  ⏭  跳过：找不到 DSH 安装（${String(error?.message ?? error).split('\n')[0]}）`);
+    return;
+  }
   if (dshNames === null) {
     console.log('  ⏭  跳过：未找到 DSH 工具包（设 DSH_TOOL_PACKAGES 指向 @deepseek-ai 目录即可启用）');
     return;
