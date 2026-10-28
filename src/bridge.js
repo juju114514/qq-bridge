@@ -60,6 +60,7 @@ import { buildBoundedStickerHint } from './sticker-hint.js';
 import { loadStickerNotes } from './sticker-notes.js';
 import { createPendingQueue, renderPendingHint } from './sticker-pending.js';
 import { decideFromOneBot, describeGatewayCapability } from './private-access.js';
+import { buildCuratorPrompt } from './sticker-curator.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -5113,7 +5114,9 @@ async function main() {
                 } catch { return ''; }
               })(),
               // 只影响"发不发/发哪张"，且严格按会话 scope 取（群聊的绝不进私聊）
-              hint: stickerHintFor(key, cfg)
+              hint: stickerHintFor(key, cfg),
+              // 指令片段：告诉模型"看到表情先判断含义，有用才收、闲聊可主动发"
+              guidance: stickerCuratorEnabled(cfg) ? buildCuratorPrompt(cfg?.socialV2?.sticker?.curator ?? {}) : ''
             },
             // 语音库摘要：让 AI 一开始就知道有哪些语音可发（真发之前用 qq_list_voices 看详情）。
             voices: cfg.socialV2?.voice?.enabled === false ? { enabled: false } : {
