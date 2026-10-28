@@ -12,15 +12,34 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  FAIL ${name}\n       ${e.message}`); }
 };
 
+await check('hint：没传 scope 一律空串（跨会话不串的硬闸）', () => {
+  const kept = [{ meaning: '无语', status: 'kept', scope: 'group' }];
+  assert.equal(hint.buildBoundedStickerHint(kept), '', '缺 scope 必须为空');
+  assert.equal(hint.buildBoundedStickerHint(kept, 'weird'), '', '非法 scope 也必须为空');
+});
+
 await check('hint：没有 kept 就返回空串（不加任何东西）', () => {
-  assert.equal(hint.buildBoundedStickerHint([]), '');
-  assert.equal(hint.buildBoundedStickerHint([{ meaning: '无语', status: 'pending' }]), '');
-  assert.equal(hint.buildBoundedStickerHint(null), '');
+  assert.equal(hint.buildBoundedStickerHint([], 'group'), '');
+  assert.equal(hint.buildBoundedStickerHint([{ meaning: '无语', status: 'pending', scope: 'group' }], 'group'), '');
+  assert.equal(hint.buildBoundedStickerHint(null, 'group'), '');
+});
+
+await check('hint：群聊笔记绝不进私聊，私聊绝不进群聊', () => {
+  const notes = [
+    { meaning: '群聊表情', status: 'kept', scope: 'group', uses: 3 },
+    { meaning: '私聊表情', status: 'kept', scope: 'private', uses: 9 }
+  ];
+  const g = hint.buildBoundedStickerHint(notes, 'group');
+  const p = hint.buildBoundedStickerHint(notes, 'private');
+  assert.match(g, /群聊表情/);
+  assert.ok(!/私聊表情/.test(g), '群聊里不该出现私聊的表情');
+  assert.match(p, /私聊表情/);
+  assert.ok(!/群聊表情/.test(p), '私聊里不该出现群聊的表情');
 });
 
 await check('hint：最多 3 条、总长 ≤ 60 字，且带固定前缀', () => {
-  const notes = Array.from({ length: 8 }, (_, i) => ({ meaning: `表情${i}号`, uses: i, status: 'kept' }));
-  const s = hint.buildBoundedStickerHint(notes);
+  const notes = Array.from({ length: 8 }, (_, i) => ({ meaning: `表情${i}号`, uses: i, status: 'kept', scope: 'group' }));
+  const s = hint.buildBoundedStickerHint(notes, 'group');
   assert.ok(s.startsWith(hint.HINT_PREFIX), '必须有固定前缀');
   assert.ok(s.length <= hint.HINT_PREFIX.length + hint.HINT_MAX_CHARS, `超长：${s.length}`);
   assert.equal(s.split(' / ').length, 3, '最多 3 条');
@@ -28,9 +47,9 @@ await check('hint：最多 3 条、总长 ≤ 60 字，且带固定前缀', () =
 
 await check('hint：按 uses 排序，用得多的在前', () => {
   const s = hint.buildBoundedStickerHint([
-    { meaning: '少用', uses: 1, status: 'kept' },
-    { meaning: '常用', uses: 9, status: 'kept' }
-  ]);
+    { meaning: '少用', uses: 1, status: 'kept', scope: 'group' },
+    { meaning: '常用', uses: 9, status: 'kept', scope: 'group' }
+  ], 'group');
   assert.ok(s.indexOf('常用') < s.indexOf('少用'));
 });
 

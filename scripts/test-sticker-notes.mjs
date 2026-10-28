@@ -57,10 +57,28 @@ check('落盘 + 读回：超过上限截断，只保留最后 N 条', () => {
 
 check('buildStickerNotesHint：默认不进提示词，只有 kept 才出现', () => {
   const s = m.emptyStore();
-  m.upsertStickerNote(s, { id: 'x', meaning: '无语', status: m.STICKER_NOTE_STATUS.PENDING });
-  assert.equal(m.buildStickerNotesHint(s), '', 'pending 不该进提示词');
-  m.upsertStickerNote(s, { id: 'x', meaning: '无语', status: m.STICKER_NOTE_STATUS.KEPT });
-  assert.match(m.buildStickerNotesHint(s), /无语/);
+  m.upsertStickerNote(s, { id: 'x', meaning: '无语', status: m.STICKER_NOTE_STATUS.PENDING, scope: 'group' });
+  assert.equal(m.buildStickerNotesHint(s, { scope: 'group' }), '', 'pending 不该进提示词');
+  m.upsertStickerNote(s, { id: 'x', meaning: '无语', status: m.STICKER_NOTE_STATUS.KEPT, scope: 'group' });
+  assert.match(m.buildStickerNotesHint(s, { scope: 'group' }), /无语/);
+  assert.equal(m.buildStickerNotesHint(s), '', '不给 scope 必须为空');
+});
+
+check('buildStickerNotesHint：群聊/私聊严格隔离', () => {
+  const s = m.emptyStore();
+  m.upsertStickerNote(s, { id: 'g', meaning: '群里的图', status: m.STICKER_NOTE_STATUS.KEPT, scope: 'group' });
+  m.upsertStickerNote(s, { id: 'p', meaning: '私聊的图', status: m.STICKER_NOTE_STATUS.KEPT, scope: 'private' });
+  assert.match(m.buildStickerNotesHint(s, { scope: 'group' }), /群里的图/);
+  assert.ok(!/私聊的图/.test(m.buildStickerNotesHint(s, { scope: 'group' })));
+  assert.match(m.buildStickerNotesHint(s, { scope: 'private' }), /私聊的图/);
+  assert.ok(!/群里的图/.test(m.buildStickerNotesHint(s, { scope: 'private' })));
+});
+
+check('normalizeScope：非法值兜底成 private（最不容易外泄）', () => {
+  assert.equal(m.normalizeScope('group'), 'group');
+  assert.equal(m.normalizeScope('GROUP'), 'group');
+  assert.equal(m.normalizeScope(''), 'private');
+  assert.equal(m.normalizeScope('whatever'), 'private');
 });
 
 check('listStickerNotes：按状态筛选', () => {

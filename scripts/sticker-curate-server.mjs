@@ -124,7 +124,7 @@ const server = http.createServer(async (req, res) => {
   if (!noteId) noteId = 'auto-' + crypto.createHash('sha1').update(meaning).digest('hex').slice(0, 10);
   let store = notes.loadStickerNotes(notesPath());
   notes.upsertStickerNote(store, {
-    id: noteId, meaning, tags, score,
+    id: noteId, meaning, tags, score, scope: body.scope,
     status: notes.STICKER_NOTE_STATUS.PENDING, source: 'curate'
   });
   if (apply && send.send) notes.markStickerUsed(store, noteId);
@@ -133,6 +133,7 @@ const server = http.createServer(async (req, res) => {
   // 本服务只做决策，不代替桥接执行收藏/发送（避免两处都能往群里发东西）
   json(res, {
     ok: true, applied: false, meaning, score, collect, send, noteId,
+    scope: notes.normalizeScope(body.scope),
     hint: '决策结果交回桥接执行；本服务不直接调用 OneBot，避免双通道刷屏'
   });
 });

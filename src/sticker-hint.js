@@ -15,10 +15,15 @@ export const HINT_PREFIX = '（选图参考，不改语气）';
  * @param {Array<{meaning?:string, uses?:number, status?:string}>} notes
  * @returns {string} 空串表示"不加任何东西"
  */
-export function buildBoundedStickerHint(notes) {
+export function buildBoundedStickerHint(notes, scope = '') {
+  // 会话隔离：必须显式传 scope（group / private），否则返回空串。
+  // 这条是硬约束 —— 群聊的表情偏好不该在私聊里冒出来。
+  const sc = String(scope ?? '').trim().toLowerCase();
+  if (sc !== 'group' && sc !== 'private') return '';
   const list = Array.isArray(notes) ? notes : [];
   const usable = list
     .filter((n) => n && n.meaning && n.status === 'kept')
+    .filter((n) => String(n.scope ?? 'private').toLowerCase() === sc)
     .sort((a, b) => (b.uses || 0) - (a.uses || 0))
     .slice(0, HINT_MAX_ITEMS)
     .map((n) => String(n.meaning).slice(0, 12));
