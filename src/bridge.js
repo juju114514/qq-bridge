@@ -9169,7 +9169,10 @@ async function main() {
     if (tr.anyMessage) return 'anyMessage';
     if (tr.atMention) {
       const atSelf = Array.isArray(event?.message) && event.message.some((seg) => seg?.type === 'at' && String(seg.data?.qq) === String(event?.self_id ?? ''));
-      if (atSelf || quoteTargetIsSelf) return 'atMention';
+      // 官方通道的事件里**没有 at 段**：@ 是网关自己剥掉的（GROUP_AT_MESSAGE_CREATE 这个事件名就代表"被 @"）。
+      // 不认这个标记的话，官方群消息会被当成"没人叫我"，静默不回复 —— 真实踩过（日志只有"收到群消息"）。
+      const officialAt = event?.__official?.atBot === true;
+      if (atSelf || officialAt || quoteTargetIsSelf) return 'atMention';
     }
     if (tr.nameMention && selfNickname) {
       // 用 plainContent（当前消息自己的文字）：textContent 含 `[引用 某人：原文]`，

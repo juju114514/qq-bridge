@@ -141,6 +141,7 @@ check('bridge：官方通道默认关闭；开启后事件走同一个 handleInc
   assert.match(bridge, /handleIncoming\(event\.kind/, '官方事件必须复用同一个入站处理（人格/记忆/工具共享）');
   assert.match(bridge, /if \(isOfficialId\(id\)\)/, '发送侧要按官方前缀分流');
   // 语音/表情在官方通道上必须明确拒绝，而不是把 openid 塞进 Number()
+  assert.match(bridge, /__official\?\.atBot === true/, '官方 @ 必须在唤醒判定里被认出来（否则静默不回复）');
   assert.match(bridge, /官方通道暂不支持发送语音/);
   assert.match(bridge, /官方通道暂不支持发表情包/);
   // loadConfig 是逐字段装配的：新配置段必须显式登记，否则 config.json 里写什么都读不到
