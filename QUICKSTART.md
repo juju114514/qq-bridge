@@ -178,3 +178,36 @@ config.json（**字段名是 `snowluma.*`，不是 `onebot`** —— 写错了�
 ```
 
 （名字还叫 SnowLuma，因为它是 OneBot 客户端的代称，不代表只能用 SnowLuma。）
+
+---
+
+## 换网关前先探一下能力（实测差异很大）
+
+SnowLuma 和 NapCat 虽然都是 OneBot v11，但**扩展 API 不一样**。
+换网关后"某个功能突然不工作"往往是网关不支持，而不是代码坏了。
+
+```powershell
+node scripts\probe-gateway-caps.mjs
+```
+
+输出示例（NapCat 实测）：
+
+```
+  [可用] get_login_info             登录信息
+  [可用] get_friend_list            好友列表（私聊准入用） data=5 条
+  [可用] fetch_custom_face_detail   读收藏表情 data=48 条
+  [不支持] add_custom_face          **写**收藏表情（收藏功能依赖）
+  [不支持] modify_custom_face       改收藏表情备注
+
+  结论：**只读** —— 能读收藏夹，不能收藏。
+```
+
+| 能力 | SnowLuma（主程序） | NapCat |
+| --- | --- | --- |
+| 收发消息 / 事件 | ✅ | ✅ |
+| 好友列表 | 视版本 | ✅ |
+| 读收藏表情 | ✅ | ✅ |
+| **收藏 / 改备注** | ✅ | ❌ 只读 |
+
+所以：**表情收藏功能要跑在 SnowLuma 上**；NapCat 下只能记本地笔记
+（`state/sticker-notes.json`），等切回 SnowLuma 再同步。
