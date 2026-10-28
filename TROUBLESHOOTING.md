@@ -1445,6 +1445,50 @@ npm audit fix          # 小心：可能升级大版本
 
 ---
 
+## S. 官方通道（QQ Bot · q.qq.com）
+
+> 官方通道与 SnowLuma 是**两条独立的腿**，排障时先分清「哪条腿不说话」：
+> 看 `state/bridge.log` 里有没有 `[official]` 前缀。
+
+### S1. 群里 @ 了它，桥接日志只有「收到 群消息」，然后什么都没发生
+
+按版本对应的**五个坑**逐个对：
+
+| # | 症状 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 1 | 收到事件但不唤醒 | 官方 @ 是网关**在事件层**剥掉的，`message` 里没有 `at` 段 → 被判"没人叫我" | 唤醒判定认 `event.__official.atBot` |
+| 2 | 启用了但一条 `[official]` 日志都没有 | `loadConfig()` 是逐字段装配的，漏登记 `official` 段 | 在 loadConfig 里登记 `official` |
+| 3 | 收到后静默丢弃 | 会话 key 的正则只认数字：`/^(group|private):(\d+)$/` → `group:official-<openid>` 不匹配 | `canonicalV2Key` / `isSessionAllowedInCurrentMode` 放行 `official-` |
+| 4 | 只 @ 不说话就完全没反应 | `content` 为空，被"空消息"分支丢掉 | 官方 `atBot` 且正文为空时合成一句上下文 |
+| 5 | 发送工具报「目标不在当前模式允许范围内」 | 守卫短路：`!Number.isFinite(id)` 对字符串 id 恒为 true，压根没走到白名单 | `typeof id !== 'string' && ...` |
+
+一句话自检：`grep '\[official\]' state/bridge.log`，如果连「进入处理」都没有，问题在 1/2；
+有「进入处理」但没有后续，问题在 3/4/5。
+
+### S2. 官方会话里模型说「我这边没有 qq_* 工具」
+
+几乎都是 **DSH 的 MCP 注入被关掉了**（搬目录/重装后常见）：
+
+```powershell
+Get-Content "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" | Select-String 'qq-bridge MCP'
+```
+
+- 有输出 → MCP 区块在，问题是没重启 DSH（工具清单是**启动快照**）
+- 没输出 → 区块被改名成了 `.disabled` / `.with-mcp`，把它恢复回 `cordis.patch.yml`，然后重启 DSH
+
+恢复后必须重启 DSH，并且**新建会话**才会看到 `mcp__snowluma__qq_*`。
+
+### S3. 被唤醒后 5 分钟不说话（界面显示「深度求索中」）
+
+模型把「沉睡前观察」当成回复前置，直接开 300 秒等待。桥接侧有**首回复闸门**：
+本轮还没发过话就请求 >= `preSleepWaitMs` 的观察 → 直接 409 并提示「先回复再观察」。
+若仍出现，检查日志里有没有 `firstReplyGate`；没有说明闸门未生效（版本旧）。
+
+### S4. `qq_wait_for_messages` 报 `[object Object]`
+
+错误体被 `String()` 化的老问题（长轮询非 2xx 分支）。看到时按 429 处理：
+先看是不是「同一会话已有等待」，等上一次返回再重试；不要连续重试（会烧 token）。
+
 ## R. 杀软 / 安全软件干扰
 
 > **典型症状：关掉卡巴斯基（或 360/火绒）就正常，开着就不正常。**

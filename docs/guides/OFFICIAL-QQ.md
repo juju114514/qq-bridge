@@ -70,7 +70,8 @@ node scripts\official-probe.mjs --seconds 120
 | --- | --- |
 | 协议实现（token / gateway / WS / 事件 / 回复） | ✅ 已完成，**11 项离线测试通过** |
 | **端到端实测（真机器人 + 真群）** | ✅ **2026-10-28 已通过**：`access_token` ✓ → gateway `wss://api.sgroup.qq.com/websocket` ✓ → WS 鉴权 `机器人1906089685` ✓ → 收到群 @ 事件（作者「居居」，内容「测试」）✓ → **被动回复成功（msg_id 链路通）** ✓ |
-| 接入 qq-bridge（作为第二 transport） | ⏳ 未接；设计见下一节 |
+| 接入 qq-bridge（作为第二 transport） | ✅ 已接入：官方事件走同一个 `handleIncoming`，人格/记忆/工具共用；发送按 `official-` 前缀分流 |
+| **会话内工具可用**（模型自己调 `qq_send_message`） | ✅ 2026-10-29 打通（前提：DSH 的 MCP 注入未被关掉，见 TROUBLESHOOTING S2） |
 | 腾讯频道（帖子/成员）那套 skill | ✅ 已装并实测（建频道→发帖→读回），但**那是频道，不是群聊** |
 
 > 按本仓库的规矩：**没端到端跑过的，不写"已支持"**。2026-10-28 23:5x 实测通过后，状态已改为 ✅。

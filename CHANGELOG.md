@@ -38,6 +38,21 @@
 > token ✓ → gateway ✓ → WS 鉴权 ✓ → 收到群 @ 事件（「测试」）✓ → **被动回复成功** ✓。
 > 复现：`node scripts\official-probe.mjs --creds <state/official.json> --seconds 180`
 
+### 修复（官方通道 · 端到端打通）
+
+一条「群里 @ 了却不下话」的排查，连续挖出 6 个坑，全部修掉并各自有测试/日志兜底：
+
+- **@ 标记**：官方 @ 由网关在事件层剥掉 → 唤醒判定认 `__official.atBot`
+- **配置登记**：`loadConfig()` 逐字段装配，漏登记 `official` 段 → 启用等于没启用（且零日志）
+- **会话 key 正则**：`canonicalV2Key` / `isSessionAllowedInCurrentMode` 只认数字 → 官方 `official-<openid>` 被静默丢弃
+- **空 @**：只 @ 不打字时 `content` 为空，被"空消息"分支丢掉 → 合成上下文让模型自己应
+- **发送分流**：`sendToQQ` 直连 OneBot，官方 id 被 `Number()` 打成 NaN → 按前缀分流走官方 API
+- **id 守卫短路**：`!Number.isFinite(id)` 对字符串恒真，压根没走到白名单 → `typeof id !== 'string' &&`
+- **首回复闸门**：模型被唤醒先做 5 分钟"沉睡前观察"，群里 5 分钟没回复 → 未发言时观察请求直接 409
+- **中止回合**：`⏹️ 已停止` 顶替了模型已生成的正文 → 有正文时发正文
+
+另修：**DSH 搬目录后 MCP 区块被改名 `.disabled`** → QQ 会话完全没有 `qq_*` 工具（已恢复并写进 TROUBLESHOOTING S2）。
+
 ### 修复
 
 - **排队消息落盘**：队列原来只在内存里，桥接重启就丢（真实吞过一条消息）。现在写
