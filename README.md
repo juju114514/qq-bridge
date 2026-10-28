@@ -8,13 +8,23 @@
 把 QQ 接进 [DeepSeek Harness](https://github.com/deepseek-ai)（下称 DSH）：群里/私聊的消息变成
 DSH 会话里的用户消息，AI 的回复（分条、表情、语音、拍一拍、点歌）发回 QQ。
 
+**两条独立的轨道，可以只跑一条，也可以同时跑**（[TWO-TRACKS.md](docs/guides/TWO-TRACKS.md)）：
+
+| 轨道 | 身份 | 注册难度 | 能力边界 |
+| --- | --- | --- | --- |
+| **本地注入** | 你自己的 QQ 号（SnowLuma / OneBot v11） | 低（扫码即用） | 能读到**全群消息**，可分条/潜水/斗图（拟人的地基） |
+| **官方机器人** | 独立的 bot 账号（q.qq.com · QQ Bot） | 高（主体认证、个人主体仅限自建群） | 默认只收 @、被动回复 5 分钟/5 条；**合规、不封号**，可主动消息与互动召回 |
+
+两条轨道**共用**人格卡、记忆、工具、白名单与额度，只在外层换协议 —— 所以能力不重复实现。
+
 **AI 不直连 QQ** —— 所有出站消息都要过桥接的白名单、额度、脱敏与令牌校验。这是刻意的：
 模型被提示词注入怂恿也刷不了屏、越不了权。
 
 ```
-QQ ──► SnowLuma（OneBot v11）──► 本桥接 ──► DSH ──► DeepSeek / 其他 provider
-                                   ▲                    │
-                                   └──── AI 用工具回消息 ─┘
+QQ（个人号）──► SnowLuma（OneBot v11）──┐
+                                      ├──► 本桥接 ──► DSH ──► DeepSeek / 其他 provider
+QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲                    │
+                                               └──── AI 用工具回消息 ─┘
 ```
 
 ## 它现在能干什么
@@ -29,12 +39,21 @@ QQ ──► SnowLuma（OneBot v11）──► 本桥接 ──► DSH ──►
 | **控制台** | `127.0.0.1:3100`：人格、黑话、表情库、令牌与花费看板、会话与工作区、安全 |
 | **运维** | 守护进程（崩溃自动拉起、单实例、退避重启）、一键安装/体检、登录自启、换机器迁移清单 |
 | **安全** | 自带 OneBot 客户端（不依赖第三方 SDK）、SSRF 五道闸、出站脱敏、控制台令牌、`state/` ACL |
+| **官方机器人** | 收群 @ / 单聊、被动回复、**主动消息**（手动 + cron 定时播报）、**互动召回**（30 天 4 周期）、意向识别（"明天见"只开窗不发，真约定才召回）—— [OFFICIAL-QQ.md](docs/guides/OFFICIAL-QQ.md) |
+| **外部触发** | `POST /api/inject`：webhook / CI / 监控推机器人（独立令牌，只能注入消息；`prompt` 交给 AI、`say` 直发）—— [INJECT.md](docs/guides/INJECT.md) |
+| **可靠性** | 队列落盘 + 重启恢复 + 失败重投；**死信**（丢弃必留原文，可查看/重放）；state **schema 版本与迁移**（迁移前自动备份）；官方通道**实例互斥**（宿主机与容器不互相踢线） |
+| **部署** | Windows 一键脚本；**Docker**（`docker compose up -d`，容器内可跑官方通道）—— [DOCKER.md](docs/guides/DOCKER.md) |
 | **模型** | `deepseek-official`（✅ 已测试）｜`openai` / GPT 等兼容 provider（⚠️ **已接入、未测试**，见 [MODELS.md](docs/guides/MODELS.md)） |
 
 ## 最近更新
 
 | 日期 | 内容 | 看这里 |
 | --- | --- | --- |
+| 2026-10-29 | **Docker 真机跑通**：镜像构建 + 容器 `healthy`；容器内必须对齐 `consoleHost/consolePort`（已内置环境变量） | [DOCKER.md](docs/guides/DOCKER.md) |
+| 2026-10-29 | **外部触发入口** `POST /api/inject`：独立令牌，webhook/CI 可推机器人说话 | [INJECT.md](docs/guides/INJECT.md) |
+| 2026-10-29 | **实例互斥**：同一 bot 只允许一个进程连官方 gateway，宿主机与容器不再互相踢线 | [DOCKER.md](docs/guides/DOCKER.md) |
+| 2026-10-29 | **丢消息兜底**：队列满/白名单变更导致丢弃时写死信（原文保留，可重放） | [CHANGELOG](CHANGELOG.md) |
+| 2026-10-29 | **state schema 迁移**：升级前自动备份旧 JSON，版本不符自动迁移，失败不写版本号 | [CHANGELOG](CHANGELOG.md) |
 | 2026-10-28 | **视频理解**：故事板 + 转写；五站链接识别；抖音专用解析器；cookie 体检 | [CHANGELOG](CHANGELOG.md) / [VIDEO.md](docs/guides/VIDEO.md) |
 | 2026-10-28 | **技能**：引入 `caveman`（只压日志和输出，代码逐字）；`scripts/install-skills.ps1` 可装可卸 | [SKILLS.md](docs/guides/SKILLS.md) |
 | 2026-10-29 | **两套实现方案**：本地注入（个人号）与官方机器人是**两条独立轨道**——官方渠道注册难，注册不下来时本地照常可用 → [TWO-TRACKS.md](docs/guides/TWO-TRACKS.md) | [TWO-TRACKS.md](docs/guides/TWO-TRACKS.md) |
