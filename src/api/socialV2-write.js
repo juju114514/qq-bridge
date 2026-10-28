@@ -14,7 +14,7 @@
  *   · 已处于潜水配置且有未完成的睡前观察窗口时，必须 400 拒绝（防止「聊两句又去潜水」）
  */
 
-import { addAtom, MAX_ATOMS } from '../memory-store.js';
+import { addAtom, splitVariant, MAX_ATOMS } from '../memory-store.js';
 
 export function createSocialV2WriteHandler(deps) {
   const {
@@ -276,6 +276,28 @@ export function createSocialV2WriteHandler(deps) {
       }
       saveSocialV2State();
       sendJson({ ok: true, key, category, content, memory: formatMemoryV2(st) });
+      return true;
+    }
+
+    // ── POST /api/socialV2/memory-split ────────────────────────────────────
+    // 合并是有损的：Jaccard 可能把同一人的两件事吞成一条。被吞的原文留在 atom.variants 里，
+    // 这里把它拆回成独立原子（幂等：拆过再拆返回 404）。
+    if (pathname === '/api/socialV2/memory-split') {
+      const body = await readBody();
+      const key = String(body.key ?? '').trim();
+      const text = String(body.text ?? '').trim();
+      if (!key || !text) { sendJson({ ok: false, error: 'key/text 不能为空' }, 400); return true; }
+      const agentToken = req.headers['x-agent-token'];
+      if (agentToken && !agentTokenOk(key, agentToken)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return true; }
+      if (agentToken && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
+      if (agentToken && !v2ToolEnabled('memory')) { sendJson({ ok: false, error: '工具未启用：qq_memory_*' }, 403); return true; }
+      const st = getSocialV2State(key);
+      if (!Array.isArray(st.longTermMemories)) st.longTermMemories = [];
+      const r = splitVariant(st.longTermMemories, { text, now: Date.now() });
+      if (!r.ok) { sendJson({ ok: false, error: r.reason }, 404); return true; }
+      saveSocialV2State();
+      log(`[memory] 拆分回原文：${text.slice(0, 40)}`);
+      sendJson({ ok: true, key, restored: text, atom: r.atom });
       return true;
     }
 

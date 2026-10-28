@@ -21,7 +21,9 @@
   打分 = `0.6·关键词覆盖 + 0.3·归一化权重 + 0.1·新鲜度`；Jaccard≥0.6 合并；有效权重<0.05 归档
 - 接线：`memory-append` 落长期层（话题/群友印象；临时想法不落），`GET /api/socialV2/memory`
   注入 top-K（6 条 / 800 字预算，支持 `?q=` 按查询排序）；**老会话现场迁移**，升级即可见
-- `scripts/test-memory-store.mjs`：11 项契约测试（分词/衰减/强化/打分/预算/合并/容量/归档/迁移/接线）
+- **合并留原文**：被 Jaccard 吞掉的文本进 `atom.variants[]`（每条最多 5 份），
+  新增 `POST /api/socialV2/memory-split` 把任一条拆回独立原子（幂等）
+- `scripts/test-memory-store.mjs`：13 项契约测试（分词/衰减/强化/打分/预算/合并/容量/归档/迁移/接线）
 
 ### 新增（官方通道 · 协议层）
 

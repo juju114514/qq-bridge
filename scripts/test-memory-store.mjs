@@ -94,6 +94,44 @@ check('addAtom：相似内容合并加权，不同内容新增；空内容跳过
   assert.equal(list.length, 2);
 });
 
+check('addAtom：近似重复才合并，且被吞掉的原文进 variants（不丢信息）', () => {
+  const list = [];
+  m.addAtom(list, { text: '小明：爱熬夜', tags: ['群友'], now: NOW });
+  const r = m.addAtom(list, { text: '小明：爱熬夜啦', tags: ['群友'], now: NOW });
+  assert.equal(r.action, 'merged', '近似重复应当合并');
+  assert.equal(list.length, 1, '仍然只有一条原子');
+  const atom = list[0];
+  assert.ok(Array.isArray(atom.variants) && atom.variants.length >= 1, '必须留原文');
+  assert.equal(atom.variants[0].text, '小明：爱熬夜', '被吞的原文要原样保存');
+  assert.equal(atom.mergedCount, 1);
+
+  // 重复合并同一份原文不应该重复留档
+  m.addAtom(list, { text: '小明：爱熬夜啦呀', now: NOW });
+  assert.ok(atom.variants.length <= m.MAX_VARIANTS, `variants 超上限：${atom.variants.length}`);
+});
+
+check('addAtom：同一人的两件不同事不该被合并（Jaccard 0.5 < 0.6）', () => {
+  const list = [];
+  m.addAtom(list, { text: '小明：爱熬夜', tags: ['群友'], now: NOW });
+  const r = m.addAtom(list, { text: '小明：爱熬夜打游戏', tags: ['群友'], now: NOW });
+  assert.equal(r.action, 'added', '两件事被吞才是灾难，宁可不合并');
+  assert.equal(list.length, 2);
+});
+
+check('splitVariant：把被吞的原文拆回独立原子；拆完再拆返回 not ok', () => {
+  const list = [];
+  m.addAtom(list, { text: '小明：爱熬夜', now: NOW });
+  m.addAtom(list, { text: '小明：爱熬夜啦', now: NOW });
+  assert.equal(list.length, 1);
+  const restored = m.splitVariant(list, { text: '小明：爱熬夜', now: NOW });
+  assert.equal(restored.ok, true);
+  assert.equal(list.length, 2, '拆回后应有两条原子');
+  assert.ok(list.some((a) => a.text === '小明：爱熬夜'));
+  assert.ok(list.some((a) => a.text === '小明：爱熬夜啦'));
+  const again = m.splitVariant(list, { text: '小明：爱熬夜', now: NOW });
+  assert.equal(again.ok, false, '拆过就不能再拆（幂等）');
+});
+
 check('addAtom：容量上限 200，超出按有效权重淘汰最弱（不是最旧）', () => {
   const list = [];
   for (let i = 0; i < 205; i += 1) {
@@ -141,6 +179,7 @@ check('接线：写入端点镜像长期记忆，读取端点注入 top-K', () =
   const write = read('src/api/socialV2-write.js');
   const rd = read('src/api/socialV2-read.js');
   assert.match(write, /longTermMemories/, '写入必须落长期层');
+  assert.match(write, /memory-split/, '要有"把被合并的原文拆回"的端点');
   assert.match(write, /addAtom|migrateFromLegacy/, '要用 memory-store 的写入逻辑');
   assert.match(rd, /longTermMemories/, '读取要读长期层');
   assert.match(rd, /formatLongTerm|rankAtoms/, '读取要打分排序');

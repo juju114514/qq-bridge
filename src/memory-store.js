@@ -19,6 +19,8 @@ export const REINFORCE_STEP = 0.3;
 export const MERGE_JACCARD = 0.6;
 export const ARCHIVE_WEIGHT = 0.05;
 export const MAX_ATOMS = 200;
+// 每条原子最多留几份「被吞掉的原文」：够回溯，又不会膨胀
+export const MAX_VARIANTS = 5;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -118,13 +120,26 @@ export function addAtom(atoms, { text, tags = [], source = '', now = Date.now() 
   const list = Array.isArray(atoms) ? atoms : [];
   const hit = list.find((a) => a && similarity(a.text, clean) >= MERGE_JACCARD);
   if (hit) {
-    hit.text = clean.length > String(hit.text).length ? clean : hit.text;
+    const before = String(hit.text);
+    // 合并是有损操作：同一人的两件事在词面上可能很像（"小明：爱熬夜" / "小明：熬夜打游戏"），
+    // Jaccard 会把它们吞成一条。所以被吞掉的原文必须留档（variants），可随时拆回。
+    if (before !== clean) {
+      if (!Array.isArray(hit.variants)) hit.variants = [];
+      if (!hit.variants.some((v) => String(v?.text ?? '') === before)) {
+        hit.variants.push({ text: before, at: now, reason: 'merged' });
+      }
+    }
+    hit.text = clean.length > before.length ? clean : before;
     hit.weight = Math.min(WEIGHT_CAP, (Number(hit.weight) || 1) + 0.2);
     hit.hits = (Number(hit.hits) || 0) + 1;
     hit.lastHitAt = now;
+    hit.mergedCount = (Number(hit.mergedCount) || 0) + 1;
     const set = new Set([...(Array.isArray(hit.tags) ? hit.tags : []), ...tags.map(String)]);
     hit.tags = [...set].slice(0, 8);
-    return { action: 'merged', atom: hit };
+    if (Array.isArray(hit.variants) && hit.variants.length > MAX_VARIANTS) {
+      hit.variants = hit.variants.slice(-MAX_VARIANTS);
+    }
+    return { action: 'merged', atom: hit, kept: before !== clean ? before : clean };
   }
   const atom = {
     text: clean,
@@ -146,6 +161,31 @@ export function addAtom(atoms, { text, tags = [], source = '', now = Date.now() 
     list.splice(weakest, 1);
   }
   return { action: 'added', atom };
+}
+
+
+/**
+ * 把被合并吞掉的原文拆回成独立原子（"两条事被吞"时的解药）。
+ * @returns {{ok:boolean, reason?:string, atom?:object}}
+ */
+export function splitVariant(atoms, { text, now = Date.now() } = {}) {
+  const want = String(text ?? '').trim();
+  if (!want) return { ok: false, reason: 'text 不能为空' };
+  const list = Array.isArray(atoms) ? atoms : [];
+  for (const a of list) {
+    const idx = (Array.isArray(a?.variants) ? a.variants : []).findIndex((v) => String(v?.text ?? '').trim() === want);
+    if (idx < 0) continue;
+    a.variants.splice(idx, 1);
+    const atom = {
+      text: want,
+      tags: Array.isArray(a.tags) ? [...a.tags] : [],
+      weight: 1, createdAt: now, lastHitAt: now, hits: 0,
+      source: `${a.source ?? ''}|split`
+    };
+    list.push(atom);
+    return { ok: true, atom };
+  }
+  return { ok: false, reason: '没有这条被合并的原文' };
 }
 
 /** 归档：把有效权重低于阈值的移出热存（返回两份，调用方决定写哪）。 */
