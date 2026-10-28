@@ -138,6 +138,8 @@ const tests = [
   'test-doctor.mjs',
   // 表情策展：含义识别 / 收藏判定 / 主动发送配额（离线）。
   'test-sticker-curator.mjs',
+  // 表情策展端点：决策与副作用分离（离线）。
+  'test-sticker-curate-api.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
