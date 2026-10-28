@@ -1833,6 +1833,10 @@ function allowed(kind, id, cfg) {
 
 // 二代会话 key 规范化：只接受 group:正整数 / private:正整数，并去掉前导零，避免同一会话出现多个别名。
 function canonicalV2Key(key) {
+  // 官方通道：group:official-<openid>。openid 不是数字，走 Number() 会变 NaN → 返回 null；
+  // 而调用方多半把 null 当"非法 key"直接丢弃，于是消息静默消失（真实踩过两次）。
+  const officialV2 = /^(group|private):(official-[A-Za-z0-9_-]+)$/.exec(String(key ?? '').trim());
+  if (officialV2) return `${officialV2[1]}:${officialV2[2]}`;
   const m = /^(group|private):(\d+)$/.exec(String(key ?? '').trim());
   if (!m) return null;
   const id = Number(m[2]);
@@ -3281,6 +3285,10 @@ async function main() {
 
   /** 判断一个会话 key 是否仍被当前模式/白名单允许（供唤醒调度与 HTTP 路由共用）。 */
   function isSessionAllowedInCurrentMode(key) {
+    // 官方会话：id 是 official-<openid>，原样交给 allowed()（它内部按 openid 判白名单）。
+    // 不放行的话 handleIncoming 会**静默** return —— 表现就是"收到了，然后没动静"。
+    const officialKey = /^(group|private):(official-[A-Za-z0-9_-]+)$/.exec(String(key ?? '').trim());
+    if (officialKey) return modeAllowed(key, officialKey[1], officialKey[2], cfg, currentMode);
     const m = /^(group|private):(\d+)$/.exec(key);
     if (!m) return false;
     return modeAllowed(key, m[1], Number(m[2]), cfg, currentMode);
@@ -9854,7 +9862,10 @@ async function main() {
 
   function setupSleepTimerV2(key) {
     if (cfg.socialV2?.enabled === false) return;
-    if (!isSessionAllowedInCurrentMode(key)) return;
+    if (!isSessionAllowedInCurrentMode(key)) {
+      if (key.includes('official-')) log(`[official] 会话未通过当前模式校验，丢弃：${key}（模式 ${currentMode}）`);
+      return;
+    }
     const st = getSocialV2State(key);
     cancelReplyCheckV2(key); // 有限睡眠配置已接管，取消回复检查
     if (st.sleepTimer) {
