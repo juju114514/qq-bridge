@@ -65,6 +65,7 @@ import { buildCuratorPrompt } from './sticker-curator.js';
 import { createSocialV2InspectHandler } from './api/socialV2-inspect.js';
 import { createConsoleNotifyHandler } from './api/console-notify.js';
 import { createVoiceSendHandler } from './api/voice-send.js';
+import { createWhitelistHandler } from './api/whitelist.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -4163,44 +4164,12 @@ async function main() {
           return;
         }
         // ── 白名单可视化编辑（写 config.json + 热更新内存） ───────────────────
-        if (req.method === 'GET' && url.pathname === '/api/whitelist') {
-          sendJson({ allow: cfg.allow ?? { private: [], groups: [] }, deny: cfg.deny ?? { private: [], groups: [] }, ownerQQ: cfg.ownerQQ ?? null });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/whitelist') {
-          const body = await readBody();
-          const toNum = (arr) => Array.isArray(arr) ? [...new Set(arr.map((x) => Number(String(x).trim())).filter((n) => Number.isFinite(n)))] : undefined;
-          const configFile = path.join(ROOT, 'config.json');
-          // fail-fast：配置文件损坏时直接 500，绝不回写，避免把整个配置清成只剩 allow/deny/ownerQQ
-          const file = readConfigObject(configFile);
-          const allow = {
-            private: toNum(body.allow?.private) ?? (file.allow?.private ?? []),
-            groups: toNum(body.allow?.groups) ?? (file.allow?.groups ?? [])
-          };
-          const deny = {
-            private: toNum(body.deny?.private) ?? (file.deny?.private ?? []),
-            groups: toNum(body.deny?.groups) ?? (file.deny?.groups ?? [])
-          };
-          // 管理员 QQ 可在控制台输入；空值=清除管理员（fail-closed），非法值拒绝写入。
-          let ownerQQ = cfg.ownerQQ ?? null;
-          if (body.ownerQQ !== undefined) {
-            try {
-              ownerQQ = normalizeOwnerQQ(body.ownerQQ);
-            } catch (error) {
-              sendJson({ ok: false, error: error?.message ?? 'ownerQQ 无效' }, 400);
-              return;
-            }
-          }
-          file.allow = allow;
-          file.deny = deny;
-          file.ownerQQ = ownerQQ;
-          atomicWriteJson(configFile, file);
-          cfg.allow = { private: allow.private, groups: allow.groups };
-          cfg.deny = { private: deny.private, groups: deny.groups };
-          cfg.ownerQQ = ownerQQ;
-          reconcileSessionPolicies();
-          log(`控制台：白名单已更新（群: ${allow.groups.join(',') || '无'}，私聊: ${allow.private.join(',') || '无'}，管理员: ${ownerQQ ?? '未设置'}）`);
-          sendJson({ ok: true, allow, deny, ownerQQ });
+        if (url.pathname === '/api/whitelist') {
+          await createWhitelistHandler({
+            sendJson, readBody, log,
+            getCfg: () => cfg, rootDir: ROOT, path,
+            readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies
+          })(req, url);
           return;
         }
 
