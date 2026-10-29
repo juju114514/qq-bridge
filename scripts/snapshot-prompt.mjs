@@ -35,7 +35,10 @@ const IGNORE = new Set([
   // 依赖网关实时状态（换网关/刚重连时会变，不是配置加载的行为）
   "nickname", "line",
   // 待判队列是"消费即消失"的运行时队列，抓两次必然不同
-  "pending"
+  "pending",
+  // stickers.context 由"表情使用次数"排序生成：机器人每用一次表情顺序就变，
+  // 属于运行数据而不是代码行为（这个 key 在 prompt 载荷里只出现在 stickers 下）
+  "context"
 ]);
 
 function readToken() {

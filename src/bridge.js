@@ -5361,14 +5361,55 @@ async function main() {
     // 文本直接走官方 API；@ 降级成 "@名字" 文字（官方 @ 需要 tiny_id，另议）。
     if (isOfficialId(id)) {
       if (!officialTransport) throw new Error('官方通道未启用（config.official.enabled=false）');
-      const { text, unsupported } = segmentsToOfficialText(segments);
+      // 官方通道：图片走富媒体（先上传拿 file_info，再 msg_type=7），文本走文本接口。
+      // 一条消息里既图又文时，单图带 caption 合并成一条，多图则文本单发 + 图片逐张发。
+      const images = segments.filter((s) => s.type === 'image');
+      const textOnly = segments.filter((s) => s.type !== 'image');
+      const { text, unsupported } = segmentsToOfficialText(textOnly);
       if (unsupported.length > 0) {
-        throw new Error(`官方通道暂不支持发送 ${unsupported.join('/')}（目前只有文本与 @）`);
+        throw new Error(`官方通道暂不支持发送 ${unsupported.join('/')}（目前支持文本 / @ / 图片）`);
       }
-      if (!text) throw new Error('官方通道：内容为空，未发送');
-      const sent = await officialTransport.sendText(kind, id, text);
-      log(`[official] 已发送（${kind}）：${text.slice(0, 40)}`);
-      return { message_id: sent?.id ?? '', official: true };
+      if (!text && images.length === 0) throw new Error('官方通道：内容为空，未发送');
+
+      const firstId = [];
+      let imageErrors = 0;
+      // 单图 + 有文本：合并成一条（官方允许 content 与 media 并存）
+      if (images.length === 1 && text) {
+        try {
+          const buf = await readImageSegmentBytes(images[0]);
+          const sent = await officialTransport.sendImage(kind, id, buf, { content: text });
+          log(`[official] 已发送图片+文字（${kind}）：${buf.length} 字节`);
+          return { message_id: sent?.id ?? '', official: true };
+        } catch (error) {
+          // 发图失败不能让整条消息丢掉：降级成文本 + 一句说明
+          imageErrors += 1;
+          log(`[official] 发图失败，降级为文本：${error?.message ?? error}`);
+          const fallback = `${text}\n（图片发送失败：${String(error?.message ?? error).slice(0, 60)}）`;
+          const sent = await officialTransport.sendText(kind, id, fallback);
+          return { message_id: sent?.id ?? '', official: true, imageFailed: true };
+        }
+      }
+
+      if (text) {
+        const sent = await officialTransport.sendText(kind, id, text);
+        firstId.push(sent?.id ?? '');
+        log(`[official] 已发送（${kind}）：${text.slice(0, 40)}`);
+      }
+      for (const seg of images.slice(0, 3)) {
+        try {
+          const buf = await readImageSegmentBytes(seg);
+          const sent = await officialTransport.sendImage(kind, id, buf, { content: '' });
+          firstId.push(sent?.id ?? '');
+          log(`[official] 已发送图片（${kind}）：${buf.length} 字节`);
+        } catch (error) {
+          imageErrors += 1;
+          log(`[official] 发图失败（已跳过）：${error?.message ?? error}`);
+        }
+      }
+      if (imageErrors > 0 && !text) {
+        throw new Error(`官方通道：${imageErrors} 张图片全部发送失败`);
+      }
+      return { message_id: firstId[0] ?? '', official: true, ...(imageErrors ? { imageFailed: true } : {}) };
     }
     const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
     const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
@@ -5786,6 +5827,24 @@ async function main() {
       return null;
     }
     return { buffer: buf, mimeType: mimeFromBuffer(buf) };
+  }
+
+  /**
+   * 从 OneBot 的 image 段里取字节（官方通道富媒体要用 Buffer）。
+   * 支持三种来源：http(s) URL、base64://、本地绝对路径。
+   */
+  async function readImageSegmentBytes(seg) {
+    const d = seg?.data ?? {};
+    const raw = String(d.url ?? d.file ?? '').trim();
+    if (!raw) throw new Error('图片段没有 url/file');
+    if (/^base64:\/\//i.test(raw)) {
+      return Buffer.from(raw.slice('base64://'.length), 'base64');
+    }
+    if (/^https?:\/\//i.test(raw)) {
+      return await safeFetchBuffer(raw, 8 * 1024 * 1024);
+    }
+    if (fs.existsSync(raw)) return fs.readFileSync(raw);
+    throw new Error(`图片段无法读取：${raw.slice(0, 60)}`);
   }
 
   async function fetchOneBotImage(media) {
