@@ -37,6 +37,7 @@ import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcri
 import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js';
 import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
+import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -5403,6 +5404,21 @@ async function main() {
   async function videoLinkToModelParts(rawUrl, mode) {
     const url = String(rawUrl ?? '').trim();
     if (!videoLinkConfig().enabled) return { ok: false, error: '链接识别未开启（socialV2.media.video.links.enabled=false）' };
+
+    // 轻量档：只取作者/标题/文案（**不下载视频**）。
+    // 为什么单开一档：一句"这是谁的什么视频"不值得下整条片，下载才是风控高危动作。
+    if (mode === 'meta') {
+      const isDouyin = /douyin\.com|iesdouyin\.com/i.test(url);
+      if (!isDouyin) return { ok: false, error: '轻量档只支持抖音链接（B 站需要走下载）' };
+      const meta = await resolveDouyinMeta(url, {
+        cookiesFile: videoLinkConfig().cookiesPath,
+        key: 'video-link-meta'
+      });
+      if (!meta.ok) {
+        return { ok: false, error: `${meta.error || '解析失败'}${meta.code ? `（${meta.code}）` : ''}` };
+      }
+      return { ok: true, textOnly: formatDouyinMeta(meta) };
+    }
     if (!isAllowedVideoUrl(url, { sites: videoLinkConfig().sites })) {
       return { ok: false, error: '只支持 B 站 / 抖音的视频链接（其他站点一律不下载）' };
     }

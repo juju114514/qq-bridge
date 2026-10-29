@@ -1081,11 +1081,11 @@ if (cfg.socialV2?.tools?.getImages !== false) {
     '看一个**视频链接**（B站 / 抖音）：桥接用 yt-dlp 只下前 180 秒，抽 9 帧拼成故事板 + 音轨转写。'
     + '当用户贴出 bilibili.com/video/BV…、b23.tv/…、v.douyin.com/…、douyin.com/video/… 这类链接、'
     + '说"看看这个视频"时调用。**不支持的站点会被拒绝**（只白名单 B站/抖音）。'
-    + '只想知道说了什么（口播/讲解）传 mode=transcript，省掉抽帧。',
+    + '只想知道说了什么（口播/讲解）传 mode=transcript，省掉抽帧；只想知道"这是谁的什么视频"传 mode=meta（仅抖音、不下载、秒回）。',
     {
       url: z.string().describe('视频链接（B站视频页/番剧、b23.tv 短链、抖音分享链接）'),
-      mode: z.enum(['storyboard', 'transcript']).optional()
-        .describe('storyboard（默认）：故事板 + 转写；transcript：只要转写文字'),
+      mode: z.enum(['meta', 'storyboard', 'transcript']).optional()
+        .describe('meta：只取作者/标题/文案（不下载视频、最省事也最不易被风控，仅抖音）；storyboard（默认）：故事板 + 转写；transcript：只要转写文字'),
       token: z.string().optional().describe('二代会话令牌（reserved2 下必填，见唤醒提示中的【会话令牌】）')
     },
     async ({ url, mode, token }) => {
