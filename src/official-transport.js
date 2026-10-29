@@ -9,6 +9,7 @@
 // 纯函数优先：ID 处理、事件合成都能离线测；只有 start/send 碰网络。
 
 import { OfficialQqBot } from './qqbot-official.js';
+import { checkImageForOfficial, OFFICIAL_FILE_TYPE } from './official-media.js';
 
 export const OFFICIAL_ID_PREFIX = 'official-';
 /** 被动回复窗口：官方是 5 分钟，这里留 30 秒余量，超了就改发主动消息 */
@@ -85,6 +86,22 @@ export function segmentsToOfficialText(segments) {
 }
 
 /**
+ * 判断能否走被动回复（带 msg_id）。
+ * 抽成纯函数是为了可测：这一段一旦判错，要么被官方拒（超窗口），
+ * 要么把本该主动的消息伪装成被动（占不到正确配额）。
+ *
+ * @param {{msgId:string, at:number}|undefined} target 最近一次入站记录
+ * @param {{now?:number, proactive?:boolean, windowMs?:number}} opts
+ */
+export function shouldUsePassiveWindow(target, opts = {}) {
+  const now = Number(opts.now ?? Date.now());
+  const windowMs = Number(opts.windowMs ?? PASSIVE_WINDOW_MS);
+  if (opts.proactive === true) return false;          // 主动消息强制不带 msg_id
+  if (!target || !target.msgId) return false;
+  return now - Number(target.at ?? 0) <= windowMs;
+}
+
+/**
  * 官方通道适配器。
  *
  * @param {{
@@ -134,17 +151,51 @@ export function createOfficialTransport(opts = {}) {
     const target = lastInbound.get(officialId(openid));
     // opts.proactive = 主动消息：**强制**不带 msg_id（哪怕还在 5 分钟窗口内），
     // 用于控制台手动播报/定时播报；否则按窗口自动选被动或主动。
-    const mayPassive = !opts.proactive && target && Date.now() - target.at <= PASSIVE_WINDOW_MS;
-    const msgId = mayPassive ? target.msgId : '';
+    const msgId = shouldUsePassiveWindow(target, { proactive: opts.proactive }) ? target.msgId : '';
     if (kind === 'group') return bot.sendGroupText(openid, text, { msgId });
     // wakeup：互动召回消息（只有单聊支持；群里发会被官方拒）
     return bot.sendC2CText(openid, text, { msgId, wakeup: opts.wakeup === true });
+  }
+
+  /**
+   * 发图片。**上传与发送必须紧挨着**：file_info 有 ttl（官方示例 300 秒），
+   * 缓存复用会拿到过期凭证。
+   *
+   * @param {'group'|'private'} kind
+   * @param {string} id `official-<openid>` 或裸 openid
+   * @param {Buffer} imageBuffer 图片字节（png/jpg 最稳；gif/webp 官方文档说法不一致）
+   * @param {{proactive?:boolean, wakeup?:boolean, content?:string, fileName?:string}} opts
+   */
+  async function sendImage(kind, id, imageBuffer, opts = {}) {
+    const openid = stripOfficialId(id);
+    if (!openid) throw new Error(`官方通道发图失败：id 里没有 openid（${id}）`);
+
+    const check = checkImageForOfficial(imageBuffer);
+    if (!check.ok) throw new Error(`官方通道发图失败：${check.reason}`);
+
+    const target = lastInbound.get(officialId(openid));
+    const msgId = shouldUsePassiveWindow(target, { proactive: opts.proactive }) ? target.msgId : '';
+    const fileName = String(opts.fileName ?? '').trim()
+      || `image-${Date.now()}.${check.mime === 'image/png' ? 'png' : 'jpg'}`;
+
+    const up = await bot.uploadMedia(kind === 'group' ? 'group' : 'user', openid, {
+      buffer: imageBuffer, fileType: OFFICIAL_FILE_TYPE.image, fileName
+    });
+
+    // 立刻发：不要在这里做任何 await 之外的耗时操作（ttl 很短）
+    if (kind === 'group') {
+      return bot.sendGroupMedia(openid, up.fileInfo, { msgId, content: opts.content ?? '' });
+    }
+    return bot.sendC2CMedia(openid, up.fileInfo, {
+      msgId, content: opts.content ?? '', wakeup: opts.wakeup === true
+    });
   }
 
   return {
     bot,
     allowed,
     sendText,
+    sendImage,
     rememberInbound,
     stripOfficialId,
     isOfficialId,

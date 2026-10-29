@@ -254,8 +254,8 @@ export class OfficialQqBot {
    * @param {string} openid 群 openid 或用户 openid
    * @param {{buffer?:Buffer, url?:string, fileType?:number}} opts
    */
-  async uploadMedia(kind, openid, { buffer = null, url = '', fileType = 1 } = {}) {
-    const body = buildUploadBody({ fileType, buffer, url });
+  async uploadMedia(kind, openid, { buffer = null, url = '', fileType = 1, fileName = '' } = {}) {
+    const body = buildUploadBody({ fileType, buffer, url, fileName });
     const seg = kind === 'group' ? 'groups' : 'users';
     const res = await this._post('/v2/' + seg + '/' + encodeURIComponent(openid) + '/files', body);
     const info = pickFileInfo(res);

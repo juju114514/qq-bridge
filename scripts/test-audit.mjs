@@ -150,6 +150,8 @@ const tests = [
   'test-gateway-select.mjs',
   // 官方通道富媒体：两步上传的请求构造与闸门（离线）。
   'test-official-media.mjs',
+  // 官方通道：被动窗口判定 + 发图接线（离线）。
+  'test-official-send-image.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
