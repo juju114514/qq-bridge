@@ -108,6 +108,26 @@ export function createSocialV2PromptHandler(deps = {}) {
               currentWakeConfig: st.wakeConfig,
               wakeSafety: computeWakeSafetyV2(st.wakeConfig),
               memory: formatMemoryV2(st),
+    // 桥接自带命令清单：让模型知道"这些能力真的存在"，别再说"我没有自检功能"。
+    // 真实事故（2026-10-30 01:11）：用户问"能不能自检"，模型答"没那个命令，
+    // 上一版是我照格式自己编的" —— 因为命令由桥接直接执行，模型从来没见过。
+    ...(cfg.socialV2?.prompt?.includeCommands === false ? {} : {
+      commands: {
+        note: '下面这些由桥接直接执行、**不经过你**。别人问起时直接让他发对应命令，不要说没有这个功能。',
+        list: [
+          { cmd: '/自检', who: '管理员', desc: '完整健康报告：网关、DSH、队列、会话表、数据量、最近错误' },
+          { cmd: '/status', who: '管理员', desc: '当前会话、白名单、角色模式' },
+          { cmd: '/role [名字]', who: '管理员', desc: '列出或切换人格卡' },
+          { cmd: '/silent / /active', who: '管理员', desc: '静默模式 / 恢复回复' },
+          { cmd: '/reset', who: '管理员', desc: '重开上下文（清掉当前会话）' },
+          { cmd: '/like QQ号 [次数]', who: '管理员', desc: '给某人名片点赞' },
+          { cmd: '/song 歌名', who: '管理员', desc: '点歌并发语音条' },
+          { cmd: '/指令', who: '所有人', desc: '能力清单（自己会背的那些）' },
+          { cmd: '/梗 词', who: '所有人', desc: '查群聊黑话' },
+          { cmd: '/攻略 游戏 [主题]', who: '所有人', desc: '按模板发攻略卡' }
+        ]
+      }
+    }),
     // 人物库：只注入"当前会话里最近说话的人"的关系与笔记（陌生人/无记录则整段不出现）
     ...(() => {
       try {
