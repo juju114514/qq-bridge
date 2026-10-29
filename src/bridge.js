@@ -143,7 +143,8 @@ function privateAccessVerdict(cfgIn, event, allowList) {
   const opts = cfgIn?.socialV2?.privateAccess;
   if (!opts || opts.enabled !== true) return null;   // null = 不接管，走旧逻辑
   // ownerQQ 必须传：否则管理员自己的私聊也会被"只认白名单"的规则拒掉
-  return decideFromOneBot(opts, event, { friends: null, allowList: allowList || [], ownerQQ: cfg?.ownerQQ });
+  // cfgIn 是形参（这个函数在 main 外面，拿不到 main 里的 cfg —— 上一版就栽在这）
+  return decideFromOneBot(opts, event, { friends: null, allowList: allowList || [], ownerQQ: cfgIn?.ownerQQ });
 }
 
 function stickerCuratorEnabled(cfgIn) {
