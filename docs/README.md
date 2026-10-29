@@ -15,6 +15,7 @@
 - [借鉴方案：熟悉度 + 定时静默](plan-familiarity-and-quiet.md) —— 从兄弟仓库借四条规则，落地两个小模块（不移植）
 - [模块化路线](plan-modularization.md) —— 真实体积、5 种职责、能力模块契约、6 波拆分顺序、体积闸门
 - [2026-10-30 夜间工作记录](sessions/2026-10-30.md) —— 拆分清单、6 个真实缺陷、新功能、当前状态、回滚方法
+- [Linux 独立环境复跑报告](validation/linux-run-2026-10-30.md) —— 另一台 Linux 上审计 84/84（含核对与复现步骤）
 - [从 AstrBot 迁过来](guides/MIGRATE-FROM-ASTRBOT.md) —— 不用换 NapCat、字段对照、只读试用、迁移检查清单
 | [../CHANGELOG.md](../CHANGELOG.md) | **更新日志**：按日期倒序，只记用户能感知的变化与踩过的坑 |
 | [guides/PROJECT_GUIDE.md](guides/PROJECT_GUIDE.md) | **权威项目说明书**（113 KB / 1450+ 行）：架构、内外核划分、数据流、配置全解、安全机制、调试与改进指南，含 2026-08-20 ~ 2026-09-11 的逐轮更新记录 | ✅ **唯一权威版本**（另一份同名精简版已归档到 legacy，见下） |
