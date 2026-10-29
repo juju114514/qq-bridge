@@ -25,6 +25,23 @@ node src/bridge.js   # 然后 /role 里切到 silent，或控制台点「暂停�
 
 命令行快速体验（不需要 QQ 账号，30 秒）：`npm run demo`
 
+### 选一条路，别从头读
+
+```
+你现在的情况？
+│
+├─ 只想先看看它怎么想   →  npm run demo          （不用 QQ、不联网，30 秒）
+│
+├─ 什么都没有           →  QUICKSTART.md          （体检 → 三条路线选一条）
+│      └ 装不上/报错    →  npm run doctor        （逐条告诉你缺什么）
+│
+├─ 已经装了 NapCat      →  直接用，不用换         （start-all.ps1 -StatusOnly 自检）
+│
+├─ 正在用 AstrBot       →  MIGRATE-FROM-ASTRBOT.md（字段对照 + 只读试用）
+│
+└─ 卡住了 / 行为怪       →  运维指南.md           （17 节，全是真实事故）
+```
+
 > **踩坑了 / 要换网关？** → [docs/运维指南.md](docs/运维指南.md)（人工 + AI 双视角：症状速查、网关能力差异、双 token、改 bridge.js 的固定动作）
 > 装不上先跑 `npm run doctor`，它会逐条告诉你缺什么、怎么修。
 
