@@ -77,6 +77,7 @@ import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
+import { createIncomingGuards } from './incoming-guards.js';
 import { buildSelfCheckReport } from './selfcheck.js';
 import { createIncomingCommands } from './incoming-commands.js';
 import { createIncomingStatusCommands } from './incoming-status-commands.js';
@@ -9387,6 +9388,14 @@ function scheduleWakeV2(key, reason) {
     }
   }));
 
+  // 入站闸门（引用 → 空文本 → 待答 → 静默）：已拆到 src/incoming-guards.js
+  let incomingGuardsInstance = null;
+  const getIncomingGuards = () => (incomingGuardsInstance ??= createIncomingGuards({
+    log, appendActivity, getCfg: () => cfg,
+    isSessionAllowedInCurrentMode, isQuoteTargetSelf,
+    rememberPersonInMessage, readRoleState, handlePendingAnswer, pending
+  }));
+
   async function handleIncoming(kind, id, event, cfg) {
     lastInboundAtMs = Date.now();
     const key = convKey(kind, id);
@@ -9449,41 +9458,14 @@ function scheduleWakeV2(key, reason) {
         mediaByRef.delete(oldestKey);
       }
     }
-    // 引用对象是机器人自己时，视为直接对 AI 说（即使当前文字没有 @/关键词）。
-    // 因此必须先解析 quoteTargetIsSelf 再做空文本过滤，避免“只引用不附文”被漏掉。
-    const quoteTargetIsSelf = await isQuoteTargetSelf(event.message ?? [], kind, id, event.self_id);
-    if (!isSessionAllowedInCurrentMode(key)) return;
-    // 官方通道常见形态：用户只 @ 了一下、没打字（事件里 content 为空）。
-    // 这里**不能**按"空消息"丢弃 —— 群里看到的就是"叫了它一声，它一声不吭"。
-    // 合成一句上下文，让模型自己决定怎么应（它看到的仍然是"有人叫我"）。
-    if (!plainContent && event?.__official?.atBot === true) {
-      const att = Array.isArray(event?.__official?.attachments) ? event.__official.attachments.length : 0;
-      plainContent = att > 0
-        ? `（在群里 @ 了我，没打字，但带了 ${att} 个附件）`
-        : '（在群里 @ 了我，但这次没打字）';
-    }
-    if (!plainContent && !quoteTargetIsSelf) {
-      if (String(key).includes('official-')) log(`[official] 消息为空且不是 @/引用，丢弃：${key}`);
-      return;
-    }
-    const isOwner = String(event.user_id) === String(cfg.ownerQQ ?? '');
-    rememberPersonInMessage(kind, id, event);
-    const roleState = readRoleState();
-
-    // 若该会话有挂起的提问/审批，先当作回答处理（用当前消息自己的文字，不含引用原文）。
-    // 审批只有管理员消息会被消费；群友消息不能因为“审批挂起”而被吞掉，应继续走正常处理。
-    const p = pending.get(key);
-    if (p && (p.kind === 'question' || isOwner)) {
-      await handlePendingAnswer(p, plainContent, key, isOwner);
-      return;
-    }
-
-    // 静默模式：群友消息不投递给 agent（只记录）；管理员消息照常
-    if (roleState.mode === 'silent' && !isOwner) {
-      appendActivity(`${key}（静默模式）群友 ${event.user_id}：${textContent.slice(0, 80)}`);
-      log(`静默模式，忽略群友消息 ${key}`);
-      return;
-    }
+    // 入站闸门：引用解析 → 空文本兜底 → 待答 → 静默（已拆到 src/incoming-guards.js）
+    const gateResult = await getIncomingGuards().gate({ key, kind, id, event, plainContent, textContent });
+    if (gateResult.stop) return;
+    plainContent = gateResult.plainContent;
+    const isOwner = gateResult.isOwner;
+    const roleState = gateResult.roleState;
+    // 半截搬迁教训：这个变量后面（唤醒判定）还要用，必须一起接住
+    const quoteTargetIsSelf = gateResult.quoteTargetIsSelf;
 
     // 控制类话语：仅管理员（ownerQQ）可下达；群友触发直接拦截
     if (!isOwner && /进入角色扮演|退出角色扮演|切换角色|设置角色|改角色|换角色|关闭角色扮演|开启角色扮演/.test(plainContent)) {
