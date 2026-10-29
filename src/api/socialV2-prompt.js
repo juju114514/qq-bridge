@@ -108,6 +108,13 @@ export function createSocialV2PromptHandler(deps = {}) {
               currentWakeConfig: st.wakeConfig,
               wakeSafety: computeWakeSafetyV2(st.wakeConfig),
               memory: formatMemoryV2(st),
+    // 人物库：只注入"当前会话里最近说话的人"的关系与笔记（陌生人/无记录则整段不出现）
+    ...(() => {
+      try {
+        const hint = typeof deps.peopleHintFor === 'function' ? String(deps.peopleHintFor(key) ?? '').trim() : '';
+        return hint ? { people: { hint } } : {};
+      } catch { return {}; }
+    })(),
               participation: formatParticipationV2(st),
               slang: {
                 enabled: cfg.slang?.enabled !== false,

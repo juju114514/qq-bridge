@@ -40,7 +40,7 @@ import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
-import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ } from './people.js';
+import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ, markListed } from './people.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
 import { enrichBili, formatBiliEnrich } from './bili-enrich.js';
@@ -4372,7 +4372,9 @@ async function main() {
             stickerEnabled, stickerCuratorEnabled, stickerScopeOf, stickerPending,
             renderPendingHint, stickerHintFor, buildCuratorPrompt,
             syncStickerLibrary, voiceLibrary, voiceCfg
-          })(req, url);
+          ,
+      peopleHintFor: peopleHintForConversation
+})(req, url);
           return;
         }
         // 操作者预写的「会话初始提示词」：控制台专用（AI 既读不到也改不了 —— adminOnlyV2Paths）。
@@ -9092,6 +9094,17 @@ async function main() {
 // 只负责"读写文件"这一层；规则全在 src/people.js 里（纯函数、可离线测）。
 let peopleDb = null;
 let peopleSaveTimer = null;
+/** 会话 key → 最近说话的 QQ（内存，重启即清；只用于提示词注入） */
+const lastPeopleSpeaker = new Map();
+
+/** 给提示词用：这个会话里最近说话的人，我们多熟、记得什么。 */
+function peopleHintForConversation(key) {
+  try {
+    const qq = lastPeopleSpeaker.get(String(key));
+    if (!qq) return '';
+    return describePerson(loadPeopleDb(), qq, String(key));
+  } catch { return ''; }
+}
 function peoplePath() { return path.join(STATE_DIR, 'people.json'); }
 function loadPeopleDb() {
   if (peopleDb) return peopleDb;
@@ -9116,6 +9129,51 @@ function schedulePeopleSave() {
   if (typeof peopleSaveTimer.unref === 'function') peopleSaveTimer.unref();
 }
 
+  /**
+   * 首次部署的一次性任务：把白名单群里**已有的成员**标成 listed。
+   * 不标的话，第一次打开人物表时群里几百人都会被当成"新人"，机器人会挨个搭话——非常吵。
+   * 只跑一次（库里已有人就跳过）。
+   */
+  async function bootstrapPeopleListed() {
+    const db = loadPeopleDb();
+    if (db.meta?.listedBootstrapAt) return { skipped: true };
+    const groups = Array.isArray(cfg.allow?.groups) ? cfg.allow.groups : [];
+    if (!groups.length) return { skipped: true };
+    const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+    const token = cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken;
+    let total = 0;
+    let gatewayWorks = false;
+    for (const groupId of groups) {
+      const qqs = new Set();
+      // ① 先问网关要成员列表（SnowLuma 有的版本不实现 get_group_member_list）
+      try {
+        const res = await fetch(`${httpUrl}/get_group_member_list`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ group_id: Number(groupId), no_cache: true }),
+          signal: AbortSignal.timeout(8000)
+        });
+        const body = await res.json().catch(() => ({}));
+        const list = Array.isArray(body?.data) ? body.data : [];
+        for (const m of list) if (m?.user_id) qqs.add(String(m.user_id));
+        if (qqs.size > 0) gatewayWorks = true;
+      } catch { /* 网关不支持就退回本地历史 */ }
+      // ② 兜底：从我们自己记过的消息里捞发过言的人（网关往往不支持成员列表）
+      try {
+        const st = getSocialV2State(`group:${groupId}`);
+        for (const m of st?.recentMessages ?? []) {
+          if (m?.userId && !m.isSelf) qqs.add(String(m.userId));
+        }
+      } catch { /* ignore */ }
+      if (qqs.size > 0) total += markListed(db, [...qqs]);
+      log(`[people] 群 ${groupId} 存量 ${qqs.size} 人（网关成员列表${gatewayWorks ? '可用' : '不可用，用本地历史'}）`);
+    }
+    db.meta = { ...(db.meta || {}), listedBootstrapAt: Date.now() };
+    savePeopleDbNow();
+    log(`[people] 存量初始化完成：新标 listed ${total} 人`);
+    return { marked: total, gatewayWorks };
+  }
+
 /** 收到一条消息就记一次（群名片会更新，QQ 号才是身份）。 */
 function rememberPersonInMessage(kind, id, event) {
   try {
@@ -9125,6 +9183,8 @@ function rememberPersonInMessage(kind, id, event) {
     const groupId = kind === 'group' ? String(id) : '';
     const displayName = String(event?.sender?.card || event?.sender?.nickname || '');
     touchPerson(db, { qq, groupId, displayName });
+    // 记住"这个会话里最后说话的是谁"，给 qq_get_prompt 注入关系用
+    lastPeopleSpeaker.set(convKey(kind, id), qq);
     schedulePeopleSave();
   } catch (error) {
     log(`⚠️ 记录人物失败：${error?.message ?? error}`);
@@ -11125,6 +11185,8 @@ function scheduleWakeV2(key, reason) {
     log(`SnowLuma 首次连接未成功（将在后台自动重连并尝试自愈 WS token）: ${error?.message ?? error}`);
   });
   log('桥接已启动。按 Ctrl+C 退出。');
+  // 首次部署一次性任务：把已存在的群成员标成 listed（延迟 12 秒，不阻塞启动）
+  setTimeout(() => { bootstrapPeopleListed().catch((e) => log(`⚠️ [people] 初始化失败：${e?.message ?? e}`)); }, 12000).unref?.();
   // 预热表情库：启动时同步一次 QQ 收藏表情，失败不阻塞（AI 首次调用工具时还会再试）。
   if (cfg.socialV2?.sticker?.enabled !== false) {
     syncStickerLibrary(true).catch((error) => log('启动预热表情库失败:', error?.message ?? error));
