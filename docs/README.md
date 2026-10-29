@@ -11,6 +11,7 @@
 
 | 文档 | 一句话说明 | 状态 |
 | --- | --- | --- |
+- [运维指南](运维指南.md) —— 人工 + AI 双视角的排障手册：症状速查、网关能力差异（SnowLuma/NapCat）、双 token、改 bridge.js 的固定动作
 | [../CHANGELOG.md](../CHANGELOG.md) | **更新日志**：按日期倒序，只记用户能感知的变化与踩过的坑 |
 | [guides/PROJECT_GUIDE.md](guides/PROJECT_GUIDE.md) | **权威项目说明书**（113 KB / 1450+ 行）：架构、内外核划分、数据流、配置全解、安全机制、调试与改进指南，含 2026-08-20 ~ 2026-09-11 的逐轮更新记录 | ✅ **唯一权威版本**（另一份同名精简版已归档到 legacy，见下） |
 | [guides/DSH_SETUP.md](guides/DSH_SETUP.md) | DSH 端安装说明：`qq-chat` / `qq-chat-v2` preset 与三个 MCP server 怎么挂到目标设备的 DSH 上 | ✅ |

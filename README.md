@@ -6,6 +6,8 @@
 > 第三方组件与数据出机清单在 [NOTICE.md](NOTICE.md)）。**仓库不含任何真实账号、群号、令牌或 Cookie。**
 
 > **想直接跑起来？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
+>
+> **踩坑了 / 要换网关？** → [docs/运维指南.md](docs/运维指南.md)（人工 + AI 双视角：症状速查、网关能力差异、双 token、改 bridge.js 的固定动作）
 > 装不上先跑 `npm run doctor`，它会逐条告诉你缺什么、怎么修。
 
 把 QQ 接进 [DeepSeek Harness](https://github.com/deepseek-ai)（下称 DSH）：群里/私聊的消息变成
