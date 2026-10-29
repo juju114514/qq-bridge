@@ -3,6 +3,7 @@
   "_slack": 50,
   "_newFileMax": 800,
   "files": {
+    "src/api/console-dsh.js": 93,
     "src/api/console-notify.js": 97,
     "src/api/dead-letter.js": 42,
     "src/api/images.js": 99,
@@ -30,7 +31,7 @@
     "src/api/whitelist.js": 64,
     "src/audio-transcribe.js": 86,
     "src/bili-enrich.js": 176,
-    "src/bridge.js": 11237,
+    "src/bridge.js": 11198,
     "src/config.js": 420,
     "src/conv-key.js": 36,
     "src/core/session-router.mjs": 624,
