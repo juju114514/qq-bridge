@@ -92,6 +92,39 @@ check('describeGatewayCapability：两种网关各有提示', () => {
   assert.match(m.describeGatewayCapability({ hasFriendList: false }), /SnowLuma/);
 });
 
+
+// ── 管理员直通（2026-10-30 真实事故）────────────────────────────────────
+// SnowLuma 不给好友列表 → friends=null → 只认白名单；allow.private 空时
+// 管理员自己的私聊也会被判 not-friend，表现是"私聊发了没反应"。
+check('管理员私聊直通：ownerQQ 命中时即使不在白名单也放行', () => {
+  const r = m.decideFromOneBot(
+    { enabled: true, allowFriends: true, allowStrangers: false },
+    { message_type: 'private', sub_type: 'friend', user_id: '10001' },
+    { friends: null, allowList: [], ownerQQ: '10001' }
+  );
+  assert.equal(r.allowed, true, '管理员必须能收到回复');
+  assert.equal(r.reason, 'owner');
+});
+
+check('管理员直通不影响别人：非 owner 仍然按白名单拒', () => {
+  const r = m.decideFromOneBot(
+    { enabled: true, allowFriends: true, allowStrangers: false },
+    { message_type: 'private', sub_type: 'friend', user_id: '10002' },
+    { friends: null, allowList: [], ownerQQ: '10001' }
+  );
+  assert.equal(r.allowed, false);
+  assert.equal(r.reason, 'not-friend');
+});
+
+check('ownerQQ 为空时不误放行（防止配置缺失导致全放）', () => {
+  const r = m.decideFromOneBot(
+    { enabled: true, allowFriends: true, allowStrangers: false },
+    { message_type: 'private', sub_type: 'friend', user_id: '10001' },
+    { friends: null, allowList: [], ownerQQ: '' }
+  );
+  assert.equal(r.allowed, false);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

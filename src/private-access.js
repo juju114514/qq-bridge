@@ -108,6 +108,15 @@ export function decideFromOneBot(opts = {}, event = {}, ctx = {}) {
   const allowList = Array.isArray(ctx.allowList) ? ctx.allowList.map(String) : [];
   const friends = ctx.friends instanceof Set ? ctx.friends : null;
 
+  // 管理员直通：主人给机器人发私聊必须能收到回复。
+  // 真实事故（2026-10-30）：SnowLuma 不实现好友列表 → friends=null → 只认白名单，
+  // 而 allow.private 是空的 → 连管理员自己的私聊都被判 not-friend 拒掉，
+  // 表现就是"私聊发了没反应"，而且日志里只有一行拒绝，很容易被忽略。
+  const ownerQQ = String(ctx.ownerQQ ?? '').trim();
+  if (ownerQQ && base.userId === ownerQQ) {
+    return { allowed: true, reason: 'owner', userId: base.userId, knownFriends: friends !== null };
+  }
+
   // 好友名单未知（如 SnowLuma 不实现 get_friend_list）：只信白名单
   if (friends === null) {
     if (allowList.includes(base.userId)) return { allowed: true, reason: 'allowlist', userId: base.userId, knownFriends: false };

@@ -142,7 +142,8 @@ const stickerPending = createPendingQueue();
 function privateAccessVerdict(cfgIn, event, allowList) {
   const opts = cfgIn?.socialV2?.privateAccess;
   if (!opts || opts.enabled !== true) return null;   // null = 不接管，走旧逻辑
-  return decideFromOneBot(opts, event, { friends: null, allowList: allowList || [] });
+  // ownerQQ 必须传：否则管理员自己的私聊也会被"只认白名单"的规则拒掉
+  return decideFromOneBot(opts, event, { friends: null, allowList: allowList || [], ownerQQ: cfg?.ownerQQ });
 }
 
 function stickerCuratorEnabled(cfgIn) {
