@@ -9361,7 +9361,10 @@ async function main() {
     // 这里**不能**按"空消息"丢弃 —— 群里看到的就是"叫了它一声，它一声不吭"。
     // 合成一句上下文，让模型自己决定怎么应（它看到的仍然是"有人叫我"）。
     if (!plainContent && event?.__official?.atBot === true) {
-      plainContent = '（在群里 @ 了我，但这次没打字）';
+      const att = Array.isArray(event?.__official?.attachments) ? event.__official.attachments.length : 0;
+      plainContent = att > 0
+        ? `（在群里 @ 了我，没打字，但带了 ${att} 个附件）`
+        : '（在群里 @ 了我，但这次没打字）';
     }
     if (!plainContent && !quoteTargetIsSelf) {
       if (String(key).includes('official-')) log(`[official] 消息为空且不是 @/引用，丢弃：${key}`);

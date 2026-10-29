@@ -47,7 +47,15 @@ export function toOneBotEvent(event) {
     self_id: '',
     message_id: event.msgId,
     raw_message: event.text,
-    message: [{ type: 'text', data: { text: event.text } }],
+    // 官方入站的图片在 attachments 里（不是 message 段）。这里补成 image 段：
+    //   · 下游 segmentsToText 会产出「[图片]」，模型才知道"有人发了图"，而不是"空的 @"
+    //   · url 留在 data 里，后续要下载/看图时能直接用
+    message: [
+      ...(Array.isArray(event.attachments) ? event.attachments : [])
+        .filter((a) => /image/i.test(String(a?.content_type ?? a?.type ?? '')) || a?.url)
+        .map((a) => ({ type: 'image', data: { url: String(a.url ?? ''), summary: String(a.filename ?? '') } })),
+      { type: 'text', data: { text: event.text } }
+    ],
     sender: {
       user_id: isGroup ? officialId(event.authorId) : id,
       nickname: event.authorName
