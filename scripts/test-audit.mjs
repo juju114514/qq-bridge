@@ -158,6 +158,8 @@ const tests = [
   'test-people.mjs',
   // 文件体积棘轮：防止再长回 1.3 万行（新文件 >800 行直接失败）。
   'test-file-size.mjs',
+  // 公开命令：该认的认 / 不该认的别吞（离线）。
+  'test-incoming-commands.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

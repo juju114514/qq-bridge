@@ -35,6 +35,7 @@ import * as douyinResolve from '../src/douyin-resolve.js';
 // 控制台新拆的模块：bridge 在 startConsoleServer 里**立即**调用工厂，必须注入。
 import { createConsoleDshHandlers } from '../src/api/console-dsh.js';
 import { createSocialV2VideoHandlers } from '../src/api/socialV2-video.js';
+import { createIncomingCommands } from '../src/incoming-commands.js';
 import * as stickerCurator from '../src/sticker-curator.js';
 // 配置加载已抽成模块：VM 里必须注入 createConfigLoader，否则 bridge 启动即 ReferenceError。
 import * as configModule from '../src/config.js';
@@ -213,7 +214,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...stickerPending, ...privateAccess,
-  ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
+  ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands, ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,

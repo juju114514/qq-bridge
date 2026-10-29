@@ -170,7 +170,12 @@ test('默认人设名必须在 roles/ 里解析得到（新装用户第一句就
   assert.equal(resolve(want), names.find((n) => n.startsWith('小鲸鱼')) || resolve(want),
     `config.example.json 的默认人设「${want}」解析不到角色卡（现有：${names.join(', ')}）`);
 
-  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  // 首次引导的代码已搬到 src/incoming-commands.js（2026-10-30 拆分），
+  // 所以这里同时读 bridge 与模块：断言"整个仓库里存在这种写法"。
+  const bridge = [
+    fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8'),
+    fs.readFileSync(new URL('../src/incoming-commands.js', import.meta.url), 'utf8')
+  ].join('\n');
   assert.match(bridge, /resolveRoleName\(cfg\.role\?\.defaultName\)/,
     '首次引导必须用 resolveRoleName 解析默认人设（不能再用 listRoles().includes(精确名)）');
   // 只看"代码形态"（旧写法是 `includes('小鲸鱼') ? '小鲸鱼' : ...`）；
