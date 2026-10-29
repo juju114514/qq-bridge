@@ -134,10 +134,11 @@ console.log('## 配置项（AI 发语音默认关闭，等语音库准备好再�
   const ex = exCfg;
   ok(ex.socialV2?.voice?.dir === 'audio', 'config.example.json 含 voice 段');
   // 代码里的默认值也必须一致，否则删掉 config.json 里那两行就会变回"默认开"
-  const bridgeSrc = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
-  ok(/sendVoice: false,/.test(bridgeSrc), 'bridge.js 里 tools 默认 sendVoice: false');
-  ok(/cfg\.socialV2\.voice = \{\s*\n\s*enabled: false,/.test(bridgeSrc), 'bridge.js 里 voice 默认 enabled: false');
-}
+  // loadConfig 已抽到 src/config.js：配置默认值的断言看那个文件
+  const cfgSrc = fs.readFileSync(path.join(ROOT, 'src', 'config.js'), 'utf8');
+  ok(/sendVoice: false,/.test(cfgSrc), 'src/config.js 里 tools 默认 sendVoice: false');
+  ok(/cfg\.socialV2\.voice = \{\s*\n\s*enabled: false,/.test(cfgSrc), 'src/config.js 里 voice 默认 enabled: false');
+  }
 
 console.log('## MCP 工具与 bridge 路由');
 {

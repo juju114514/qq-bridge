@@ -145,7 +145,7 @@ check('bridge：官方通道默认关闭；开启后事件走同一个 handleInc
   assert.match(bridge, /官方通道暂不支持发送语音/);
   assert.match(bridge, /官方通道暂不支持发表情包/);
   // loadConfig 是逐字段装配的：新配置段必须显式登记，否则 config.json 里写什么都读不到
-  assert.match(bridge, /official:\s*\{/, 'loadConfig 必须登记 official 段');
+  assert.match(read('src/config.js'), /official:\s*\{/, 'loadConfig 必须登记 official 段（现位于 src/config.js）');
   const cfg = JSON.parse(read('config.example.json'));
   assert.equal(cfg.official.enabled, false, '示例配置默认关闭');
   assert.ok('allowAll' in cfg.official || 'allow' in cfg.official, '要有白名单开关');

@@ -29,8 +29,13 @@ const SNAP_DIR = path.join(ROOT, "state", "snapshots");
 
 // 这些字段天然随时间变化，比对时必须忽略
 const IGNORE = new Set([
+  // 随时间变化
   "time", "unreadCount", "recentCount", "lastAt", "lastMessageAt", "updatedAt",
-  "currentWakeConfig", "wakeSafety", "replyTiming", "participation", "memory"
+  "currentWakeConfig", "wakeSafety", "replyTiming", "participation", "memory",
+  // 依赖网关实时状态（换网关/刚重连时会变，不是配置加载的行为）
+  "nickname", "line",
+  // 待判队列是"消费即消失"的运行时队列，抓两次必然不同
+  "pending"
 ]);
 
 function readToken() {
@@ -114,7 +119,8 @@ let bad = 0;
 for (const k of keys) {
   const file = path.join(baseDir, k.replace(/[:/\\]/g, "_") + ".json");
   if (!fs.existsSync(file)) { console.log(`  [跳过] ${k}（基线里没有）`); continue; }
-  const before = JSON.parse(fs.readFileSync(file, "utf8"));
+  // 基线也要过一遍 normalize：否则 IGNORE 里新增的字段会被当成"消失"
+  const before = normalize(JSON.parse(fs.readFileSync(file, "utf8")));
   const after = normalize(await fetchPrompt(k));
   const d = diffKeys(before, after);
   if (d.length === 0) console.log(`  [一致] ${k}`);
