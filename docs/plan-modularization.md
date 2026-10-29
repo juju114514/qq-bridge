@@ -169,6 +169,35 @@ scripts/test-bridge-imports.mjs  静态检查（防"漏 import"）
 下一个目标仍是 `startConsoleServer` 的 handler 装配（~800 行）与
 `handleIncoming` 的静默/引用/媒体三段。
 
+## 五之三、2026-10-30 夜间续（02:00 之后）
+
+| 时间 | 内容 | bridge.js | 审计 |
+| --- | --- | --- | --- |
+| 01:2x | 预设提示词四路由（preset-sim） | 10,853 | 79 |
+| 01:3x | 清空工作区（workspace-reset） | 10,805 | 80 |
+| 01:4x | 群成员 + 黑话提交（group-members / slang-submit） | 10,731 | 80 |
+| 02:0x | 抖音轻量解析 + 工具层 mode=meta | 10,747 | 81 |
+| 02:0x | pumpMux 护栏测试（fake mux + 3 组用例） | 10,747 | 82 |
+| 02:0x | pumpMux 第 1 段：黑话学习会话（mux-learner） | 10,729 | 83 |
+| 02:0x | pumpMux 第 2 段：工具调用追踪（mux-tools） | 10,690 | 84 |
+| 02:1x | 抖音自动附元数据 + /自检 显示 cookies 剩余 | 10,701 | 84 |
+
+新增模块：
+
+```
+src/api/preset-sim.js        仿真提示词 读/写/备份/还原
+src/api/workspace-reset.js   清空工作区（只归档根会话）
+src/api/group-members.js     群成员查询（三条权限语义）
+src/api/slang-submit.js      黑话提交（状态机）
+src/douyin-meta.js           抖音轻量解析（只取元数据不下载，10 秒冷却）
+src/mux-learner.js           pumpMux：黑话学习会话分支
+src/mux-tools.js             pumpMux：工具调用追踪（决定自动转发）
+scripts/test-mux-pump.mjs    pumpMux 护栏（fake mux）
+```
+
+pumpMux 剩余：**turn 收尾**（no-action 计数 / 静默 turn / 唤醒提醒，~120 行）
+—— 与唤醒状态深度耦合，需要一个"完整回合序列"的测试再动。
+
 ## 六、里程碑（可验证）
 
 | 阶段 | bridge.js 行数 | 判定方式 |
