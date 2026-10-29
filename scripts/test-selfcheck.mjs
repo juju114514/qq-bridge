@@ -97,6 +97,31 @@ check('网关重连过：标 ⚠️ 并给出最近一次时间（0 次时不显
   assert.ok(!noLoss.includes('网关重连'), '0 次不该出现这一行');
 });
 
+
+check('抖音 cookies：健康显示剩余、临期标 ⚠️、失效标 ❌', () => {
+  const now = 1_000_000;
+  const ok = m.buildSelfCheckReport({
+    now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {},
+    douyin: { healthy: true, code: 'ok', remaining: '约 20 天' }
+  });
+  assert.match(ok, /抖音 cookies：✅ 剩余 约 20 天/);
+
+  const aging = m.buildSelfCheckReport({
+    now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {},
+    douyin: { healthy: true, code: 'cookie-aging', remaining: '约 5 天' }
+  });
+  assert.match(aging, /抖音 cookies：⚠️/);
+
+  const bad = m.buildSelfCheckReport({
+    now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {},
+    douyin: { healthy: false, code: 'cookie-expired', message: 'cookies.txt 已过期' }
+  });
+  assert.match(bad, /抖音 cookies：❌ cookie-expired/);
+
+  const none = m.buildSelfCheckReport({ now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {} });
+  assert.ok(!none.includes('抖音 cookies'), '没有该项时不显示');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

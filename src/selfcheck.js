@@ -80,6 +80,24 @@ export function buildSelfCheckReport(snap = {}) {
     lines.push(`· 会话表：✅ ${sessionTotal} 条（${top}）`);
   }
 
+  // 抖音 cookies：解析链接的前提。剩几天这种信息一定要主动说，
+  // 否则等到失效那天才发现，链接解析全挂。
+  const dy = snap.douyin;
+  if (dy && (dy.healthy !== undefined || dy.remaining)) {
+    if (dy.healthy === false) {
+      lines.push(`· 抖音 cookies：❌ ${dy.code || '失效'}${dy.message ? `（${String(dy.message).slice(0, 40)}）` : ''}`);
+    } else {
+      const warn = dy.code === 'cookie-aging' ? '⚠️' : '✅';
+      // earliestExpiry 是"最早过期的那一条"，可能是长尾里的个别 cookie；
+      // 同时给出临期条数/总数，避免看到"不到 1 小时"就以为整份凭证要废了。
+      const soon = Number(dy.expiringSoon) || 0;
+      const total = Number(dy.total) || 0;
+      const detail = soon > 0 && total > 0 ? `（最早剩余 ${dy.remaining || '未知'}；${soon}/${total} 条临期）`
+        : ` 剩余 ${dy.remaining || '未知'}`;
+      lines.push(`· 抖音 cookies：${warn}${detail}`);
+    }
+  }
+
   const counts = [];
   if (Number.isFinite(snap.people)) counts.push(`人物 ${snap.people}`);
   if (Number.isFinite(snap.stickers)) counts.push(`表情 ${snap.stickers}`);

@@ -9164,7 +9164,20 @@ function scheduleWakeV2(key, reason) {
           },
           sessions: sessionRegistry.stats(),
           people: Object.keys(loadPeopleDb().people || {}).length,
-          stickers: Array.isArray(stickerEntries) ? stickerEntries.length : 0
+          stickers: Array.isArray(stickerEntries) ? stickerEntries.length : 0,
+          douyin: (() => {
+            try {
+              const health = cookieHealth(videoLinkConfig().cookiesPath);
+              return {
+                healthy: health.ok,
+                code: health.code ?? 'ok',
+                message: health.message ?? '',
+                remaining: health.stats?.earliestExpiry ? describeRemaining(health.stats.earliestExpiry) : '',
+                expiringSoon: health.stats?.expiringSoon ?? 0,
+                total: health.stats?.total ?? 0
+              };
+            } catch { return null; }
+          })()
         };
       } catch (error) {
         return { now: Date.now(), mode: currentMode, dshReady, recentErrors: [String(error?.message ?? error)] };
