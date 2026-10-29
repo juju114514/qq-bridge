@@ -9607,6 +9607,11 @@ function scheduleWakeV2(key, reason) {
       }
     }
 
+    // /自检 与「自检」：管理员限定，**不要求斜杠**（用户两种都发过）
+    if (isOwner && /^[\/／]?(自检|selfcheck)$/i.test(String(plainContent ?? '').trim())) {
+      if (await getIncomingStatusCommands().handleStatusCommands({ key, kind, id, plainContent: '/自检' })) return;
+    }
+
     // 管理命令：仅管理员（ownerQQ）可用，且由桥接直接执行（硬性，不经过模型）
     if (plainContent.startsWith('/')) {
       if (!isOwner) {

@@ -23,7 +23,11 @@ export function createIncomingStatusCommands(deps = {}) {
     // /自检 —— 完整健康报告。**管理员限定**（调用方已做 isOwner 判定），
     // 因为里面有网关地址/队列积压/会话数这些运维信息，不能给群友看。
     // 想给群友看健康状态，用 shortStatus（只回"在线/维护中"）。
-    if (plainContent === '/自检' || plainContent === '/selfcheck') {
+    // 兼容几种写法：/自检、自检、／自检（全角）、/selfcheck
+    // 真实事故：用户发了「/自检」，但严格相等没匹配上（客户端可能带全角斜杠或空格），
+    // 结果命令落到模型手里，模型自己编了一份"自检报告"。
+    const selfCheckCmd = String(plainContent ?? '').trim().replace(/^[@＠]\S+\s*/, '');
+    if (/^[\/／]?(自检|selfcheck)$/i.test(selfCheckCmd)) {
       try {
         const snap = typeof getSelfCheck === 'function' ? getSelfCheck() : {};
         const text = typeof buildSelfCheckReport === 'function' ? buildSelfCheckReport(snap) : '（自检模块未接）';

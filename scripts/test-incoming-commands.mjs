@@ -92,6 +92,20 @@ await check('首次使用（非管理员）→ 不弹人设菜单', async () => 
 
 fs.rmSync(tmp, { recursive: true, force: true });
 
+
+// 命令写法兼容（真机事故：用户发「/自检」但严格相等没匹配上，落到模型手里）
+const SELFCHECK_RE = /^[\/／]?(自检|selfcheck)$/i;
+await check('自检命令接受 /自检 自检 ／自检（全角）', async () => {
+  for (const s of ['/自检', '自检', '／自检', '/selfcheck', ' SELFCHECK ']) {
+    assert.equal(SELFCHECK_RE.test(String(s).trim()), true, `${s} 应该被识别`);
+  }
+});
+await check('自检命令不该吞掉正常聊天', async () => {
+  for (const s of ['自检一下', '帮我自检下系统', '自检报告']) {
+    assert.equal(SELFCHECK_RE.test(String(s).trim()), false, `${s} 不该被当成命令`);
+  }
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
