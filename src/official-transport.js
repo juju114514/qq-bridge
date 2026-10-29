@@ -8,6 +8,7 @@
 //
 // 纯函数优先：ID 处理、事件合成都能离线测；只有 start/send 碰网络。
 
+import fs from 'node:fs';
 import { OfficialQqBot } from './qqbot-official.js';
 import { checkImageForOfficial, OFFICIAL_FILE_TYPE } from './official-media.js';
 
@@ -134,11 +135,16 @@ export function createOfficialTransport(opts = {}) {
 
   function rememberInbound(event) {
     if (!event?.id) return;
-    lastInbound.set(officialId(event.id), { msgId: event.msgId, at: Date.now() });
+    const rec = { kind: event.kind, openid: event.id, msgId: event.msgId, at: Date.now() };
+    lastInbound.set(officialId(event.id), { msgId: event.msgId, at: rec.at });
     if (lastInbound.size > 200) {
       const first = lastInbound.keys().next().value;
       lastInbound.delete(first);
     }
+    // 落盘最近一条：探针/排障需要 msgId 才能走"被动回复"（主动消息很多机器人无权限）
+    try {
+      if (opts.inboundFile) fs.writeFileSync(opts.inboundFile, JSON.stringify(rec) + '\n', 'utf8');
+    } catch { /* 落盘失败不影响收消息 */ }
   }
 
   /**
@@ -158,7 +164,7 @@ export function createOfficialTransport(opts = {}) {
   }
 
   /**
-   * 发图片。**上传与发送必须紧挨着**：file_info 有 ttl（官方示例 300 秒），
+   * 发图片。**上传与发送必须紧挨着**：file_info 带 ttl（真机实测 86400 秒=24h，文档示例写 300），
    * 缓存复用会拿到过期凭证。
    *
    * @param {'group'|'private'} kind

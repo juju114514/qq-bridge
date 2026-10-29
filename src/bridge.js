@@ -10641,7 +10641,9 @@ async function main() {
       allow: Array.isArray(officialCfg.allow) ? officialCfg.allow : [],
       legacyGroups: cfg.allow?.groups,
       legacyPrivates: cfg.allow?.private,
-      log: (m) => log(m)
+      log: (m) => log(m),
+      // 最近一条官方入站落盘：探针/排障需要 msgId 才能走被动回复（主动消息多数机器人无权限）
+      inboundFile: path.join(STATE_DIR, 'official-inbound.json')
     })
     : null;
 
