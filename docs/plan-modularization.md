@@ -134,6 +134,41 @@ node scripts/test-file-size.mjs --update   # 有意变长时更新基线
 
 ---
 
+## 五之二、已完成（2026-10-30 一夜）
+
+| 时间 | 内容 | bridge.js | 审计 |
+| --- | --- | --- | --- |
+| 起点 | — | 11,236 | 73 |
+| 波次 1 | console-dsh / video / ops 三刀 | 11,122 | 73 |
+| 波次 2 | 公开命令（191 行）、状态命令 | 10,914 | 74 |
+| 加固 | 修 import 缺失 + 静态 import 检查 | 10,914 | 75 |
+| 状态 1 | 8 个会话级集合收进 registry | 10,905 | 76 |
+| 功能 | `/自检` 命令（管理员限定） | 10,905 | 77 |
+| 状态 2 | epoch 收进 registry | 10,890 | 77 |
+| 波次 2 尾 | `/reset` 搬进模块（46 行 → 6 行） | 10,940 | 78 |
+
+**净减 296 行，审计从 73 增到 78**（新增 5 个测试脚本）。
+
+新增模块清单：
+
+```
+src/session-registry.js      会话级集合 + epoch（10,905 起就是它在承载）
+src/session-reset.js         /reset 的清理清单（18 集合 + 11 钩子）
+src/incoming-commands.js     公开命令 + 首次人设引导（191 行）
+src/incoming-status-commands.js  /status /role /silent /active /自检
+src/selfcheck.js             健康报告（管理员版 + 群友一行版）
+src/quiet-hours.js           静默时段
+src/people.js                人物库
+src/official-media.js        官方富媒体请求构造
+src/api/console-dsh.js       /api/dsh/*
+src/api/socialV2-video.js    /api/socialV2/video*
+src/api/console-ops.js       控制台令牌 / 测试发送 / 只读授权
+scripts/test-bridge-imports.mjs  静态检查（防"漏 import"）
+```
+
+下一个目标仍是 `startConsoleServer` 的 handler 装配（~800 行）与
+`handleIncoming` 的静默/引用/媒体三段。
+
 ## 六、里程碑（可验证）
 
 | 阶段 | bridge.js 行数 | 判定方式 |
