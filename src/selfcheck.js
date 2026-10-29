@@ -42,6 +42,10 @@ export function buildSelfCheckReport(snap = {}) {
   const started = Number(snap.startedAt) || 0;
   const lines = [];
   lines.push('【自检】');
+  // 版本 + state schema：升级排查第一句就是"你现在跑的是哪版"
+  const ver = String(snap.version || '').trim();
+  const schema = snap.schemaVersion != null ? `（schema v${snap.schemaVersion}）` : '';
+  lines.push(`· 版本：${ver || '未知'}${schema}`);
   lines.push(`· 运行：${started ? humanDuration(now - started) : '未知'}（模式 ${snap.mode || '?'}）`);
   lines.push(`· DSH：${okMark(snap.dshReady)}${snap.dshReady ? '' : '（模型连不上，回复会全部卡住）'}`);
 

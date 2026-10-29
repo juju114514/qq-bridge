@@ -9152,6 +9152,8 @@ function scheduleWakeV2(key, reason) {
       try {
         return {
           now: Date.now(),
+          version: (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch { return ''; } })(),
+          schemaVersion: SCHEMA_VERSION,
           startedAt: bridgeStartedAt,
           mode: currentMode,
           dshReady,

@@ -122,6 +122,18 @@ check('抖音 cookies：健康显示剩余、临期标 ⚠️、失效标 ❌', 
   assert.ok(!none.includes('抖音 cookies'), '没有该项时不显示');
 });
 
+
+check('版本行：显示版本与 state schema（升级排查第一句）', () => {
+  const now = 1_000_000;
+  const text = m.buildSelfCheckReport({
+    now, startedAt: now - 1000, mode: 'reserved2', dshReady: true,
+    snowluma: { connected: true }, queues: {}, version: '0.3.0', schemaVersion: 2
+  });
+  assert.match(text, /· 版本：0\.3\.0（schema v2）/);
+  const noVer = m.buildSelfCheckReport({ now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {} });
+  assert.match(noVer, /· 版本：未知/, '拿不到版本时也不能崩');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

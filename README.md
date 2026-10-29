@@ -5,6 +5,7 @@
 > 上游版权归 Derpyu520 与各位贡献者；本分支同样 **MIT**（[LICENSE](LICENSE) 是纯 MIT 正文，
 > 第三方组件与数据出机清单在 [NOTICE.md](NOTICE.md)）。**仓库不含任何真实账号、群号、令牌或 Cookie。**
 
+> **已经装过、要升级？** → [docs/UPGRADE.md](docs/UPGRADE.md)（按版本看要做什么，含回滚）
 > **想直接跑起来？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
 >
 ### 你已经装了什么？不用换，直接用

@@ -2,6 +2,56 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-30 — 0.3.0：拆到 10.7k 行 + 三件新功能 + 十个测试护栏
+
+> 升级方式见 [docs/UPGRADE.md](docs/UPGRADE.md)。这一版**没有破坏性变更**，
+> 但新增了几个配置项与一次自动生成的 `state/people.json`，升级后建议跑一次 `/自检`。
+
+### 新功能（用户能感知）
+
+- **`/自检`（管理员）**：一条指令看清 网关 / DSH / 队列 / 会话表 / 数据量 / 最近错误 /
+  **网关重连次数** / **抖音 cookies 剩余**。命令由桥接直接执行、不经过模型，零 token。
+- **抖音轻量档**：`qq_open_video(mode="meta")` 与"消息里出现抖音链接自动附元数据"——
+  只取 作者/标题/文案/封面，**不下载视频**（下载才是风控高危动作），同会话 10 秒冷却。
+  可用 `socialV2.media.video.links.autoMeta=false` 关掉自动附加。
+- **静默时段**：`socialV2.quietHours = [23, 8]`，夜里不主动搭话；消息照常记录，
+  `admin` / `bootstrap` 不受限。默认关闭。
+- **人物库**（`src/people.js`）：身份只认 QQ 号（改群名片不再断成两个人），
+  关系升档要求"消息数 + 活跃天数"同时达标（一天刷 500 条也不算熟人）。
+  首次启动会按白名单群存量成员标 `listed`，不会把老群友当新人欢迎。
+- **命令清单进提示词**：模型不再答"我没有自检功能"，被问起会直接告诉你发什么命令。
+
+### 重构（bridge.js 11,236 → 10,728 行，−4.5%）
+
+一晚十刀，每刀一个模块一提交、都能单独回滚：
+`console-dsh` / `socialV2-video` / `console-ops` / `incoming-commands` /
+`incoming-status-commands` / `session-registry` / `session-reset` / `incoming-guards` /
+`preset-sim` / `workspace-reset` / `group-members` / `slang-submit` / `mux-learner` / `mux-tools`。
+
+### 修复（都是"线上会静默坏掉"的那类）
+
+| 现象 | 根因 |
+| --- | --- |
+| 机器人在线但**一条消息都不回** | 拆分后漏 import（`node --check` 查不出、VM 审计按名注入还掩盖） |
+| 私聊全部 `cfg is not defined` | 把 `main` 的局部变量写进 `main` 之外的函数 |
+| `/like` `/song` 报 `cmdText is not defined` | 半截搬迁：搬走定义、留下用法 |
+| 控制台启动即炸 | TDZ（引用了后文 `const`），改惰性创建 |
+| 抖音解析第一次就"冷却 9 秒" | cooldown 把"没有记录"当成"上次在 0 时刻" |
+| `/status` 一按就 ReferenceError | 只写了调用、没写实例定义 |
+
+### 测试（73 → 84 个脚本）
+
+新增护栏：`test-bridge-imports`（静态扫"用了但没来源"的工厂）、`test-file-size`（体积棘轮，
+新文件 >800 行直接失败）、`test-incoming-guards`、`test-session-registry`、`test-selfcheck`、
+`test-workspace-reset`、`test-douyin-meta`、`test-mux-pump`（假 mux 喂帧）、`test-mux-learner`、
+`test-mux-tools`。
+
+### 文档
+
+- 运维指南新增 §20「拆分期最危险的五个坑」；`docs/sessions/2026-10-30.md` 交接记录；
+  `docs/validation/linux-run-2026-10-30.md`（另一台 Linux 独立复跑，审计 84/84）
+- **新增 [docs/UPGRADE.md](docs/UPGRADE.md)**：按版本写"升级要做什么"
+
 ## 2026-10-29 — 网关可替换：NapCat 实测通过 + 登录体验修复
 
 - 实测 NapCat（OneBot v11）替代 SnowLuma：桥接零改动，只改 `snowluma.wsUrl`
