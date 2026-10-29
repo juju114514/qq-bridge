@@ -156,6 +156,8 @@ const tests = [
   'test-quiet-hours.mjs',
   // 人物库：身份只认 QQ 号 / 关系升档 / 作用域笔记 / 真删除。
   'test-people.mjs',
+  // 文件体积棘轮：防止再长回 1.3 万行（新文件 >800 行直接失败）。
+  'test-file-size.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
