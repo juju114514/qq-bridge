@@ -184,6 +184,8 @@ const tests = [
   'test-decision-trace.mjs',
   // 人物笔记：add/list/clear + 权限（模型能记事、能纠错）。
   'test-people-note.mjs',
+  // 架构边界：domains 依赖方向 / 单文件体积 / bridge.js 内联路由棘轮。
+  'test-domains.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
