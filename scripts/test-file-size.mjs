@@ -22,7 +22,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE = path.join(ROOT, 'scripts', 'file-size-baseline.json');
 const SLACK = 50;          // 允许的增量（写几行注释不算违规）
 const NEW_FILE_MAX = 800;  // 新文件上限
-const BRIDGE_HARD_MAX = 11400;   // 当前 11,174：先钉住不再涨，再逐步往下压
+// 硬上限只许往下压，不许回调 —— 它防的是"拆分成果被新功能慢慢吃回去"。
+// 2026-10-30：11,400 → 10,800（当日收尾 10,771，留 29 行余量）。
+// 压到离实测很近是刻意的：加超过约 30 行就该先拆，而不是先加。
+const BRIDGE_HARD_MAX = 10800;
 
 function listJs(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
