@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// 架构边界守卫（波次 0 立规矩，波次 1 起生效）。
+// 架构边界检查（波次 0 立的规矩，波次 1 起生效）。
 //
-// 为什么需要它：拆分最怕的不是"拆得慢"，而是"拆完又长回去"。
-// 昨天 bridge.js 里出现过三件事，这个脚本各钉住一条：
+// 设计原则：**规矩是为了让人改得动，不是为了让项目合规。**
+// 所以这里只有一条硬失败，其余都是"提示 + 预算"：
 //
-//   ① src/domains/* 只许依赖 runtime / api / node 内置 / 第三方
-//      禁止 domains 之间互相 import —— 跨域通信走 rt.events（唯一接缝）
-//   ② 单个 domain 文件 ≤ 400 行（能一次读进上下文）
-//   ③ bridge.js 的内联路由只许减少：`url.pathname ===` 的出现次数是**棘轮**
-//      （现在是 48，明天 15，最终 0 —— 全部搬进 src/console/routes/）
+//   ❌ 硬失败：bridge.js 内联路由超过预算（棘轮，只许往下调）
+//   ❌ 硬失败：跨域 import 超过预算（现在 5 处；用多了会露头，但不会拦死你）
+//   ⚠️ 只警告：跨域 import 没写 `// cross-domain: 原因`（留痕，方便以后回看）
+//   ⚠️ 只警告：单个 domain 文件 > 400 行（超过 600 才硬失败）
 //
-// 现在 domains/ 还不存在，脚本会报"尚未建立"，不算失败。
+// 为什么不做"domains 之间禁止互相 import"：
+//   规则太硬时，人会为了合规写更差的代码 —— 比如把同步函数调用改成事件，
+//   或者把一堆无关助手塞进 runtime.js，把状态中心变成杂物间。
+//   真要 import 就 import，**留一行注释说明为什么**就够了。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,42 +21,55 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DOMAINS_DIR = path.join(ROOT, 'src', 'domains');
 const BRIDGE = path.join(ROOT, 'src', 'bridge.js');
-const DOMAIN_MAX_LINES = 400;
+
+const DOMAIN_WARN_LINES = 400;   // 超过就提醒（能一次读进上下文的大小）
+const DOMAIN_FAIL_LINES = 600;   // 超过才硬失败
+const CROSS_DOMAIN_BUDGET = 5;   // 全项目跨域 import 总预算
 // 棘轮：只许往下调。搬走一条路由就把这个数改小。
 // 2026-10-30 实测 55 条（计划文档里写的 48 是旧口径，已按真实 grep 修正）。
 const INLINE_ROUTE_BUDGET = 55;
 
 let failures = 0;
+let warnings = 0;
 const fail = (msg) => { failures += 1; console.error(`  FAIL ${msg}`); };
+const warn = (msg) => { warnings += 1; console.warn(`  warn ${msg}`); };
 const ok = (msg) => console.log(`  ok   ${msg}`);
 
-// ── ① + ② domains ────────────────────────────────────────────────────
+// ── domains：预算 + 留痕，不做硬墙 ─────────────────────────────────────
 if (!fs.existsSync(DOMAINS_DIR)) {
   ok('src/domains/ 尚未建立（波次 1 起生效，现在不算失败）');
 } else {
-  const allowed = /^\.\.\/(runtime|api\/|core\/)|^\.\/(runtime|index)\.js$|^(node:|[a-z@][\w@/.-]*$)/;
   const files = fs.readdirSync(DOMAINS_DIR).filter((f) => f.endsWith('.js'));
+  let crossTotal = 0;
   for (const name of files) {
     const full = path.join(DOMAINS_DIR, name);
     const lines = fs.readFileSync(full, 'utf8').split('\n');
-    if (lines.length > DOMAIN_MAX_LINES) {
-      fail(`src/domains/${name} 有 ${lines.length} 行 > ${DOMAIN_MAX_LINES}（拆小一点，否则又读不进上下文）`);
+    if (lines.length > DOMAIN_FAIL_LINES) {
+      fail(`src/domains/${name} 有 ${lines.length} 行 > ${DOMAIN_FAIL_LINES}（拆小一点，否则又读不进上下文）`);
+    } else if (lines.length > DOMAIN_WARN_LINES) {
+      warn(`src/domains/${name} 有 ${lines.length} 行 > ${DOMAIN_WARN_LINES}（还能读，但考虑再分）`);
     }
     for (const line of lines) {
       const m = /^import\s.*?from\s+['"]([^'"]+)['"]/.exec(line);
       if (!m) continue;
       const spec = m[1];
-      if (/^\.\/|^\.\.\/domains\//.test(spec) && name !== 'index.js') {
-        fail(`src/domains/${name} 直接 import 了同域文件 ${spec}（跨域请走 rt.events）`);
-      } else if (!allowed.test(spec)) {
-        fail(`src/domains/${name} 依赖了不该依赖的 ${spec}`);
+      const sameDomain = /^\.\/|^\.\.\/domains\//.test(spec) && name !== 'index.js';
+      if (!sameDomain) continue;
+      crossTotal += 1;
+      if (!/cross-domain\s*:/.test(line)) {
+        warn(`src/domains/${name} 跨域 import ${spec} 没写 \`// cross-domain: 原因\``);
       }
     }
   }
-  if (!failures) ok(`${files.length} 个 domain 文件：依赖边界与体积都合格`);
+  if (crossTotal > CROSS_DOMAIN_BUDGET) {
+    fail(`跨域 import 共 ${crossTotal} 处 > 预算 ${CROSS_DOMAIN_BUDGET}（考虑合并 domain，或把共用逻辑提到 runtime/api）`);
+  } else {
+    ok(`跨域 import ${crossTotal}/${CROSS_DOMAIN_BUDGET} 处（预算内，允许）`);
+  }
+  ok(`${files.length} 个 domain 文件体积检查完毕`);
 }
 
-// ── ③ bridge.js 内联路由棘轮 ─────────────────────────────────────────
+// ── bridge.js 内联路由棘轮（唯一"真墙"）───────────────────────────────
 if (fs.existsSync(BRIDGE)) {
   const text = fs.readFileSync(BRIDGE, 'utf8');
   const n = (text.match(/url\.pathname ===/g) ?? []).length;
@@ -66,5 +81,6 @@ if (fs.existsSync(BRIDGE)) {
 }
 
 console.log('');
+if (warnings) console.log(`  ${warnings} 条提示（不阻塞）`);
 if (failures) { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
 else console.log('  架构边界检查通过');
