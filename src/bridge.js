@@ -40,6 +40,7 @@ import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
 import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
+import { createDecisionTrace } from './decision-trace.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -9142,12 +9143,16 @@ function scheduleWakeV2(key, reason) {
   let lastInboundAtMs = 0;
 
   // /status /role /silent /active + /自检：已拆到 src/incoming-status-commands.js
+  // 决策追踪：/诊断 的数据来源（环形缓冲 80 条，重启即清；只记截断文本）
+  const decisionTrace = createDecisionTrace({ max: 80 });
+
   let incomingStatusCommandsInstance = null;
   const getIncomingStatusCommands = () => (incomingStatusCommandsInstance ??= createIncomingStatusCommands({
     sendToQQ, readRoleState, writeRoleStateForKey,
     sanitizeRoleName, resolveRoleName, listRoles, roleName,
     allowed, getCfg: () => cfg, getState: () => state, getRoleState: () => readRoleState(),
     buildSelfCheckReport,
+    getDecisionTrace: () => decisionTrace,
     getSelfCheck: () => {
       try {
         return {
@@ -9283,8 +9288,15 @@ function scheduleWakeV2(key, reason) {
       }
     }
     // 入站闸门：引用解析 → 空文本兜底 → 待答 → 静默（已拆到 src/incoming-guards.js）
+    // 决策追踪：这条消息从进来到去哪，/诊断 能查
+    const traceRec = decisionTrace.begin({ key, kind, messageId: id, sender: kind === 'group' ? (event.sender?.card || event.sender?.nickname || '') : '', text: textContent });
     const gateResult = await getIncomingGuards().gate({ key, kind, id, event, plainContent, textContent });
-    if (gateResult.stop) return;
+    if (gateResult.stop) {
+      decisionTrace.step(traceRec, '闸门', '拦截', gateResult.reason || '');
+      decisionTrace.finish(traceRec, '被闸门拦截，未进模型');
+      return;
+    }
+    decisionTrace.step(traceRec, '闸门', '通过');
     plainContent = gateResult.plainContent;
     const isOwner = gateResult.isOwner;
     const roleState = gateResult.roleState;
@@ -9352,6 +9364,10 @@ function scheduleWakeV2(key, reason) {
     // 公开命令 + 首次人设引导：已拆到 src/incoming-commands.js
     // /自检 与「自检」：管理员限定，**不要求斜杠**。
     // 放在公开命令之前：否则首次使用的人设菜单、快捷命令块都可能先把它吞掉。
+    // /诊断：管理员限定，同样放在公开命令之前（否则首次人设菜单会把它吞掉）。
+    if (isOwner && /^[\/／]?(诊断|diag)(\s|$)/i.test(String(plainContent ?? '').trim())) {
+      if (await getIncomingStatusCommands().handleStatusCommands({ key, kind, id, plainContent })) return;
+    }
     if (isOwner && /^[\/／]?(自检|selfcheck)$/i.test(String(plainContent ?? '').trim())) {
       if (await getIncomingStatusCommands().handleStatusCommands({ key, kind, id, plainContent: '/自检' })) return;
     }
@@ -9507,6 +9523,8 @@ function scheduleWakeV2(key, reason) {
       if (kind === 'group') feedSlangWindow(key, sender, plainContent);
       if (socialV2.paused) {
         appendActivity(`${key} [reserved2] AI 已暂停，消息仅入库不唤醒：${textContent.slice(0, 80)}`);
+        decisionTrace.step(traceRec, '唤醒', '已暂停');
+        decisionTrace.finish(traceRec, 'AI 已暂停，消息只入库');
         return;
       }
       const st = getSocialV2State(key);
@@ -9516,6 +9534,8 @@ function scheduleWakeV2(key, reason) {
         scheduleWakeV2(key, 'bootstrap');
       } else {
         const reason = evaluateWakeTriggerV2(key, st, event, kind, textContent, plainContent, quoteTargetIsSelf);
+        decisionTrace.step(traceRec, '唤醒', reason ? '命中' : '未命中', reason ? String(reason) : '概率/条件未满足');
+        decisionTrace.finish(traceRec, reason ? `已唤醒（${reason}），稍后进模型` : '已入未读，未唤醒');
         if (reason) {
           scheduleWakeV2(key, reason);
         }
@@ -9606,6 +9626,9 @@ function scheduleWakeV2(key, reason) {
         : `请根据情况决定是否回复。如果不需要回应、想潜水/不接话，请只输出 ${SILENT_MARKER}；否则正常回复。\n${directionHint}${SPACE_SPLIT_HINT}`;
       const visionText = await autoDescribeMedia(key, kind, messageRef, mediaList, direct);
       const promptText = `${roleHint ? roleHint + '\n\n' : ''}【群聊上下文】\n${buildContextBlock(key)}\n【当前消息】${currentLine}${visionText || mediaHintFor(key, messageRef, mediaList)}\n\n${replyInstruction}`;
+      // 走到这里说明消息确实要进模型了（前面所有闸门/暂停都没拦）
+      decisionTrace.step(traceRec, '投递', '进模型', direct ? '直接回复' : '按需回复');
+      decisionTrace.finish(traceRec, '已投递 DSH');
       if (isOwner && kind === 'private') {
         log(`社交模式：管理员私聊触发，立即投递 ${key}`);
         await deliverPrompt(key, promptText, { media: mediaList });

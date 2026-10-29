@@ -12,7 +12,7 @@ export function createIncomingStatusCommands(deps = {}) {
     sendToQQ, readRoleState, writeRoleStateForKey,
     sanitizeRoleName, resolveRoleName, listRoles, roleName,
     allowed, getCfg, getState, getRoleState,
-    getSelfCheck, buildSelfCheckReport
+    getSelfCheck, buildSelfCheckReport, getDecisionTrace
   } = deps;
 
   async function handleStatusCommands(ctx = {}) {
@@ -37,6 +37,35 @@ export function createIncomingStatusCommands(deps = {}) {
       }
       return true;
     }
+    // /诊断 [全部|#序号] —— **管理员限定**。
+    // 回答"这条消息为什么没回我"：闸门/唤醒/投递 每一步的判定都在这。
+    // 为什么值得一个命令：handleIncoming 里有 8 个提前 return 的点，以前全是沉默的。
+    const diagCmd = String(plainContent ?? '').trim().replace(/^[@＠]\S+\s*/, '');
+    const diagMatch = /^[\/／]?(?:诊断|diag)(?:\s+(\S+))?$/i.exec(diagCmd);
+    if (diagMatch) {
+      try {
+        const trace = typeof getDecisionTrace === 'function' ? getDecisionTrace() : null;
+        if (!trace) {
+          await sendToQQ(key, '【诊断】决策追踪未接（这版没启用）');
+          return true;
+        }
+        const arg = String(diagMatch[1] ?? '').trim();
+        if (!arg) {
+          await sendToQQ(key, trace.formatReport({ key, limit: 8 }));
+        } else if (arg === '全部' || arg === 'all') {
+          await sendToQQ(key, trace.formatReport({ limit: 12 }));
+        } else if (/^#?\d+$/.test(arg)) {
+          const rec = trace.find(arg.replace('#', ''));
+          await sendToQQ(key, rec ? trace.formatOne(rec) : `【诊断】没找到 #${arg}（缓冲 80 条，重启即清）`);
+        } else {
+          await sendToQQ(key, '【诊断】用法：/诊断 │ /诊断 全部 │ /诊断 #12');
+        }
+      } catch (error) {
+        await sendToQQ(key, `诊断失败：${error?.message ?? error}`);
+      }
+      return true;
+    }
+
     if (plainContent === '/status') {
       const rs = readRoleState();
       await sendToQQ(key, `会话 ${state.sessions[key] ?? '未创建'}；白名单 ${allowed(kind, id, cfg) ? '通过' : '拦截'}；角色 ${rs.role ? roleName(rs.role) : '无'}；模式 ${rs.mode}`);

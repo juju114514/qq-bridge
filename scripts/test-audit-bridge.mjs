@@ -42,7 +42,50 @@ async function test(name, run) {
     await h.handleIncoming('private', '10001', event, h.cfg);
     assert.ok(h.calls.sent.map((c) => String(c.message ?? c.text ?? c)).some((s) => s.includes('【自检】')), '裸「自检」也要能用');
   });
-  await test('closed-agent session is not reused after switching to chat', async (h) => {
+  // /诊断：回答"这条消息为什么没回我"。决策追踪是 2026-10-30 新增的能力，
+// 这里端到端钉住三件事：能记录、能查、拦截原因说得清。
+await test('owner 发 /诊断 能看到最近消息的决策链', async (h) => {
+  h.cfg.ownerQQ = '10001';
+  h.cfg.allow = { groups: [], private: ['10001'] };
+  const mk = (id, text) => ({
+    post_type: 'message', message_type: 'private', sub_type: 'friend',
+    user_id: '10001', self_id: '3976372760', message_id: id, time: 1,
+    raw_message: text, message: [{ type: 'text', data: { text } }],
+    sender: { user_id: '10001', nickname: '主人' }
+  });
+  await h.handleIncoming('private', '10001', mk(101, '随便聊聊'), h.cfg);
+  await h.handleIncoming('private', '10001', mk(102, '/诊断'), h.cfg);
+  const msgs = h.calls.sent.map((c) => String(c.message ?? c.text ?? c));
+  const diag = msgs.find((s) => s.includes('【诊断】'));
+  assert.ok(diag, `应该回【诊断】，实际：${JSON.stringify(msgs).slice(-300)}`);
+  assert.match(diag, /闸门/, '要能看到闸门这一步');
+  assert.match(diag, /结果：/, '要给出最终结论');
+});
+
+await test('被闸门拦掉的消息，/诊断 能说出拦截原因', async (h) => {
+  h.cfg.ownerQQ = '10001';
+  h.cfg.allow = { groups: [], private: ['10001'] };
+  // 空文本会被闸门拦下（这是最典型的"发了但没反应"）
+  const emptyEvent = {
+    post_type: 'message', message_type: 'private', sub_type: 'friend',
+    user_id: '10001', self_id: '3976372760', message_id: 201, time: 1,
+    raw_message: '', message: [], sender: { user_id: '10001', nickname: '主人' }
+  };
+  await h.handleIncoming('private', '10001', emptyEvent, h.cfg);
+  const diagEvent = {
+    post_type: 'message', message_type: 'private', sub_type: 'friend',
+    user_id: '10001', self_id: '3976372760', message_id: 202, time: 1,
+    raw_message: '/诊断', message: [{ type: 'text', data: { text: '/诊断' } }],
+    sender: { user_id: '10001', nickname: '主人' }
+  };
+  await h.handleIncoming('private', '10001', diagEvent, h.cfg);
+  const msgs = h.calls.sent.map((c) => String(c.message ?? c.text ?? c));
+  const diag = msgs.find((s) => s.includes('【诊断】'));
+  assert.ok(diag);
+  assert.match(diag, /台账|闸门|拦截|空/, `应写明拦截原因，实际：${diag.slice(0, 200)}`);
+});
+
+await test('closed-agent session is not reused after switching to chat', async (h) => {
   h.setMode('closed-agent');
   const privileged = await h.ensureSession('private:123');
   h.setMode('chat');

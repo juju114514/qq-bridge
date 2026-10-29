@@ -180,6 +180,8 @@ const tests = [
   'test-mux-learner.mjs',
   // 工具调用追踪：发送成功才标记、失败不标记（决定自动转发）。
   'test-mux-tools.mjs',
+  // 决策追踪：/诊断 的数据来源（环形缓冲 + 截断 + 按 key/ID 查）。
+  'test-decision-trace.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
