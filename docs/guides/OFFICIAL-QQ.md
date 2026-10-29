@@ -78,7 +78,7 @@ node scripts\official-probe.mjs --seconds 120
 > 复现命令（凭证放 `state/official.json`，跑完去群里 @ 一次）：
 >
 > ```powershell
-> node scripts\official-probe.mjs --creds "D:\deepseek工作区\qq-bridge\state\official.json" --seconds 180
+> node scripts\official-probe.mjs --creds "D:\qq-bridge\state\official.json" --seconds 180
 > ```
 >
 > 成功的样子：

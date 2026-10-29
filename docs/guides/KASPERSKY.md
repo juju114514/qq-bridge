@@ -81,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\av-exclusions.ps1 -Apply
 | --- | --- |
 | `D:\DEEPSEEK`（DSH 安装目录） | DSH 主程序、资源、大量读写，最容易被实时扫描拖慢 |
 | `C:\Users\<你>\.dsh`（DSH 数据目录） | 会话、附件、运行时会频繁读写 |
-| 项目目录（如 `D:\deepseek工作区\qq-bridge`、`D:\QQBot`） | 桥接/日志/状态文件高频读写 |
+| 项目目录（如 `D:\qq-bridge`、`D:\QQBot`） | 桥接/日志/状态文件高频读写 |
 | `node.exe`（**所有**你用到的） | DSH 自带运行时、系统 Node、项目里的 node |
 | `ffmpeg.exe` / `ffprobe.exe` | 语音处理，常被启发式误判 |
 | `QQ.exe` / SnowLuma 的 `node.exe` | QQ 协议端 |

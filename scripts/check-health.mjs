@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
 const argOf = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : ''; };
-// 部署目录（D:\deepseek工作区\qq-bridge）和仓库目录是两个地方：
+// 部署目录（环境变量 QQBRIDGE_LIVE 可指定；默认与仓库目录相同）和仓库目录可能是两个地方：
 // 默认用当前工作目录，找不到 state/console-token 再退回脚本所在仓库。
 const cwdRoot = process.cwd();
 const ROOT = argOf('--root')

@@ -19,7 +19,7 @@ start-bridge.ps1            ← 人用的入口（一键启动 / 停止 / 看状
 ## 二、日常用法
 
 ```powershell
-cd D:\deepseek工作区\qq-bridge
+cd D:\qq-bridge
 
 .\start-bridge.ps1                  # 前台启动（日志直接看得到，Ctrl+C 一起停）
 .\start-bridge.ps1 -Hidden          # 后台启动（日志进 state\logs\）
@@ -131,7 +131,7 @@ cd D:\deepseek工作区\qq-bridge
 两个坑，都踩过：
 
 1. **`.bat` 会被 cmd 按系统 OEM 代码页读**（中文系统是 GBK）。把含中文的仓库路径
-   （`D:\deepseek工作区\…`）写进 `.bat`，编码对不上就变成 `D:\deepseek???\…`，
+   （`D:\qq-bridge\…`）写进 `.bat`，编码对不上就变成 `D:\deepseek???\…`，
    路径直接废掉，而且要等下次开机才发现。
 2. **`.vbs` 里写引号比 `.bat` 更坑**：VBScript 用 `""` 表示字符串内的引号，PowerShell
    双引号串里也用 `""` 表示一个引号，两层叠加极易少数一个。第一版就生成出了

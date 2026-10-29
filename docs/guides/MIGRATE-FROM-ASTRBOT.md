@@ -72,7 +72,7 @@ AstrBot 的配置在 `data/config/*.yaml`，这个项目在 `config.json`。常�
 # 把 AstrBot 里允许的群号贴进 $groups，管理员号贴进 $owner，然后跑
 $groups = @(123456789, 987654321)
 $owner  = 111111111
-$cfgPath = 'D:\deepseek工作区\qq-bridge\config.json'
+$cfgPath = 'D:\qq-bridge\config.json'
 $cfg = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $cfg.allow.groups = $groups
 $cfg.allow.private = @()

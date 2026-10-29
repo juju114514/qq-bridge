@@ -27,7 +27,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Repo   = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$Live   = 'D:\deepseek工作区\qq-bridge'
+# 部署目录：默认与仓库目录相同（全新克隆就是仓库本身）。
+# 想指向别处（部署副本 + 仓库分离的常见做法）：config.json 里设 launcher.liveDir，
+# 或设环境变量 QQBRIDGE_LIVE。**不要把本机私有路径写进仓库**。
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $RepoRoot) { $RepoRoot = (Get-Location).Path }
+$Live = $RepoRoot
+try {
+  $cfgForLive = Join-Path $RepoRoot 'config.json'
+  if (Test-Path $cfgForLive) {
+    $j = Get-Content $cfgForLive -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($j.launcher -and $j.launcher.liveDir) { $Live = [string]$j.launcher.liveDir }
+  }
+} catch { }
+if ($env:QQBRIDGE_LIVE) { $Live = $env:QQBRIDGE_LIVE }
 if (-not (Test-Path (Join-Path $Live 'config.json'))) { $Live = $Repo }
 
 function Get-Cfg { param($p) try { Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } }
@@ -35,13 +48,22 @@ function Get-Cfg { param($p) try { Get-Content $p -Raw -Encoding UTF8 | ConvertF
 function Test-OneBot {
   param([string]$Token, [int]$Port = 3000)
   if (-not $Token) { return $false }
-  try {
-    $body = '{"action":"get_login_info","params":{}}'
-    $r = Invoke-RestMethod "http://127.0.0.1:$Port/get_login_info" -Method Post `
-      -Headers @{ Authorization = "Bearer $Token" } `
-      -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 5
-    return ($r.status -eq 'ok')
-  } catch { return $false }
+  # 两种探活形态都试：GET / POST{}
+  # 真实事故（2026-10-30）：原来只 POST `{action:...}`，SnowLuma 不认这个形状，
+  # 于是状态面板显示"SnowLuma 未就绪"，但桥接其实连着 —— 诊断比现场还吓人。
+  $probes = @(
+    @{ Method = 'Get'; Headers = @{ Authorization = "Bearer $Token" } },
+    @{ Method = 'Post'; Headers = @{ Authorization = "Bearer $Token" }; ContentType = 'application/json'; Body = [Text.Encoding]::UTF8.GetBytes('{}') }
+  )
+  foreach ($p in $probes) {
+    try {
+      $r = Invoke-RestMethod "http://127.0.0.1:$Port/get_login_info" -TimeoutSec 5 @p
+      if ($null -ne $r.retcode -and [int]$r.retcode -eq 0) { return $true }
+      if ($r.status -eq 'ok') { return $true }
+      if ($r.data -and $r.data.nickname) { return $true }
+    } catch { }
+  }
+  return $false
 }
 
 function Get-SnowLumaToken {
@@ -70,7 +92,15 @@ function Get-NapCatToken {
   return ''
 }
 
-$slToken = Get-SnowLumaToken
+# token 优先取 live config（桥接实际用的那个），再退回 SnowLuma 的 onebot_*.json。
+# 为什么：多个账号各一份 onebot 文件时，"第一个非空"未必是正在跑的那个。
+$liveCfg = Get-Cfg (Join-Path $Live 'config.json')
+$slToken = ''
+if ($liveCfg -and $liveCfg.snowluma) {
+  $slToken = [string]$liveCfg.snowluma.httpToken
+  if (-not $slToken) { $slToken = [string]$liveCfg.snowluma.accessToken }
+}
+if (-not $slToken) { $slToken = Get-SnowLumaToken }
 $ncToken = Get-NapCatToken
 $slOk = Test-OneBot -Token $slToken
 $ncOk = Test-OneBot -Token $ncToken
