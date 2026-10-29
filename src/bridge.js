@@ -75,6 +75,7 @@ import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createPresetSimHandlers } from './api/preset-sim.js';
+import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
@@ -3584,6 +3585,18 @@ async function main() {
   }
 
   function startConsoleServer() {
+    // 清空工作区：已拆到 src/api/workspace-reset.js（60+ 个集合，整体 clear）
+    const workspaceReset = createWorkspaceResetHandler({
+      log, fs, path, process, api, withTimeout, unwrap, DSH_CONTROL_TIMEOUT_MS, STATE_DIR,
+      sessionRegistry, state, social, socialV2,
+      pending, queued, queuedHintAt, sessionPromises,
+      messageMediaStore, seenForwardIds,
+      slangWindows, slangExtractionCooldowns, slangSubmitTimes,
+      reverse, collectors, sendToolSucceededSessions, pendingSendToolCalls, v2TurnStartAt, toolCallNames,
+      CONVERSATION_TOKENS, KNOWN_AGENT_TOKENS,
+      cancelPendingEntry, drainAllPromptQueues, cancelAllSocialTimers, clearAllSocialV2Timers,
+      saveSocialV2State, saveState, ACTIVITY_LOG
+    });
     // 仿真预设提示词：读/写/备份/还原（已拆到 src/api/preset-sim.js）
     const presetSim = createPresetSimHandlers({
       log, fs, path,
@@ -4609,72 +4622,11 @@ async function main() {
 
         // ── 清除上下文 / 清空工作区 ──────────────────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/workspace/reset') {
-          sessionRegistry.bumpEpoch();
-          let archivedCount = 0;
-          let stoppedCount = 0;
-          try {
-            // 新版 DSH 不再提供 workspace.list；改为扫描本桥接创建的会话目录并归档。
-            // 只处理 cwd 位于 qq-bridge state/ 下的根会话；子代理会话由父会话管理，不能误归档。
-            const list = unwrap(await withTimeout(api.sessions.list({}), DSH_CONTROL_TIMEOUT_MS, 'sessions.list'), 'session.list');
-            const stateDir = path.resolve(STATE_DIR);
-            const statePrefix = path.normalize(stateDir + path.sep);
-            const normPath = (p) => path.normalize(String(p ?? '').replace(/\//g, path.sep));
-            const isUnderState = (cwd) => process.platform === 'win32'
-              ? cwd.toLowerCase().startsWith(statePrefix.toLowerCase())
-              : cwd.startsWith(statePrefix);
-            for (const item of list.items ?? []) {
-              if (item.origin === 'subagent' || item.parentSessionId) continue;
-              const cwd = normPath(item.cwd);
-              if (isUnderState(cwd)) {
-                // 归档只隐藏会话；必须先把 DSH 侧排队的工作清掉并取消当前回合。
-                try { await withTimeout(api.stopSessionWork(item.sessionId), DSH_CONTROL_TIMEOUT_MS, 'stopSessionWork'); stoppedCount += 1; }
-                catch (error) { log(`⚠️ 停止旧会话失败 ${item.sessionId}：${error?.message ?? error}；请在 DSH 检查旧任务`); }
-                try { await withTimeout(api.workspace.archiveSession({ sessionId: item.sessionId }), DSH_CONTROL_TIMEOUT_MS, 'archiveSession'); archivedCount += 1; } catch {}
-              }
-            }
-          } catch {}
-          for (const entry of pending.values()) {
-            clearTimeout(entry.timer);
-            cancelPendingEntry(entry).catch(() => {});
-          }
-          pending.clear();
-          queued.clear();
-          queuedHintAt.clear();
-          sessionPromises.clear();
-          drainAllPromptQueues('工作区已清空');
-          social.states.clear();
-          social.recentMessages.clear();
-          messageMediaStore.clear();
-          seenForwardIds.clear();
-          social.pendingSummaries.clear();
-          social.silentContext.clear();
-          social.silentTurns.clear();
-          social.exitingSessions.clear();
-          slangWindows.clear();
-          slangExtractionCooldowns.clear();
-          slangSubmitTimes.clear();
-          cancelAllSocialTimers();
-          clearAllSocialV2Timers();
-          // 清空工作区 = 所有会话连同 token 一起作废，两张表整体清掉（比逐会话摘除更不容易漏）。
-          socialV2.conversations.clear();
-          CONVERSATION_TOKENS.clear();
-          KNOWN_AGENT_TOKENS.clear();
-          saveSocialV2State();
-          state.sessions = {};
-          state.sessionPolicies = {};
-          reverse.clear();
-          collectors.clear();
-          sendToolSucceededSessions.clear();
-          pendingSendToolCalls.clear();
-          v2TurnStartAt.clear();
-          toolCallNames.clear();
-          saveState();
-          try { fs.writeFileSync(ACTIVITY_LOG, ''); } catch {}
-          log(`控制台：已清空 QQ 聊天工作区（停止 ${stoppedCount} 个、归档 ${archivedCount} 个会话，映射与活动日志已清空）`);
-          sendJson({ ok: true, archivedCount, stoppedCount });
-          return;
-        }
-        // ── 重启桥接（守护模式下 5 秒后自动拉起） ──────────────────────────────
+      await workspaceReset.resetAll({ sendJson });
+      return;
+    }
+
+    // ── 重启桥接（守护模式下 5 秒后自动拉起） ──────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/restart') {
           sendJson({ ok: true, message: '正在重启桥接（若由守护窗口启动，5 秒后自动恢复）…' });
           setTimeout(() => {
