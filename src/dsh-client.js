@@ -306,6 +306,11 @@ export class NodeApiClient extends AbstractApiClient {
     // 持久化签名密钥的探测缓存：undefined=未探测，null=不可用，Buffer=可用。
     // 探一次就够（文件在 DSH 生命周期内不变），避免每个请求都读一次磁盘。
     this._secret = undefined;
+    // 读**失败**时不永久缓存（issue #110）：DSH 可能还没写出 .credentials.yaml，
+    // 或文件临时被占用。以前把 null 也缓存下来，一次瞬时失败就永久降级成匿名请求，
+    // 只能重启进程才能恢复。现在只缓存成功值，失败按退避重试。
+    this._secretMissAt = 0;
+    this._secretMissCount = 0;
     // token 是用户显式配置的（true）还是从日志猜的（false）。猜来的不优先于离线铸造。
     this.tokenExplicit = this.auth.tokenExplicit === true;
     // 上次用的鉴权策略（'minted' | 'token' | null）与「改用 launch token」的偏好。
@@ -344,8 +349,16 @@ export class NodeApiClient extends AbstractApiClient {
 
   /** 持久化签名密钥（惰性探测 + 记忆）。 */
   browserSessionSecret() {
-    if (this._secret === undefined) this._secret = readBrowserSessionSecret();
-    return this._secret;
+  if (this._secret) return this._secret;   // 成功值才永久缓存
+  const now = Date.now();
+  // 失败后按 2s / 4s / 8s … 退避（上限 30s），避免文件系统故障时刷屏
+  const backoff = Math.min(30000, 2000 * 2 ** Math.min(this._secretMissCount, 4));
+  if (this._secretMissAt && now - this._secretMissAt < backoff) return null;
+  const secret = readBrowserSessionSecret();
+  if (secret) { this._secret = secret; this._secretMissAt = 0; this._secretMissCount = 0; return secret; }
+  this._secretMissAt = now;
+  this._secretMissCount += 1;
+  return null;
   }
 
   /**

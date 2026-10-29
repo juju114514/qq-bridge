@@ -186,6 +186,8 @@ const tests = [
   'test-people-note.mjs',
   // 架构边界：domains 依赖方向 / 单文件体积 / bridge.js 内联路由棘轮。
   'test-domains.mjs',
+  // 公开 issue 的最小回归（#110 缓存 / #114 定时器 / #115 日志）。
+  'test-issue-fixes-1030.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

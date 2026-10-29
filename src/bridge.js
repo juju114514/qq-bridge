@@ -3685,7 +3685,7 @@ async function main() {
     // 挡不住本机进程。这里改成失败关闭：宁可启动时报错，也不要静默开着一个无鉴权的管理 API。
     if (!consoleToken) throw new Error('控制台令牌为空：拒绝以无鉴权方式启动控制台 API');
     if (!tokenValid && configuredToken) log(`控制台 config.consoleToken 长度/字符不合法，已忽略并回退到自动生成令牌`);
-    if (!configuredToken) log(`控制台未配置 consoleToken，已自动生成：${String(consoleToken).slice(0, 6)}…（完整值保存在 state/console-token）`);
+    if (!configuredToken) log('控制台未配置 consoleToken，已自动生成（完整值保存在 state/console-token；日志不打印片段）');
     // 二代会话级隔离：MCP 工具调用时若带 x-agent-token，则必须匹配该会话的 agentToken。
     // 控制台/管理端请求不带此头，仍走 consoleToken 管理通道。
     //
@@ -8608,6 +8608,12 @@ async function main() {
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
     cancelReplyCheckV2(key); // 本次唤醒已接管，清理仍在排队的回复检查
+    // 本次唤醒已接管：还在等限频重试的那一枪必须取消。
+    // 否则它到点会再起一个回合（重复调用模型 + 可能重复回复），issue #114。
+    if (st.rateLimitRetryTimer) {
+      clearTimeout(st.rateLimitRetryTimer);
+      st.rateLimitRetryTimer = null;
+    }
     const wakeTime = now;
     st.wakeTimes.push(wakeTime);
     if (st.wakeTimes.length > 200) st.wakeTimes = st.wakeTimes.slice(-200);
@@ -10628,9 +10634,9 @@ function scheduleWakeV2(key, reason) {
     // 端口也是 per-account 的（实测：换账号后 WS 从 3001 之类变到别的端口），
     // 只换 token 不换 URL 会一直 1006 重连。
     bot.url = wsUrl;
-    if (wsChanged) log(`🔄 SnowLuma WS 连接已更新：${wsUrl}（token ${String(wsToken).slice(0, 4)}…）`);
+    if (wsChanged) log(`🔄 SnowLuma WS 连接已更新：${wsUrl}（token 已更新，不打印片段）`);
     if (cfg.snowluma.accessToken !== httpToken) {
-      log(`🔄 SnowLuma HTTP token 已更新（来源 ${r.source}）：${String(cfg.snowluma.accessToken).slice(0, 4)}… → ${String(httpToken).slice(0, 4)}…`);
+      log(`🔄 SnowLuma HTTP token 已更新（来源 ${r.source}；不打印片段）`);
       cfg.snowluma.accessToken = httpToken;
     }
     if (!followEndpoint && r.wsUrl && r.wsUrl !== cfg.snowluma.wsUrl) {
