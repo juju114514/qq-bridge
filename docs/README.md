@@ -26,6 +26,7 @@
 | [guides/TWO-TRACKS.md](guides/TWO-TRACKS.md) | **两套实现方案**：本地注入（个人号）vs 官方机器人（q.qq.com）。为什么必须分开、注册难度、配置怎么切、共同层是什么 | ✅ 2026-10-29 |
 | [guides/MEMORY.md](guides/MEMORY.md) | **长期记忆**：原子结构、衰减/强化公式、打分检索、合并与归档、迁移策略 | ✅ 2026-10-29 |
 | [guides/OFFICIAL-QQ.md](guides/OFFICIAL-QQ.md) | **QQ 官方机器人通道**：与 SnowLuma 的差异、加群前置（个人主体只能加自己管理的群）、协议要点（openid/msg_id/5 次上限）、端到端验证脚本、接进桥接的设计与**当前真实状态** | ✅ 2026-10-28 **端到端已实测通过**（收群 @ + 被动回复） |
+- [官方通道富媒体（图片）](guides/OFFICIAL-MEDIA.md) —— 两步上传、三个真机坑（file_name / ttl / msg_seq）、错误码速查
 | [guides/VIDEO-SOURCES.md](guides/VIDEO-SOURCES.md) | **视频来源策略**：站点 → 路径 → 为什么；B 站 HTML 会 412（按 IP 判定）而抖音必须爬（缺 a_bogus 签名）；爬虫范围限制清单 + 失败码表 | ✅ 2026-10-28 |
 | [guides/SKILLS.md](guides/SKILLS.md) | **技能**：装了哪个（caveman）、其余 4 个为什么不装、**压缩只许针对日志/输出（代码一律逐字）**、怎么加/卸载 | ✅ 2026-10-28 |
 | [guides/VIDEO.md](guides/VIDEO.md) | **视频理解**：模型看不了视频，唯一解法是「抽帧故事板 + 音轨转写」。含四段管线（流式下载→ffprobe→tile 抽帧→ASR）、**链接识别（B站/抖音，yt-dlp 只下前 180 秒）**、`mode=storyboard\|transcript` 的取舍、8 类踩坑（黑格/糊/时间戳/内存/SSRF/空转写/慢/无 url）、测试与量测 | ✅ 2026-10-27 |
