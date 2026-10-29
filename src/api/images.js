@@ -31,9 +31,10 @@ export function createImagesHandler(deps) {
     const currentMode = getMode();
     const cfg = getCfg();
 
-    const keyMatch = /^(group|private):(\d+)$/.exec(key);
+    // 官方通道 id 是 official-<openid>（不是数字 QQ 号）：只认数字会让官方会话的图片永远 400
+    const keyMatch = /^(group|private):((?:\d+)|(?:official-[\w-]+))$/.exec(key);
     if (!keyMatch) {
-      sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400);
+      sendJson({ ok: false, error: 'key 格式应为 group:群号 / private:QQ号，或官方会话 group:official-<openid>' }, 400);
       return true;
     }
     if (!messageId) {
@@ -54,8 +55,10 @@ export function createImagesHandler(deps) {
     }
 
     const kind = keyMatch[1];
-    const id = Number(keyMatch[2]);
-    if ((typeof id !== 'string' && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, cfg, currentMode)) {
+    const rawId = keyMatch[2];
+    const isOfficial = rawId.startsWith('official-');
+    const id = isOfficial ? rawId : Number(rawId);
+    if ((!isOfficial && (!Number.isFinite(id) || id <= 0)) || !modeAllowed(key, kind, id, cfg, currentMode)) {
       sendJson({ ok: false, error: '当前模式不允许读取该会话' }, 403);
       return true;
     }
