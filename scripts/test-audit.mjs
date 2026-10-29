@@ -174,6 +174,8 @@ const tests = [
   'test-workspace-reset.mjs',
   // 抖音轻量解析：只取元数据不下载 + 冷却 + 可操作的失败原因。
   'test-douyin-meta.mjs',
+  // pumpMux 护栏：快照不触发回复 / 未知帧不炸 / 帧能被消费。
+  'test-mux-pump.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

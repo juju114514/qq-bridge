@@ -106,8 +106,26 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     return { ok: true, status: 200, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9001 } }) };
   };
   const success = (value) => ({ result: { ok: true, value } });
+  // ── 假 mux 事件流：让测试能"喂帧"给 bridge 的 pumpMux ──────────────────
+  // 之前 harness 的 events 只有 follow，pumpMux 完全没被测过 —— 它又是最危险的
+  // 时序逻辑（快照/回合/去重都在这），所以先补上这个能力，再谈搬它。
+  const muxQueue = [];
+  let muxStopped = false;
+  const pushMuxFrame = (frame) => { muxQueue.push(frame); };
+  const stopMux = () => { muxStopped = true; };
+  const muxDrainCount = () => muxQueue.length;
   const api = {
-    events: { follow: (id) => calls.follows.push(id) },
+    events: {
+    follow: (id) => calls.follows.push(id),
+    mux: async function* () {
+      for (;;) {
+        if (muxStopped) return;
+        const frame = muxQueue.shift();
+        if (frame) { yield { payload: frame }; continue; }
+        await new Promise((r) => setTimeout(r, 2));
+      }
+    }
+  },
     // settings.describe 的默认桩：没有 qq-mode 命名空间 ⇒ refreshMode() 回退到本地 mode.json。
     // 测试可覆盖它来验证「DSH 设置里的空 ownerQQ 不得覆盖 config.json」等契约。
     settings: {
@@ -176,6 +194,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   source = source.replace('  bot.onPrivateMessage(async (event) => {', `
   return {
     ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
+  pumpMux,
     sendToQQ, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
@@ -282,7 +301,9 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   const bridge = await context.auditReady;
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);
   bridge.setReady(true);
-  return { ...bridge, calls, temp, async close() {
+  // pushMuxFrame / stopMux / muxDrainCount 定义在 harness 作用域（不在 VM 里），
+  // 必须在这里合并进返回对象，测试才拿得到。
+  return { ...bridge, pushMuxFrame, stopMux, muxDrainCount, calls, temp, async close() {
     for (const timer of timers) clearTimeout(timer);
     fs.rmSync(temp, { recursive: true, force: true });
   } };
