@@ -38,6 +38,7 @@ import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js'
 import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
+import { createLearnerFrameHandler } from './mux-learner.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -9829,6 +9830,15 @@ function scheduleWakeV2(key, reason) {
     return { collector, ended };
   }
 
+  // 黑话学习会话分支：已拆到 src/mux-learner.js（惰性创建，依赖后文变量）
+  let learnerFrameHandlerInstance = null;
+  const getLearnerFrameHandler = () => (learnerFrameHandlerInstance ??= createLearnerFrameHandler({
+    learnerSessions, learnerCollectors, learnerWaiters,
+    createTurnCollector,
+    getSlangLearnerSessionId: () => slangLearnerSessionId,
+    clearTimeout
+  }));
+
   async function pumpMux() {
     // 事件流重连退避：DSH 侧流被立刻关闭时（例如版本不兼容，见 issue #34），
     // 固定 3 秒重连会以每分钟 20 行的速度刷屏，真正有用的错误反而被淹没。
@@ -9853,36 +9863,8 @@ function scheduleWakeV2(key, reason) {
             recordSessionUsage(frame.sessionId, frame.event);
             const key = reverse.get(frame.sessionId);
             if (!key) {
-              // 黑话学习会话：只收集 turn，不发送 QQ，并唤醒等待中的学习任务。
-              if (learnerSessions.has(frame.sessionId)) {
-                // 与主 collector 同样的道理（issue #26 的补充）：**只有 turn/start 才建** collector。
-                // 迟到事件（session/end-seed、session/title、model/selection…）不会有 turn/end，
-                // 若在这里顺手建一个，它会永远留在 learnerCollectors 里并吞掉后续 turn 事件，
-                // 等待者要么拿不到结果、要么拿到错位的文本。
-                let learnerCollector = learnerCollectors.get(frame.sessionId) ?? null;
-                if (!learnerCollector && frame.event.type === 'turn/start') {
-                  learnerCollector = createTurnCollector();
-                  learnerCollectors.set(frame.sessionId, learnerCollector);
-                }
-                const learnerEnded = learnerCollector ? learnerCollector.push(frame.event) : null;
-                if (learnerEnded) {
-                  learnerCollectors.delete(frame.sessionId);
-                  const waiters = learnerWaiters.get(frame.sessionId) ?? [];
-                  const waiter = waiters.shift();
-                  if (waiters.length === 0) learnerWaiters.delete(frame.sessionId);
-                  if (waiter) {
-                    clearTimeout(waiter.timer);
-                    if (learnerEnded.reason.kind === 'completed' && learnerEnded.text.trim()) {
-                      waiter.resolve(learnerEnded.text);
-                    } else {
-                      waiter.reject(new Error(`学习会话 turn 未正常完成：${learnerEnded.reason.kind}`));
-                    }
-                  }
-                  // 旧学习会话 turn 结束后从集合移除，避免残留
-                  if (frame.sessionId !== slangLearnerSessionId) learnerSessions.delete(frame.sessionId);
-                }
-              }
-              continue;
+              // 黑话学习会话：只收集 turn，不发送 QQ（已拆到 src/mux-learner.js）
+              if (getLearnerFrameHandler().handleLearnerFrame(frame)) continue;
             }
             // 追踪当前 turn 是否成功调用过 MCP 发送类工具：
             if (!isCurrentSession(key, frame.sessionId)) continue;

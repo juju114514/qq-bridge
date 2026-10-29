@@ -176,6 +176,8 @@ const tests = [
   'test-douyin-meta.mjs',
   // pumpMux 护栏：快照不触发回复 / 未知帧不炸 / 帧能被消费。
   'test-mux-pump.mjs',
+  // 黑话学习会话分支：迟到事件不建 collector / 唤醒与清理。
+  'test-mux-learner.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
