@@ -164,6 +164,8 @@ const tests = [
   'test-bridge-imports.mjs',
   // 会话级集合：一次清干净、不误删别的会话。
   'test-session-registry.mjs',
+  // 自检报告：状态标记 + 群友可见版的边界（离线）。
+  'test-selfcheck.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

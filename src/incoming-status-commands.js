@@ -11,7 +11,8 @@ export function createIncomingStatusCommands(deps = {}) {
   const {
     sendToQQ, readRoleState, writeRoleStateForKey,
     sanitizeRoleName, resolveRoleName, listRoles, roleName,
-    allowed, getCfg, getState, getRoleState
+    allowed, getCfg, getState, getRoleState,
+    getSelfCheck, buildSelfCheckReport
   } = deps;
 
   async function handleStatusCommands(ctx = {}) {
@@ -19,6 +20,19 @@ export function createIncomingStatusCommands(deps = {}) {
     const cfg = getCfg();
     const roleState = getRoleState();
     const state = getState();
+    // /自检 —— 完整健康报告。**管理员限定**（调用方已做 isOwner 判定），
+    // 因为里面有网关地址/队列积压/会话数这些运维信息，不能给群友看。
+    // 想给群友看健康状态，用 shortStatus（只回"在线/维护中"）。
+    if (plainContent === '/自检' || plainContent === '/selfcheck') {
+      try {
+        const snap = typeof getSelfCheck === 'function' ? getSelfCheck() : {};
+        const text = typeof buildSelfCheckReport === 'function' ? buildSelfCheckReport(snap) : '（自检模块未接）';
+        await sendToQQ(key, text);
+      } catch (error) {
+        await sendToQQ(key, `自检失败：${error?.message ?? error}`);
+      }
+      return true;
+    }
     if (plainContent === '/status') {
       const rs = readRoleState();
       await sendToQQ(key, `会话 ${state.sessions[key] ?? '未创建'}；白名单 ${allowed(kind, id, cfg) ? '通过' : '拦截'}；角色 ${rs.role ? roleName(rs.role) : '无'}；模式 ${rs.mode}`);

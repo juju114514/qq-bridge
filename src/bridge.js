@@ -9326,7 +9326,43 @@ function scheduleWakeV2(key, reason) {
     readJsonSafe, atomicWriteJson
   }));
 
+  // ── 自检支撑：启动时间 + 最近一次入站（供 /自检 用）──────────────────
+  const bridgeStartedAt = Date.now();
+  let lastInboundAtMs = 0;
+
+  // /status /role /silent /active + /自检：已拆到 src/incoming-status-commands.js
+  let incomingStatusCommandsInstance = null;
+  const getIncomingStatusCommands = () => (incomingStatusCommandsInstance ??= createIncomingStatusCommands({
+    sendToQQ, readRoleState, writeRoleStateForKey,
+    sanitizeRoleName, resolveRoleName, listRoles, roleName,
+    allowed, getCfg: () => cfg, getState: () => state, getRoleState: () => readRoleState(),
+    buildSelfCheckReport,
+    getSelfCheck: () => {
+      try {
+        return {
+          now: Date.now(),
+          startedAt: bridgeStartedAt,
+          mode: currentMode,
+          dshReady,
+          snowluma: { connected: Boolean(bot), lastEventAt: lastInboundAtMs },
+          official: { enabled: Boolean(officialTransport), ready: officialTransport?.ready === true },
+          queues: {
+            queued: queued.size,
+            pending: pending.size,
+            deadLetters: (() => { try { return deadLetterRecent(200).length; } catch { return 0; } })()
+          },
+          sessions: sessionRegistry.stats(),
+          people: Object.keys(loadPeopleDb().people || {}).length,
+          stickers: Array.isArray(stickerEntries) ? stickerEntries.length : 0
+        };
+      } catch (error) {
+        return { now: Date.now(), mode: currentMode, dshReady, recentErrors: [String(error?.message ?? error)] };
+      }
+    }
+  }));
+
   async function handleIncoming(kind, id, event, cfg) {
+    lastInboundAtMs = Date.now();
     const key = convKey(kind, id);
     // 私聊准入：只在 config.socialV2.privateAccess.enabled=true 时接管。
     // 不依赖 get_friend_list —— OneBot 的 sub_type='friend' 本身就代表"好友"，SnowLuma 也认。
