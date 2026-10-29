@@ -76,6 +76,8 @@ import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createPresetSimHandlers } from './api/preset-sim.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
+import { createGroupMembersHandler } from './api/group-members.js';
+import { createSlangSubmitHandler } from './api/slang-submit.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
@@ -3585,6 +3587,21 @@ async function main() {
   }
 
   function startConsoleServer() {
+    // 群成员查询 / 黑话提交：已拆到 src/api/group-members.js、src/api/slang-submit.js
+    // 惰性创建：v2SessionAllowed / allowSlangSubmit 等是后面才定义的 const（TDZ）
+    let groupMembersInstance = null;
+    let slangSubmitInstance = null;
+    const getGroupMembersHandler = () => (groupMembersInstance ??= createGroupMembersHandler({
+      log, getCfg: () => cfg, getMode: () => currentMode,
+      allowed, v2SessionAllowed, v2ToolEnabled, agentTokenOk,
+      bot, onebotHttpAction, truncateText
+    }));
+    const getSlangSubmitHandler = () => (slangSubmitInstance ??= createSlangSubmitHandler({
+      log, appendActivity, getCfg: () => cfg,
+      agentTokenOk, v2SessionAllowed, v2ToolEnabled, allowSlangSubmit,
+      redactKnownTokensOnly, slangEntries, SLANG_STATUS, createSlangEntry, publicSlangEntry,
+      mergeEvidence, saveSlangStore, queueSlangTask, runSlangResearch
+    }));
     // 清空工作区：已拆到 src/api/workspace-reset.js（60+ 个集合，整体 clear）
     const workspaceReset = createWorkspaceResetHandler({
       log, fs, path, process, api, withTimeout, unwrap, DSH_CONTROL_TIMEOUT_MS, STATE_DIR,
@@ -4446,108 +4463,17 @@ async function main() {
         // user_id 拿」，但旧版是无令牌工具、在 reserved2 下必然 403 —— 模型被自己的提示词
         // 引到一个永远失败的工具上（实测 turn10 白烧一步）。这里给它一个带会话令牌的 v2 形态。
         if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          const groupMatch = /^group:(\d+)$/.exec(key);
-          if (!groupMatch) { sendJson({ ok: false, error: '群成员只能按 group:群号 查询' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          // ⚠️ 白名单/模式判定**不能**挂在「有令牌」条件里：closed-agent 的代理调用本来就不带令牌
-          // （它走的是操作者路径），只按 header 判断会让它拿任意群号去枚举成员 ——
-          // 那正是旧 qq_get_group_members 明确防住的事（先 legacyReadToolAllowed 再 isAllowed）。
-          //
-          // 也不能直接用 v2SessionAllowed：它的 closed-agent 分支只放行 `private:<ownerQQ>`，
-          // 于是「管理员在私聊里让 AI 看看某群成员」会 403 —— 那是旧工具本来支持的能力，
-          // 属于这次改动不该带走的回归。所以 closed-agent 下按**同样严格的白名单**放行群读取。
-          const groupMembersAllowed = currentMode === 'closed-agent'
-            ? allowed('group', Number(groupMatch[1]), cfg)
-            : v2SessionAllowed(key);
-          if (!groupMembersAllowed) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('getGroupMembers')) { sendJson({ ok: false, error: '工具未启用：qq_get_group_members' }, 403); return; }
-          const groupId = Number(groupMatch[1]);
-          try {
-            let response;
-            try {
-              response = await bot.request('get_group_member_list', { group_id: groupId });
-            } catch (wsError) {
-              // 与表情库同步同一条原则：WS 挂了不代表网关挂了，读接口走 HTTP 兜底。
-              response = await onebotHttpAction('get_group_member_list', { group_id: groupId });
-            }
-            const payload = response && typeof response === 'object' && response.data !== undefined ? response.data : response;
-            const raw = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
-            if (!raw) { sendJson({ ok: false, error: '网关返回的成员列表格式异常，已拒绝' }, 502); return; }
-            const members = raw.slice(0, limit).map((m) => ({
-              userId: m?.user_id != null ? String(m.user_id) : '',
-              nickname: truncateText(String(m?.nickname ?? ''), 40),
-              card: truncateText(String(m?.card ?? ''), 40),
-              ...(m?.role ? { role: String(m.role) } : {})
-            })).filter((m) => m.userId);
-            sendJson({ ok: true, key, count: raw.length, returned: members.length, truncated: raw.length > members.length, members });
-          } catch (error) {
-            log(`群成员查询失败 ${key}: ${error?.message ?? error}`);
-            sendJson({ ok: false, error: `获取群成员失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
-        // ── 二代黑话学习（reserved2）：AI 查询/提交黑话候选 ─────────────────
+      await getGroupMembersHandler().handle({ req, url, sendJson });
+      return;
+    }
+
+    // ── 二代黑话学习（reserved2）：AI 查询/提交黑话候选 ─────────────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/slang/submit') {
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const token = String(body.token ?? '').trim();
-          const content = redactKnownTokensOnly(String(body.content ?? '')).trim();
-          const context = redactKnownTokensOnly(String(body.context ?? '')).trim();
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('slangSubmit')) { sendJson({ ok: false, error: '工具未启用：qq_slang_submit' }, 403); return; }
-          if (cfg.slang?.enabled === false) { sendJson({ ok: false, error: '黑话学习已关闭（slang.enabled=false）' }, 403); return; }
-          if (!content) { sendJson({ ok: false, error: 'content 不能为空' }, 400); return; }
-          if (content.length > 50) { sendJson({ ok: false, error: '黑话词条过长（最多 50 字）' }, 400); return; }
-          if (!allowSlangSubmit(key)) { sendJson({ ok: false, error: '黑话提交过于频繁，请稍后再试' }, 429); return; }
-          const existing = slangEntries.find((e) => e.content === content);
-          if (existing) {
-            if (existing.status === SLANG_STATUS.CONFIRMED) {
-              sendJson({ ok: true, duplicate: true, status: 'confirmed', entry: publicSlangEntry(existing) });
-              return;
-            }
-            if (existing.status === SLANG_STATUS.REJECTED) {
-              sendJson({ ok: false, error: '该词已被管理员拒绝，如需重新收录请联系管理员' }, 403);
-              return;
-            }
-            // candidate：累计出现次数并追加语境证据
-            existing.count = (Number(existing.count) || 0) + 1;
-            if (context) {
-              existing.evidence = mergeEvidence(existing.evidence, [{ key, sender: 'AI提交', text: context.slice(0, 200), time: Date.now() }]);
-            }
-            existing.updatedAt = new Date().toISOString();
-            saveSlangStore();
-            if (cfg.slang?.autoResearch !== false) {
-              const thresholds = Array.isArray(cfg.slang?.inferenceThresholds) ? cfg.slang.inferenceThresholds.map(Number).filter(Boolean) : [2, 4, 8];
-              if (thresholds.includes(existing.count) && existing.count > (Number(existing.lastInferenceCount) || 0)) {
-                queueSlangTask(() => runSlangResearch([existing]));
-              }
-            }
-            log(`[reserved2] AI 再次提交黑话候选「${content}」(${key})，累计 ${existing.count} 次`);
-            sendJson({ ok: true, duplicate: true, status: 'candidate', entry: publicSlangEntry(existing) });
-            return;
-          }
-          const entry = createSlangEntry({
-            content,
-            source: 'ai',
-            status: SLANG_STATUS.CANDIDATE,
-            evidence: context ? [{ key, sender: 'AI提交', text: context.slice(0, 200), time: Date.now() }] : []
-          });
-          slangEntries.push(entry);
-          saveSlangStore();
-          if (cfg.slang?.autoResearch !== false) {
-            queueSlangTask(() => runSlangResearch([entry]));
-          }
-          log(`[reserved2] AI 提交黑话候选「${content}」(${key})`);
-          appendActivity(`${key} [reserved2] AI 提交黑话候选：${content}${context ? '（附语境）' : ''}`);
-          sendJson({ ok: true, entry: publicSlangEntry(entry) });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/authorize/read') {
+      await getSlangSubmitHandler().handle({ req, sendJson, readBody });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/authorize/read') {
       await getConsoleOps().handleAuthorizeRead({ readBody, sendJson });
       return;
     }

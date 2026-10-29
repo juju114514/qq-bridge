@@ -40,6 +40,8 @@ import { createIncomingStatusCommands } from '../src/incoming-status-commands.js
 import { buildSelfCheckReport } from '../src/selfcheck.js';
 import { createSessionResetter } from '../src/session-reset.js';
 import { createIncomingGuards } from '../src/incoming-guards.js';
+import { createGroupMembersHandler } from '../src/api/group-members.js';
+import { createSlangSubmitHandler } from '../src/api/slang-submit.js';
 import { createSessionRegistry } from '../src/session-registry.js';
 import * as stickerCurator from '../src/sticker-curator.js';
 // 配置加载已抽成模块：VM 里必须注入 createConfigLoader，否则 bridge 启动即 ReferenceError。
@@ -223,7 +225,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...stickerPending, ...privateAccess,
   ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
-  createIncomingStatusCommands, buildSelfCheckReport, createSessionResetter, createIncomingGuards,
+  createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createSessionResetter, createIncomingGuards,
   createSessionRegistry: (...args) => { registryRef = createSessionRegistry(...args); return registryRef; },
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
