@@ -10,6 +10,43 @@
 > **踩坑了 / 要换网关？** → [docs/运维指南.md](docs/运维指南.md)（人工 + AI 双视角：症状速查、网关能力差异、双 token、改 bridge.js 的固定动作）
 > 装不上先跑 `npm run doctor`，它会逐条告诉你缺什么、怎么修。
 
+## 这个分支和上游、以及别的分叉有什么不一样
+
+上游是 **[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)（★3.2k，最后更新 2026-10-22）**，
+本仓库是它的个人增强分支之一。生态里还有不少兄弟分支，各自的取舍不同：
+
+| 分支 | 它擅长什么 | 适合谁 |
+| --- | --- | --- |
+| [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)（上游） | 基线实现，★3.2k | 想要"原汁原味 + 最多 eyeball" |
+| [h-D-ACE/dsh-qq](https://github.com/h-D-ACE/dsh-qq)（★80） | TOTP 三级权限、控制中心、定时任务、跨平台 | 要给一群人用 |
+| [adj18311/qq-bridge-plus](https://github.com/adj18311/qq-bridge-plus)（★29） | 贴吧集成、B 站视频教程 | Windows + 想玩贴吧 |
+| [Lu-mi-nous/whale-talk](https://github.com/Lu-mi-nous/whale-talk) | bridge.js 拆得干净（约 6.9k 行）、测试多 | 想读架构 |
+| **本分支（juju114514/qq-bridge）** | **QQ 官方通道（合规、不封号）+ Docker + 死信队列 + 外部触发 API** | 想长期跑、又怕封号 |
+
+### 我们独有或明显更完整的四件事
+
+1. **两条轨道同时跑**：本地注入（全群消息、可分条斗图）+ 官方 Bot（合规不封号）。
+   别人通常只做一条；两条共用同一套人格卡、记忆、工具与白名单。
+   见 [TWO-TRACKS.md](docs/guides/TWO-TRACKS.md)。
+2. **官方通道的完整闭环**：被动回复窗口管理、主动消息、互动召回、意向识别
+   （"明天见"只开窗不发）。见 [OFFICIAL-QQ.md](docs/guides/OFFICIAL-QQ.md)。
+3. **可运维性**：死信队列（失败消息可补偿）、外部触发 `POST /api/inject`（webhook / CI / 监控）、
+   Docker 部署、健康检查、Windows 一键脚本与守护进程。
+4. **给 AI 与人共用的排障手册**：[docs/运维指南.md](docs/运维指南.md) —— 16 节，全部来自真实事故
+   （网关能力差异、双 token、配置不生效、备份误提交、测试写死绝对路径……）。
+
+### 我们**不**擅长的（诚实说明）
+
+- **star 与用户量**：本分支 ★0，没有经过大量真实用户验证。上游和 h-D-ACE 更成熟。
+- **多用户权限体系**：没有 TOTP / 多管理员分级，我们是"单人自用"取向。
+- **全部能力都验证过**：官方通道的多媒体发送（图片/语音）目前**未实现**，只有文本；
+  本地注入轨道才有完整的多媒体能力。
+
+> 如果你的诉求是"给一群人用、要权限分级"，优先看 h-D-ACE；
+> 如果你是"自己长期挂一个、最怕封号"，这个分支值得一试。
+
+---
+
 把 QQ 接进 [DeepSeek Harness](https://github.com/deepseek-ai)（下称 DSH）：群里/私聊的消息变成
 DSH 会话里的用户消息，AI 的回复（分条、表情、语音、拍一拍、点歌）发回 QQ。
 
