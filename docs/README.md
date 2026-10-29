@@ -15,6 +15,7 @@
 - [升级指南](UPGRADE.md) —— 按版本看升级要做什么（备份 / 3 种部署形态 / 固定 7 步 / 回滚 / 故障对照）
 - [借鉴方案：熟悉度 + 定时静默](plan-familiarity-and-quiet.md) —— 从兄弟仓库借四条规则，落地两个小模块（不移植）
 - [模块化路线](plan-modularization.md) —— 真实体积、5 种职责、能力模块契约、6 波拆分顺序、体积闸门
+- [明天的 bridge.js 计划（2026-10-31）](plan-bridge-2026-10-31.md) —— 按收益÷风险排的五个批次 + 验收标准
 - [2026-10-30 夜间工作记录](sessions/2026-10-30.md) —— 拆分清单、6 个真实缺陷、新功能、当前状态、回滚方法
 - [Linux 独立环境复跑报告](validation/linux-run-2026-10-30.md) —— 另一台 Linux 上审计 84/84（含核对与复现步骤）
 - [从 AstrBot 迁过来](guides/MIGRATE-FROM-ASTRBOT.md) —— 不用换 NapCat、字段对照、只读试用、迁移检查清单
