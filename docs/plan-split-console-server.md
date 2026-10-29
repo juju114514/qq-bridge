@@ -29,7 +29,13 @@
 
 ## 三、方案：三步走（每步都可独立回滚）
 
-### 第 1 步：抽出"路由器"（低风险，减 ~300 行）
+### 第 1 步：抽出"路由器"（**已实测否掉，不要做**）
+
+> 2026-10-29 实测：44 条路由里**只有 4 条**是「if + await handleX + return」的一行分派，
+> 其余都是内联实现。把 4 条做成表反而是增加间接层，收益为零。
+> 结论：真正的收益在**抽内联实现**（下一步），不在做路由表。
+
+（保留原设想供参考）
 
 把 50 个 `if (req.method === 'X' && url.pathname === 'Y') { await handleZ(req, url); return; }`
 换成一张表：
@@ -130,3 +136,71 @@ export function createHandlers(deps) {
 | 单函数最大行数 | 1,980 | < 300 |
 | 改一个端点要读的行数 | 全文件（靠 grep） | 一个模块文件 |
 | 审计 | 69/69 | 69/69（不变） |
+
+---
+
+## 九、已知陷阱（实战记录）
+
+> 2026-10-29 拆 `socialV2-inspect`（143 行）时连续踩了三个，全部真实复现。
+
+### 陷阱 1：装配位置必须在调用点
+
+```js
+// ❌ 模块顶层就装配：此时 main() 里的 sendJson / bot 还不存在 → 启动即挂
+const handleX = createXHandler({ sendJson, bot });
+
+// ✅ 在路由命中处装配（或注入一个"工厂"延后到调用时）
+if (url.pathname === '/api/x') {
+  await createXHandler({ sendJson, get bot() { return bot; } })(req, url);
+  return;
+}
+```
+
+症状：桥接启动失败，`ReferenceError: Cannot access 'sendJson' before initialization`，
+审计从 68/68 掉到 60/68。
+
+### 陷阱 2：handler **不能缓存**（`??=` 也不行）
+
+`sendJson` 是**每请求绑定**的闭包（绑定到那次请求的 res）。
+缓存 handler 会把上一个请求的响应对象带过来：
+
+```
+Error [ERR_HTTP_HEADERS_SENT]: Cannot write headers after they are sent to the client
+```
+
+修法：每请求创建（对象字面量开销可忽略）；要复用只复用**无状态**的部分。
+
+### 陷阱 3：返回值语义必须对齐
+
+抽出来的分支里，`return;` 只表示"这一段提前结束"，函数最终返回 `undefined`。
+若 bridge 写成：
+
+```js
+if (await handler(req, url)) return;   // ❌ undefined 被当成"未命中"
+```
+
+就会继续往下走，后面的路由再次 `sendJson` → 又变成"headers 已发送"。
+
+**推荐写法**：匹配交给 bridge，命中即调用并 `return`，不依赖返回值：
+
+```js
+if (url.pathname === '/api/a' || url.pathname === '/api/b') {
+  await createXHandler(deps)(req, url);
+  return;
+}
+```
+
+或让模块内部先判断路径、未命中返回 `true`（表示"我处理了，别往下走"）——
+但**两种只能选一种**，混用必出 bug。
+
+---
+
+## 十、修正后的优先级（按实测收益排序）
+
+| 顺序 | 目标 | 行数 | 风险 | 备注 |
+| --- | --- | --- | --- | --- |
+| ~~1~~ | ~~抽路由表~~ | ~~300~~ | — | 实测只有 4 条一行分派，不值得 |
+| **2** | `/api/socialV2/prompt`（110）+ `/api/socialV2/config`（166） | ~270 | 中 | 核心路径，但**黄金快照能验证** |
+| 3 | `/api/send/voice`（111）+ `/api/console/notify-ai`（69） | ~180 | 中 | |
+| 4 | 剩余内联路由（约 30 条，多数 20–60 行） | ~700 | 低 | 可批量，按模块归类 |
+| 5 | `startConsoleServer` 骨架（服务器/校验/listen/装配） | ~540 | 高 | 最后做 |
