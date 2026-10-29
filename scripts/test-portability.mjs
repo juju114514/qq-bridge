@@ -52,6 +52,10 @@ const SKIP = (rel) => /(^|\/)test-[^/]*\.mjs$/.test(rel)
   || /-fixture\.mjs$/.test(rel)
   || rel === 'scripts/privacy-scan.mjs'
   || rel === 'scripts/test-portability.mjs';
+// 注意：SKIP 会把 test-*.mjs 整体跳过（里面的盘符大多是"样例路径"）。
+// 代价是**真的加载路径**也被豁免了 —— 2026-10-29 有 5 个测试写死
+// D:/QQBot-open/qq-bridge，却一直"全绿"，换机器/换目录立刻 5 红。
+// 所以下面单独加了一条"测试不得用绝对路径加载模块"的检查来补这个洞。
 
 // ── 1. 硬编码盘符路径 ─────────────────────────────────────────────────────
 // 白名单：测试 fixture / 断言里的"样例路径"（它们本来就在验证"外部绝对路径被拒"）
@@ -74,6 +78,29 @@ check('src/ 与 scripts/ 没有硬编码盘符路径（换机器立刻失效）'
     }
   }
   assert.deepEqual(hits, [], `发现硬编码盘符（共 ${hits.length} 处）:\n       ${hits.join('\n       ')}`);
+});
+
+// ── 1b. 测试文件不得用**绝对路径加载模块**（2026-10-29 的真实事故）─────────
+// 现象：5 个 test-*.mjs 里写 `import(pathToFileURL('D:/QQBot-open/qq-bridge/src/x.js'))`，
+//       本机全绿，换目录/换系统立刻 5 红。
+// 这类盘符不是"样例"，而是真的加载路径 —— 必须用 new URL('../src/x.js', import.meta.url)。
+check('测试文件不用绝对路径加载模块（换目录必红的那类）', () => {
+  const hits = [];
+  for (const file of walk(root)) {
+    const rel = path.relative(root, file).replace(/\\/g, '/');
+    if (!/(^|\/)test-[^/]*\.mjs$/.test(rel)) continue;
+    if (rel === 'scripts/test-portability.mjs') continue;   // 自己会写反例，别自咬
+    const text = fs.readFileSync(file, 'utf8');
+    for (const [i, line] of text.split('\n').entries()) {
+      if (/portability-allow/.test(line)) continue;
+      if (line.trim().startsWith('//')) continue;           // 注释里的反例不算
+      // pathToFileURL('D:/...') / import('C:\\...') / await import("D:/...")
+      if (/(?:pathToFileURL|(?:await\s+)?import)\s*\(\s*['"`][A-Za-z]:[\\/]/.test(line)) {
+        hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 90)}`);
+      }
+    }
+  }
+  assert.deepEqual(hits, [], `测试里出现绝对路径加载（共 ${hits.length} 处，改用 new URL('../src/x.js', import.meta.url)）:\n       ${hits.join('\n       ')}`);
 });
 
 // ── 2. 示例配置不得含本机值 ────────────────────────────────────────────────

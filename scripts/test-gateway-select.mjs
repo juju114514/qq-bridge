@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
-const m = await import(pathToFileURL('D:/QQBot-open/qq-bridge/src/gateway-select.js').href);
+const m = await import(new URL('../src/gateway-select.js', import.meta.url).href);
 
 let failures = 0;
 const check = async (name, fn) => {

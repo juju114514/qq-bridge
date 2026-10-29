@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
-const hint = await import(pathToFileURL('D:/QQBot-open/qq-bridge/src/sticker-hint.js').href);
-const client = await import(pathToFileURL('D:/QQBot-open/qq-bridge/src/sticker-curate-client.js').href);
+const hint = await import(new URL('../src/sticker-hint.js', import.meta.url).href);
+const client = await import(new URL('../src/sticker-curate-client.js', import.meta.url).href);
 
 let failures = 0;
 const check = async (name, fn) => {

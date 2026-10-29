@@ -1,0 +1,29 @@
+name: audit
+
+# 为什么要有这条 CI：
+#   这套审计是"clone 即全绿"的承诺。但历史上有 6 处测试写死了作者本机路径
+#   （D:/QQBot-open/qq-bridge），在 Windows 本机全绿、在 Linux / 别的目录立刻红。
+#   所以至少要在 Linux 上跑一遍 —— 这是唯一能持续证明"换机器也能过"的办法。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 只跑审计脚本本身，不需要装依赖（仓库没有运行时 npm 依赖）
+      - name: 审计全套
+        run: node scripts/test-audit.mjs
+
+      - name: 可移植性（硬编码路径 / 绝对路径加载）
+        run: node scripts/test-portability.mjs

@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const m = await import(pathToFileURL('D:/QQBot-open/qq-bridge/src/sticker-notes.js').href);
+const m = await import(new URL('../src/sticker-notes.js', import.meta.url).href);
 
 let failures = 0;
 const check = (name, fn) => {

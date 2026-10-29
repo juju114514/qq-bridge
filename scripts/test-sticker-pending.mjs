@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
-const m = await import(pathToFileURL('D:/QQBot-open/qq-bridge/src/sticker-pending.js').href);
+const m = await import(new URL('../src/sticker-pending.js', import.meta.url).href);
 
 let failures = 0;
 const check = (name, fn) => {
