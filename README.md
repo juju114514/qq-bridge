@@ -7,6 +7,24 @@
 
 > **想直接跑起来？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
 >
+### 你已经装了什么？不用换，直接用
+
+| 你现在的环境 | 能不能直接用 | 怎么做 |
+| --- | --- | --- |
+| **已装 NapCat**（AstrBot / 其它方案常带） | ✅ **不用换网关** | `gateway-select` 自动识别 SnowLuma 与 NapCat，谁在跑用谁；一个挂了自动降级，带 60 秒冷却不回跳 |
+| 已装 SnowLuma | ✅ 主通道 | 默认就走它 |
+| 正在用 **AstrBot** | ✅ 可以共存 | 先开只读模式试跑，两条轨道互不影响 → [迁移指南](docs/guides/MIGRATE-FROM-ASTRBOT.md) |
+| 什么都没有 | ✅ 从零装 | → [QUICKSTART.md](QUICKSTART.md) |
+
+**只想先看看效果、不想动现有机器人？** 用只读模式：
+
+```powershell
+# 群里只记录、不回复（AI 潜水观察），随时可以关
+node src/bridge.js   # 然后 /role 里切到 silent，或控制台点「暂停」
+```
+
+命令行快速体验（不需要 QQ 账号，30 秒）：`npm run demo`
+
 > **踩坑了 / 要换网关？** → [docs/运维指南.md](docs/运维指南.md)（人工 + AI 双视角：症状速查、网关能力差异、双 token、改 bridge.js 的固定动作）
 > 装不上先跑 `npm run doctor`，它会逐条告诉你缺什么、怎么修。
 

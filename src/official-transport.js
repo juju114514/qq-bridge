@@ -235,7 +235,11 @@ export function createOfficialTransport(opts = {}) {
         onError: (e) => log(`[official] 错误：${e.message}`),
         onEvent: (event) => {
           rememberInbound(event);
-          log(`[official] 收到 ${event.kind === 'group' ? '群' : '单聊'}消息（作者 ${event.authorName || '?'}）`);
+          {
+            const atts = Array.isArray(event.attachments) ? event.attachments : [];
+            const types = atts.map((a) => String(a?.content_type ?? a?.type ?? '?')).join(',') || '无';
+            log(`[official] 收到 ${event.kind === 'group' ? '群' : '单聊'}消息（作者 ${event.authorName || '?'}，文本 ${String(event.text ?? '').length} 字，附件 ${atts.length} 个：${types}）`);
+          }
           try { onMessage?.(event, toOneBotEvent(event)); } catch (e) { log(`[official] 转交失败：${e?.message ?? e}`); }
         }
       });
