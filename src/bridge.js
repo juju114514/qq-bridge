@@ -75,6 +75,8 @@ import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
+import { createIncomingCommands } from './incoming-commands.js';
+import { createIncomingStatusCommands } from './incoming-status-commands.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';

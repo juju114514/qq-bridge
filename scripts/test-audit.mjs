@@ -160,6 +160,8 @@ const tests = [
   'test-file-size.mjs',
   // 公开命令：该认的认 / 不该认的别吞（离线）。
   'test-incoming-commands.mjs',
+  // 静态检查：bridge 里用到的工厂函数必须真有 import（防线上首条消息 ReferenceError）。
+  'test-bridge-imports.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
