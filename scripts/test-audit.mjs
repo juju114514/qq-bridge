@@ -172,6 +172,8 @@ const tests = [
   'test-incoming-guards.mjs',
   // 清空工作区：只归档根会话 + 本地集合全清 + DSH 挂了也能清。
   'test-workspace-reset.mjs',
+  // 抖音轻量解析：只取元数据不下载 + 冷却 + 可操作的失败原因。
+  'test-douyin-meta.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

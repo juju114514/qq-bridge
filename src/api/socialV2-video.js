@@ -43,7 +43,8 @@ export function createSocialV2VideoHandlers(baseDeps = {}) {
     const { req, writeJson, readJsonBody } = ctx;
     const body = await readJsonBody(req);
     const linkUrl = String(body?.url ?? '').trim();
-    const mode = body?.mode === 'transcript' ? 'transcript' : 'storyboard';
+    // meta = 只取作者/标题/文案（不下载视频，风控最低）
+    const mode = body?.mode === 'transcript' ? 'transcript' : body?.mode === 'meta' ? 'meta' : 'storyboard';
     if (!linkUrl) { writeJson({ ok: false, error: 'url 不能为空' }, 400); return true; }
     if (req.headers['x-agent-token'] && !v2ToolEnabled('getImages')) {
       writeJson({ ok: false, error: '工具未启用：qq_open_video' }, 403);

@@ -162,12 +162,24 @@ export function parseSharePage(html) {
   const urls = block
     ? [...block[1].matchAll(/"(https?:[^"]+)"/g)].map((m) => m[1])
     : [];
-  const descMatch = /"desc"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
-  const desc = descMatch ? descMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : '';
+  const pick = (re) => {
+    const m = re.exec(body);
+    return m ? String(m[1]).replace(/\\n/g, ' ').replace(/\\"/g, '"').trim() : '';
+  };
+  const desc = pick(/"desc"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   const durMatch = /"duration"\s*:\s*(\d{2,7})/.exec(body);
+  // 作者/标题/封面：分享页里都有，取出来能给"只看文案"的轻量路径用（不必下载视频）
+  const author = pick(/"nickname"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  const authorId = pick(/"unique_id"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  const title = pick(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  const coverMatch = /"cover"\s*:\s*\{[^}]*"url_list"\s*:\s*\[\s*"(https?:[^"]+)"/.exec(body);
   return {
     urls,
     desc,
+    author,
+    authorId,
+    title,
+    coverUrl: coverMatch ? coverMatch[1] : '',
     durationMs: durMatch ? Number(durMatch[1]) : 0
   };
 }
