@@ -23,7 +23,9 @@
     "followDiscoveredEndpoint": true,
     "silenceWarnMs": 600000,
     "launcherPath": "",
-    "homeDir": ""
+    "homeDir": "",
+    "httpToken": "",
+    "_token说明": "SnowLuma 的 HTTP 与 WS 各有一个 token：accessToken 给 WS，httpToken 给 HTTP 发送。两个不一致时必须分开填"
   },
   "ownerQQ": null,
   "sessionCwd": "",

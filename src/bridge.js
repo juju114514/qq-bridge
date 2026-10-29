@@ -2022,7 +2022,7 @@ async function main() {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+        ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
       },
       body: JSON.stringify(params ?? {}),
       signal: AbortSignal.timeout(timeoutMs)
@@ -2344,7 +2344,7 @@ async function main() {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+            ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
           },
           body: JSON.stringify(params),
           signal: AbortSignal.timeout(60000)
@@ -2419,7 +2419,7 @@ async function main() {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+          ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
         },
         body: JSON.stringify({ message_id: Number(messageId) }),
         signal: AbortSignal.timeout(30000)
@@ -2467,7 +2467,7 @@ async function main() {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+            ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
           },
           body: JSON.stringify({ message_id: String(sent.messageId) }),
           signal: AbortSignal.timeout(30000)
@@ -2539,7 +2539,7 @@ async function main() {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+            ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
           },
           body: JSON.stringify(params),
           signal: AbortSignal.timeout(15000)
@@ -3881,7 +3881,7 @@ async function main() {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {}),
+          ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {}),
         },
         body: '{}',
         signal: AbortSignal.timeout(8000),
@@ -5287,7 +5287,7 @@ async function main() {
                   method: 'POST',
                   headers: {
                     'content-type': 'application/json',
-                    ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+                    ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
                   },
                   body: JSON.stringify({ message_id: String(sent.messageId) }),
                   signal: AbortSignal.timeout(30000)
@@ -6273,7 +6273,7 @@ async function main() {
       try {
         const memberRes = await fetch(`${httpUrl}/get_group_member_info`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {}) },
+          headers: { 'content-type': 'application/json', ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {}) },
           body: JSON.stringify({ group_id: Number(g), user_id: Number(userId), no_cache: true }),
           signal: AbortSignal.timeout(10000)
         });
@@ -6281,7 +6281,7 @@ async function main() {
         if (memberBody?.status !== 'ok') continue;
         const sendRes = await fetch(`${httpUrl}/send_private_msg`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {}) },
+          headers: { 'content-type': 'application/json', ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {}) },
           body: JSON.stringify({ user_id: Number(userId), group_id: Number(g), message: segments }),
           signal: AbortSignal.timeout(15000)
         });
@@ -6378,7 +6378,7 @@ async function main() {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+        ...((cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken) ? { authorization: `Bearer ${cfg.snowluma?.httpToken ?? cfg.snowluma?.accessToken}` } : {})
       },
       body: JSON.stringify(params),
       signal: AbortSignal.timeout(15000)
