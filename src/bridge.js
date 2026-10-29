@@ -40,6 +40,7 @@ import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
+import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ } from './people.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
 import { enrichBili, formatBiliEnrich } from './bili-enrich.js';
@@ -9087,7 +9088,50 @@ async function main() {
     return quietRangeCache;
   }
 
-  function scheduleWakeV2(key, reason) {
+  // ── 人物库（state/people.json）──────────────────────────────────────
+// 只负责"读写文件"这一层；规则全在 src/people.js 里（纯函数、可离线测）。
+let peopleDb = null;
+let peopleSaveTimer = null;
+function peoplePath() { return path.join(STATE_DIR, 'people.json'); }
+function loadPeopleDb() {
+  if (peopleDb) return peopleDb;
+  try {
+    const raw = fs.readFileSync(peoplePath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    peopleDb = parsed && typeof parsed === 'object' && parsed.people ? parsed : emptyDb();
+  } catch (error) {
+    if (error?.code !== 'ENOENT') log(`⚠️ 人物库读取失败，将从空库开始：${error?.message ?? error}`);
+    peopleDb = emptyDb();
+  }
+  return peopleDb;
+}
+function savePeopleDbNow() {
+  if (!peopleDb) return;
+  try { fs.writeFileSync(peoplePath(), JSON.stringify(peopleDb), 'utf8'); }
+  catch (error) { log(`⚠️ 人物库写入失败：${error?.message ?? error}`); }
+}
+function schedulePeopleSave() {
+  if (peopleSaveTimer) return;
+  peopleSaveTimer = setTimeout(() => { peopleSaveTimer = null; savePeopleDbNow(); }, 2000);
+  if (typeof peopleSaveTimer.unref === 'function') peopleSaveTimer.unref();
+}
+
+/** 收到一条消息就记一次（群名片会更新，QQ 号才是身份）。 */
+function rememberPersonInMessage(kind, id, event) {
+  try {
+    const qq = normalizeQQ(event?.user_id);
+    if (!qq) return;
+    const db = loadPeopleDb();
+    const groupId = kind === 'group' ? String(id) : '';
+    const displayName = String(event?.sender?.card || event?.sender?.nickname || '');
+    touchPerson(db, { qq, groupId, displayName });
+    schedulePeopleSave();
+  } catch (error) {
+    log(`⚠️ 记录人物失败：${error?.message ?? error}`);
+  }
+}
+
+function scheduleWakeV2(key, reason) {
     if (cfg.socialV2?.enabled === false) return;
     if (socialV2.paused) return;
     // 静默时段：只拦“自己去搭话”的唤醒（定时器/概率/@），管理员指令与引导照旧。
@@ -9398,6 +9442,7 @@ async function main() {
       return;
     }
     const isOwner = String(event.user_id) === String(cfg.ownerQQ ?? '');
+    rememberPersonInMessage(kind, id, event);
     const roleState = readRoleState();
 
     // 若该会话有挂起的提问/审批，先当作回答处理（用当前消息自己的文字，不含引用原文）。

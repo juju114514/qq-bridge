@@ -154,6 +154,8 @@ const tests = [
   'test-official-send-image.mjs',
   // 静默时段：跨零点 / 边界 / 时区可注入（离线）。
   'test-quiet-hours.mjs',
+  // 人物库：身份只认 QQ 号 / 关系升档 / 作用域笔记 / 真删除。
+  'test-people.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
