@@ -166,6 +166,8 @@ const tests = [
   'test-session-registry.mjs',
   // 自检报告：状态标记 + 群友可见版的边界（离线）。
   'test-selfcheck.mjs',
+  // /reset 清理清单：18 个集合逐个核对 + 钩子 fail-soft。
+  'test-session-reset.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

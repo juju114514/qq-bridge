@@ -76,6 +76,7 @@ import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
+import { createSessionResetter } from './session-reset.js';
 import { buildSelfCheckReport } from './selfcheck.js';
 import { createIncomingCommands } from './incoming-commands.js';
 import { createIncomingStatusCommands } from './incoming-status-commands.js';
@@ -9361,6 +9362,31 @@ function scheduleWakeV2(key, reason) {
     }
   }));
 
+  // /reset 的清理逻辑：已拆到 src/session-reset.js（惰性创建，避免 TDZ）
+  let sessionResetterInstance = null;
+  const getSessionResetter = () => (sessionResetterInstance ??= createSessionResetter({
+    collections: {
+      sessionRegistry, state, social, socialV2,
+      pending, queued, queuedHintAt, sessionPromises,
+      messageMediaStore, slangWindows, slangExtractionCooldowns, slangSubmitTimes,
+      pendingWakeKeys, wakeConfigUpdatedKeys, markReadCalledKeys, wakeConfigMissCount,
+      seenForwardIds
+    },
+    hooks: {
+      clearTimeout,
+      cancelPendingEntry: (entry) => cancelPendingEntry(entry),
+      cancelSocialTimers: (k) => cancelSocialTimers(k),
+      clearSocialV2Timers: (k) => clearSocialV2Timers(k),
+      drainPromptQueue: (k, why) => drainPromptQueue(k, why),
+      forgetAgentToken: (k) => forgetAgentToken(k),
+      persistQueueSoon: () => persistQueueSoon(),
+      saveSocialV2State: () => saveSocialV2State(),
+      saveState: () => saveState(),
+      stopSessionWork: async (sid) => { try { await withTimeout(api.stopSessionWork(sid), DSH_CONTROL_TIMEOUT_MS, 'stopSessionWork'); } catch (error) { log(`⚠️ 停止旧会话失败：${error?.message ?? error}`); } },
+      archiveSession: async (sid) => { try { await withTimeout(api.workspace.archiveSession({ sessionId: sid }), DSH_CONTROL_TIMEOUT_MS, 'archiveSession'); } catch (error) { log(`⚠️ 归档旧会话失败：${error?.message ?? error}`); } }
+    }
+  }));
+
   async function handleIncoming(kind, id, event, cfg) {
     lastInboundAtMs = Date.now();
     const key = convKey(kind, id);
@@ -9626,49 +9652,9 @@ function scheduleWakeV2(key, reason) {
         return;
       }
       if (plainContent === '/reset' || plainContent === '/new') {
-        const old = state.sessions[key];
-        if (old) {
-          sessionRegistry.bumpEpoch();
-          delete state.sessions[key];
-          sessionRegistry.clearSession(old);   // 8 个会话级集合统一清（epoch 仍由上面那行管）
-          social.silentTurns.delete(old);
-          social.exitingSessions.delete(old);
-          const pe = pending.get(key);
-          if (pe) {
-            clearTimeout(pe.timer);
-            cancelPendingEntry(pe).catch(() => {});
-          }
-          pending.delete(key);
-          queued.delete(key);
-          persistQueueSoon();
-          queuedHintAt.delete(key);
-          sessionPromises.delete(key);
-          drainPromptQueue(key, '会话已重置');
-          social.recentMessages.delete(key);
-          messageMediaStore.delete(key);
-          social.pendingSummaries.delete(key);
-          social.states.delete(key);
-          social.silentContext.delete(key);
-          slangWindows.delete(key);
-          slangExtractionCooldowns.delete(key);
-          slangSubmitTimes.delete(key);
-          cancelSocialTimers(key);
-          clearSocialV2Timers(key);
-          pendingWakeKeys.delete(key);
-          wakeConfigUpdatedKeys.delete(key);
-          markReadCalledKeys.delete(key);
-          wakeConfigMissCount.delete(key);
-          forgetAgentToken(key);
-          socialV2.conversations.delete(key);
-          seenForwardIds.delete(key);
-          saveSocialV2State();
-          saveState();
-          // 与 retireSession 一致：先终止 DSH 侧排队的工作，再归档（归档只隐藏会话）。
-          try { await withTimeout(api.stopSessionWork(old), DSH_CONTROL_TIMEOUT_MS, 'stopSessionWork'); }
-          catch (error) { log(`⚠️ 停止旧会话失败 ${key}：${error?.message ?? error}；请在 DSH 检查旧任务`); }
-          try { await withTimeout(api.workspace.archiveSession({ sessionId: old }), DSH_CONTROL_TIMEOUT_MS, 'archiveSession'); } catch {}
-          await sendToQQ(key, '已重置会话，下次消息将开新上下文');
-        }
+        // 清理逻辑已拆到 src/session-reset.js（18 个集合 + 6 个副作用钩子）
+        const done = await getSessionResetter().resetConversation(key);
+        if (done.ok) await sendToQQ(key, '已重置会话，下次消息将开新上下文');
         return;
       }
     // /status /role /silent /active：已拆到 src/incoming-status-commands.js
