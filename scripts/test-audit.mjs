@@ -162,6 +162,8 @@ const tests = [
   'test-incoming-commands.mjs',
   // 静态检查：bridge 里用到的工厂函数必须真有 import（防线上首条消息 ReferenceError）。
   'test-bridge-imports.mjs',
+  // 会话级集合：一次清干净、不误删别的会话。
+  'test-session-registry.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

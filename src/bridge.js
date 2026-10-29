@@ -75,6 +75,7 @@ import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
+import { createSessionRegistry } from './session-registry.js';
 import { createIncomingCommands } from './incoming-commands.js';
 import { createIncomingStatusCommands } from './incoming-status-commands.js';
 import { createSendHandler } from './api/send.js';
@@ -2649,11 +2650,10 @@ async function main() {
       return api.callUnary('session.models', {});
     }
   }
-  const collectors = new Map(); // sessionId -> turn collector
-  const sendToolSucceededSessions = new Set(); // sessionId：当前 turn 内 MCP 发送类工具至少成功一次
-  const v2TurnStartAt = new Map(); // sessionId -> timestamp：reserved2 turn 开始时间，用于判断是否“无行动”
-  const toolCallNames = new Map(); // sessionId -> Map<callId, toolName>：用于结果日志关联工具名
-  const pendingSendToolCalls = new Map(); // sessionId -> Set<callId>：等待 tool/result 的发送类调用
+  // 会话级集合集中到 registry（第 1 步：只搬集合，epoch 仍在下面）
+  const sessionRegistry = createSessionRegistry();
+  const { modelAppliedSessions, reverse, collectors, sendToolSucceededSessions,
+    pendingSendToolCalls, v2TurnStartAt, turnLeaseNoted, toolCallNames } = sessionRegistry;
   // reserved2 防“忘记设置唤醒条件”：key -> 当前是否等待 AI 处理唤醒回合 / 本回合已更新唤醒配置 / 连续未设置次数
   const pendingWakeKeys = new Set();
   // key -> 开始等待的时间戳（带租约）：正在执行 qq_wait_for_messages 长轮询的会话，防止同一会话并发挂起。
@@ -2672,13 +2672,11 @@ async function main() {
    * **还活着**的回合。过期只是不再判忙：collector 本身保留，真回复照常 flush，只是允许新唤醒排队。
    */
   const TURN_BUSY_LEASE_MS = 15 * 60 * 1000;
-  const turnLeaseNoted = new Set(); // 租约过期的日志去重（每个 session 只记一次）
   const pendingWakeLeaseTimers = new Map();
   const pendingWakeWarnTimers = new Map(); // key -> timeout：防止 accepted 但无 turn/end 的唤醒把 key 永久标记为 busy
   const wakeConfigUpdatedKeys = new Set();
   const markReadCalledKeys = new Set();
   const wakeConfigMissCount = new Map();
-  const reverse = new Map(); // sessionId -> conv key
   for (const [key, sessionId] of Object.entries(state.sessions)) reverse.set(sessionId, key);
   // 新版 DSH 事件流需要显式 follow；启动时为已持久化的 QQ 会话补上。
   for (const sessionId of Object.values(state.sessions)) api.events.follow(sessionId);
@@ -6320,7 +6318,6 @@ async function main() {
   // 控制台热切换思考强度时递增 modelSelectionEpoch，使旧记录失效并在下一条消息重新应用。
   // 四种 QQ 模式共用 DSH 会话，统一强制使用多模态模型 DeepSeek-V41-Flash（id: deepseek-flash）；
   // 它同时支持 text/image 输入，取代已下线的 deepseek-v4-flash-vision-exp。
-  const modelAppliedSessions = new Map(); // sessionId -> 已应用的 modelSelectionEpoch
   // 返回 'applied' | 'not-found' | 'failed'。
   // 'not-found' 表示 DSH 侧会话已经不存在（DSH 重启、异常退出、归档竞态），
   // 本地映射已失效，调用方必须退役重建，否则每条消息都会对着一个不存在的会话重试。
@@ -9584,15 +9581,7 @@ function scheduleWakeV2(key, reason) {
         if (old) {
           sessionEpoch++;
           delete state.sessions[key];
-          modelAppliedSessions.delete(old);
-          delete state.sessionPolicies[key];
-          reverse.delete(old);
-          collectors.delete(old);
-          sendToolSucceededSessions.delete(old);
-          pendingSendToolCalls.delete(old);
-          v2TurnStartAt.delete(old);
-          turnLeaseNoted.delete(old);
-          toolCallNames.delete(old);
+          sessionRegistry.clearSession(old);   // 8 个会话级集合统一清（epoch 仍由上面那行管）
           social.silentTurns.delete(old);
           social.exitingSessions.delete(old);
           const pe = pending.get(key);
