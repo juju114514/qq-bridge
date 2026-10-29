@@ -9631,43 +9631,9 @@ function scheduleWakeV2(key, reason) {
         }
         return;
       }
-      if (plainContent === '/status') {
-        const rs = readRoleState();
-        await sendToQQ(key, `会话 ${state.sessions[key] ?? '未创建'}；白名单 ${allowed(kind, id, cfg) ? '通过' : '拦截'}；角色 ${rs.role ? roleName(rs.role) : '无'}；模式 ${rs.mode}`);
-        return;
-      }
-      if (plainContent === '/role' || plainContent.startsWith('/role ')) {
-        const rawName = plainContent.slice(5).trim();
-        const name = sanitizeRoleName(rawName);
-        const where = kind === 'group' ? '本群' : '本私聊';
-        if (!rawName || name === 'off' || name === 'clear') {
-          writeRoleStateForKey(key, null, roleState.mode);
-          await sendToQQ(key, kind === 'group'
-            ? `已解除${where}的人设锁定，回落到默认设置。`
-            : `已清除${where}的角色，恢复正常人格。`);
-        } else {
-          const resolved = resolveRoleName(rawName) || resolveRoleName(name);
-          if (!resolved) {
-            await sendToQQ(key, `角色「${rawName}」不存在。现有：${listRoles().map((id) => roleName(id)).join('、') || '（无）'}`);
-          } else {
-            writeRoleStateForKey(key, resolved, roleState.mode);
-            await sendToQQ(key, kind === 'group'
-              ? `${where}的人设已锁定为：${resolved}。（只有管理员能改，其他会话不受影响）`
-              : `已切换${where}的角色：${resolved}。（其他会话不受影响）`);
-          }
-        }
-        return;
-      }
-      if (plainContent === '/silent' || plainContent === '/quiet') {
-        writeRoleStateForKey(key, roleState.role, 'silent');
-        await sendToQQ(key, '已进入静默模式：群友消息不再回复，仅管理员可对话。');
-        return;
-      }
-      if (plainContent === '/active' || plainContent === '/speak') {
-        writeRoleStateForKey(key, roleState.role, 'active');
-        await sendToQQ(key, '已退出静默模式，恢复正常回复。');
-        return;
-      }
+    // /status /role /silent /active：已拆到 src/incoming-status-commands.js
+    if (await getIncomingStatusCommands().handleStatusCommands({ key, kind, id, plainContent })) return;
+
       // 其余 / 开头内容照常发给 DSH（DSH 的斜杠命令原样执行，如 /model）
     }
 
