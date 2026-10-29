@@ -64,6 +64,8 @@ Copy-Item D:\qq-bridge\config.json "$env:TEMP\config-backup-$ts.json"
 | 自动生成 `state/people.json` | 首次启动按白名单群存量成员标 `listed`；**不会**给老群友发"欢迎新人" |
 | 快照基线变了 | 如果你用 `scripts/snapshot-prompt.mjs` 做比对，旧基线会报差异 —— 这是新增 `commands` 段导致的，属预期 |
 | 升级后跑一次 `/自检` | 新增：网关重连次数、抖音 cookies 剩余 |
+| 想用新工具就什么都不用做 | `/诊断` 与 `qq_people_note` 都自带，无需配置 |
+| 可选：`socialV2.tools.peopleNote = false` | 不想让模型写人物笔记时关掉 |
 
 > 数据兼容：`state/` 由 `src/state-schema.js` 自动迁移（当前 schema v2），
 > 升级不需要手工改状态文件。
