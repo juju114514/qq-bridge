@@ -178,6 +178,8 @@ const tests = [
   'test-mux-pump.mjs',
   // 黑话学习会话分支：迟到事件不建 collector / 唤醒与清理。
   'test-mux-learner.mjs',
+  // 工具调用追踪：发送成功才标记、失败不标记（决定自动转发）。
+  'test-mux-tools.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

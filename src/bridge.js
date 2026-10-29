@@ -39,6 +39,7 @@ import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
 import { createLearnerFrameHandler } from './mux-learner.js';
+import { createMuxToolTracker } from './mux-tools.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -9839,6 +9840,13 @@ function scheduleWakeV2(key, reason) {
     clearTimeout
   }));
 
+  // 工具调用追踪：已拆到 src/mux-tools.js（决定"要不要自动转发"）
+  let muxToolTrackerInstance = null;
+  const getMuxToolTracker = () => (muxToolTrackerInstance ??= createMuxToolTracker({
+    toolCallNames, pendingSendToolCalls, sendToolSucceededSessions,
+    isSendToolName, sanitizeToolArgs, appendToolLog
+  }));
+
   async function pumpMux() {
     // 事件流重连退避：DSH 侧流被立刻关闭时（例如版本不兼容，见 issue #34），
     // 固定 3 秒重连会以每分钟 20 行的速度刷屏，真正有用的错误反而被淹没。
@@ -9875,55 +9883,8 @@ function scheduleWakeV2(key, reason) {
               v2TurnStartAt.set(frame.sessionId, Date.now());
               turnLeaseNoted.delete(frame.sessionId);
             }
-            if (frame.event.type === 'tool/call') {
-              const toolName = String(frame.event.data?.name ?? '');
-              const callId = frame.event.data?.callId;
-              const args = sanitizeToolArgs(frame.event.data?.arguments ?? frame.event.data?.input ?? frame.event.data);
-              appendToolLog({ type: 'call', time: new Date().toISOString(), key, sessionId: frame.sessionId, tool: toolName, args });
-              if (callId != null) {
-                if (isSendToolName(toolName)) {
-                  let pending = pendingSendToolCalls.get(frame.sessionId);
-                  if (!pending) {
-                    pending = new Set();
-                    pendingSendToolCalls.set(frame.sessionId, pending);
-                  }
-                  pending.add(callId);
-                }
-                let nameMap = toolCallNames.get(frame.sessionId);
-                if (!nameMap) {
-                  nameMap = new Map();
-                  toolCallNames.set(frame.sessionId, nameMap);
-                }
-                nameMap.set(String(callId), toolName);
-              }
-            }
-            if (frame.event.type === 'tool/result') {
-              const callId = frame.event.data?.message?.source?.callId;
-              const toolName = callId != null ? (toolCallNames.get(frame.sessionId)?.get(String(callId)) ?? '') : '';
-              const resultBlock = frame.event.data?.message?.content?.[0];
-              const resultError = frame.event.data?.message?.isError === true || resultBlock?.isError === true;
-              const errorText = resultError ? String(resultBlock?.text ?? resultBlock?.error ?? frame.event.data?.message?.error ?? '') : '';
-              appendToolLog({
-                type: 'result',
-                time: new Date().toISOString(),
-                key,
-                sessionId: frame.sessionId,
-                tool: toolName,
-                ok: !resultError,
-                error: errorText ? sanitizeToolArgs(errorText) : null
-              });
-              if (callId != null) {
-                toolCallNames.get(frame.sessionId)?.delete(String(callId));
-                const pending = pendingSendToolCalls.get(frame.sessionId);
-                if (pending?.has(callId)) {
-                  pending.delete(callId);
-                  if (pending.size === 0) pendingSendToolCalls.delete(frame.sessionId);
-                  if (!resultError) {
-                    sendToolSucceededSessions.add(frame.sessionId);
-                  }
-                }
-              }
-            }
+            // 工具调用/结果追踪（已拆到 src/mux-tools.js）：决定本轮是否已经发过消息
+            getMuxToolTracker().handleToolFrame(frame, key);
             // collector 生命周期见 trackTurnEvent()：只为 turn/start 建、空壳 turn/end 即清。
             const { ended } = trackTurnEvent(frame.sessionId, frame.event);
             if (ended) {
