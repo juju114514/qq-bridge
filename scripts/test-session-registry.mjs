@@ -54,6 +54,30 @@ check('stats：能看出各集合大小（排障用）', () => {
   assert.equal(s.sizes.turnLeaseNoted, 1);
 });
 
+
+check('epoch：初始为 0，bumpEpoch 递增并返回新值', () => {
+  const r = createSessionRegistry();
+  assert.equal(r.epoch, 0);
+  assert.equal(r.bumpEpoch(), 1);
+  assert.equal(r.epoch, 1);
+  r.bumpEpoch();
+  assert.equal(r.epoch, 2);
+});
+
+check('clearSession 不动 epoch（职责分离：只有显式 bump 才递增）', () => {
+  const r = createSessionRegistry();
+  r.collectors.set('s1', 'x');
+  const before = r.epoch;
+  r.clearSession('s1');
+  assert.equal(r.epoch, before, 'clearSession 只管集合，epoch 由调用方决定');
+});
+
+check('stats 里带 epoch（排障时能看出重置过几次）', () => {
+  const r = createSessionRegistry();
+  r.bumpEpoch(); r.bumpEpoch();
+  assert.equal(r.stats().epoch, 2);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

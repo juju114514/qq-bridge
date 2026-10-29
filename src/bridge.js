@@ -3741,7 +3741,7 @@ async function main() {
             sendJson, readBody, log,
             getState: () => state,
             getCfg: () => cfg,
-            bumpSessionEpoch: () => { sessionEpoch++; },
+            bumpSessionEpoch: () => { sessionRegistry.bumpEpoch(); },
             maps: {
               modelAppliedSessions, reverse, collectors,
               sendToolSucceededSessions, pendingSendToolCalls,
@@ -3813,7 +3813,7 @@ async function main() {
             readThroughSeqV2, computeWakeSafetyV2,
             feedbackTimes, truncateText, appendFeedbackEntry, appendActivity,
             appendMemoryV2, formatMemoryV2, redactKnownTokensOnly,
-            bumpSessionEpoch: () => { sessionEpoch++; },
+            bumpSessionEpoch: () => { sessionRegistry.bumpEpoch(); },
             getState: () => state,
             sessionPromises,
             clearAllSocialV2Timers,
@@ -4693,7 +4693,7 @@ async function main() {
 
         // ── 清除上下文 / 清空工作区 ──────────────────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/workspace/reset') {
-          sessionEpoch++;
+          sessionRegistry.bumpEpoch();
           let archivedCount = 0;
           let stoppedCount = 0;
           try {
@@ -4794,7 +4794,6 @@ async function main() {
   }
 
   // 会话代际：reset/清空工作区时递增，防止在途 ensureSession 把旧会话"复活"
-  let sessionEpoch = 0;
 
   // 待应答的提问/审批：convKey -> pending
   const pending = new Map(); // key -> { kind, rpcId, sessionId, ... }
@@ -6351,7 +6350,7 @@ async function main() {
   }
 
   async function ensureSession(key) {
-    const epoch = sessionEpoch;
+    const epoch = sessionRegistry.epoch;
     const policy = sessionPolicy(key);
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
     const existing = state.sessions[key];
@@ -6367,7 +6366,7 @@ async function main() {
           log(`会话 ${key} 在 DSH 侧已不存在，退役本地映射并在本次调用中重建`);
           retireSession(key);
         } else {
-          if (epoch !== sessionEpoch || !isCurrentSession(key, existing)) throw new Error('会话创建期间已重置或权限已变化');
+          if (epoch !== sessionRegistry.epoch || !isCurrentSession(key, existing)) throw new Error('会话创建期间已重置或权限已变化');
           return existing;
         }
       }
@@ -6419,7 +6418,7 @@ async function main() {
       // 新版 DSH 事件流需要显式 follow 该会话，否则收不到 turn 事件。
       api.events.follow(sessionId);
       // reset/清空工作区期间创建完成：丢弃，防止旧会话复活
-      if (epoch !== sessionEpoch || policy !== sessionPolicy(key) || !isSessionAllowedInCurrentMode(key)) {
+      if (epoch !== sessionRegistry.epoch || policy !== sessionPolicy(key) || !isSessionAllowedInCurrentMode(key)) {
         log(`会话创建期间发生 reset，丢弃 ${key} 的新会话（${sessionId}）`);
         try { await withTimeout(api.workspace.archiveSession({ sessionId }), DSH_CONTROL_TIMEOUT_MS, 'archiveSession'); } catch {}
         throw new Error('会话创建期间已重置，丢弃新会话');
@@ -6429,7 +6428,7 @@ async function main() {
       reverse.set(sessionId, key);
       saveState();
       await ensureChatModel(sessionId);
-      if (epoch !== sessionEpoch || !isCurrentSession(key, sessionId)) {
+      if (epoch !== sessionRegistry.epoch || !isCurrentSession(key, sessionId)) {
         if (state.sessions[key] === sessionId) retireSession(key);
         throw new Error('会话创建期间已重置或权限已变化');
       }
@@ -9617,7 +9616,7 @@ function scheduleWakeV2(key, reason) {
       if (plainContent === '/reset' || plainContent === '/new') {
         const old = state.sessions[key];
         if (old) {
-          sessionEpoch++;
+          sessionRegistry.bumpEpoch();
           delete state.sessions[key];
           sessionRegistry.clearSession(old);   // 8 个会话级集合统一清（epoch 仍由上面那行管）
           social.silentTurns.delete(old);

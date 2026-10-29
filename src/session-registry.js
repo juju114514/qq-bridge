@@ -20,8 +20,14 @@ export function createSessionRegistry() {
     toolCallNames: new Map()              // sessionId → Map<callId, toolName>
   };
 
+  // 重置代号：凡是"创建期间可能被重置"的异步流程都要比对它，
+  // 否则会用旧 epoch 的结果覆盖新会话（真实 bug，别删）。
+  let epoch = 0;
+
   return {
     ...collections,
+    get epoch() { return epoch; },
+    bumpEpoch() { epoch += 1; return epoch; },
     /**
      * 清掉一个会话在这些集合里的全部痕迹。
      * 只动本注册表拥有的东西；epoch 递增与其它清理（pending 队列、social.* …）
@@ -36,7 +42,7 @@ export function createSessionRegistry() {
     stats() {
       const sizes = {};
       for (const [k, c] of Object.entries(collections)) sizes[k] = c.size;
-      return { sizes };
+      return { epoch, sizes };
     }
   };
 }

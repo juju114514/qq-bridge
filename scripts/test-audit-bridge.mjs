@@ -74,8 +74,10 @@ await test('reset during model selection cannot return a detached session', asyn
     h.resetEpoch();
     return { result: { ok: true, value: { selected: {} } } };
   };
-  await assert.rejects(h.ensureSession('private:123'));
-  assert.equal(h.state.sessions['private:123'], undefined);
+  // 用**新 key**：确保走"创建会话"这条路径（已有会话会提前 return，根本不调 selectModel）
+  const freshKey = 'private:99123';
+  await assert.rejects(h.ensureSession(freshKey));   // 关键：不能返回一个"已分离"的会话
+  assert.equal(h.state.sessions[freshKey], undefined);
 });
 await test('malformed HTTP request targets return 400 without hanging', async (h) => {
   const server = h.startConsoleServer();

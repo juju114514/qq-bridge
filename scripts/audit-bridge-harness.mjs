@@ -145,7 +145,10 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       return { status: 'ok', retcode: 0, data: [{ emoji_id: 'fixture-sticker', url: 'https://public.invalid/sticker' }] };
     }
   }
-  let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
+  // 测试需要拿到 bridge 内部创建的 registry（epoch 在里面），
+// 注入的工厂顺手把它记下来。
+let registryRef = null;
+let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   // 去掉顶层 import（VM 里靠 context 注入提供这些绑定）。
   // 必须按行处理：这些 import 有**多行**写法，用单行正则（/^import[\s\S]*?;/gm）会在
   // 第一个分号处停下，把紧跟其后的正常代码一起删掉（曾把 `cfg.socialV2.voice = {…}`
@@ -191,7 +194,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     setMode(value) { currentMode = value; },
     setReady(value) { dshReady = value; },
     setPresets(value) { dshPresetIds = value; dshDefaultPreset = 'standard'; },
-    resetEpoch() { sessionEpoch++; },
+    resetEpoch() { if (registryRef) registryRef.bumpEpoch(); else sessionEpoch++; },
   };
   bot.onPrivateMessage(async (event) => {`);
   const timers = new Set();
@@ -215,7 +218,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...stickerPending, ...privateAccess,
-  ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands, createSessionRegistry, ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
+  ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
+  createSessionRegistry: (...args) => { registryRef = createSessionRegistry(...args); return registryRef; },
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
     sniffImage: mediaNormalize.sniffImage,
