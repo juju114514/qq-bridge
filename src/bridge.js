@@ -73,6 +73,7 @@ import { createSocialV2ConfigHandler } from './api/socialV2-config.js';
 import { createSocialV2PromptHandler } from './api/socialV2-prompt.js';
 import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
+import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -3576,6 +3577,10 @@ async function main() {
   }
 
   function startConsoleServer() {
+    // 视频只读接口：已拆到 src/api/socialV2-video.js
+    const socialVideo = createSocialV2VideoHandlers({
+      log, videoLinkConfig, cookieHealth, describeRemaining, videoLinkToModelParts, v2ToolEnabled
+    });
     // DSH 模型/思考强度：已拆到 src/api/console-dsh.js（依赖注入，方便离线测）
     const consoleDsh = createConsoleDshHandlers({
       getCfg: () => cfg,
@@ -4691,55 +4696,22 @@ async function main() {
 
         // cookie 体检（只读）：抖音能不能取到流取决于这份 cookies.txt 是否还新鲜
         if (req.method === 'GET' && url.pathname === '/api/socialV2/video-cookies') {
-          try {
-            const cookiePath = videoLinkConfig().cookiesPath;
-            const health = cookieHealth(cookiePath);
-            writeJson(res, {
-              ok: true,
-              path: cookiePath ? String(cookiePath) : '',
-              healthy: health.ok,
-              code: health.code ?? 'ok',
-              message: health.message ?? '',
-              remaining: health.stats?.earliestExpiry ? describeRemaining(health.stats.earliestExpiry) : '',
-              stats: health.stats
-            });
-          } catch (error) {
-            writeJson(res, { ok: false, error: `cookie 体检失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
+      await socialVideo.handleCookies({ writeJson: (obj, status = 200) => writeJson(res, obj, status) });
+      return;
+    }
 
-        // 视频**链接**（B站/抖音）：模型把用户贴的链接交过来，桥接用 yt-dlp 下载前 N 秒再分析。
+    // 视频**链接**（B站/抖音）：模型把用户贴的链接交过来，桥接用 yt-dlp 下载前 N 秒再分析。
         // 与消息附件那条路分开：这条不依赖 QQ 媒体段，但要过站点白名单。
         if (req.method === 'POST' && url.pathname === '/api/socialV2/video-link') {
-          const body = await readJsonBody(req);
-          const linkUrl = String(body?.url ?? '').trim();
-          const mode = body?.mode === 'transcript' ? 'transcript' : 'storyboard';
-          if (!linkUrl) { writeJson(res, { ok: false, error: 'url 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('getImages')) {
-            writeJson(res, { ok: false, error: '工具未启用：qq_open_video' }, 403);
-            return;
-          }
-          try {
-            const got = await videoLinkToModelParts(linkUrl, mode);
-            if (!got.ok) { writeJson(res, { ok: false, url: linkUrl, mode, error: got.error }); return; }
-            if (got.textOnly) { writeJson(res, { ok: true, url: linkUrl, mode, text: got.textOnly }); return; }
-            writeJson(res, {
-              ok: true,
-              url: linkUrl,
-              mode,
-              mimeType: got.board.mimeType,
-              data: got.board.buffer.toString('base64'),
-              note: got.note
-            });
-          } catch (error) {
-            log(`视频链接分析失败 ${linkUrl}: ${error?.message ?? error}`);
-            writeJson(res, { ok: false, url: linkUrl, error: `视频链接分析失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
+      await socialVideo.handleLink({
+        req,
+        writeJson: (obj, status = 200) => writeJson(res, obj, status),
+        readJsonBody
+      });
+      return;
+    }
 
-        // 视频走同一个处理器：findMessageMedia 现在也会带出 kind:'video'，
+    // 视频走同一个处理器：findMessageMedia 现在也会带出 kind:'video'，
         // 处理器内部按 mode（storyboard/transcript）决定交付形态。
         // 单独开一个路径只是为了让 MCP 工具名和语义对得上。
         if (req.method === 'GET' && url.pathname === '/api/socialV2/video') {
