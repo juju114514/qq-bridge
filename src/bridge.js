@@ -73,6 +73,7 @@ import { createSocialV2ConfigHandler } from './api/socialV2-config.js';
 import { createSocialV2PromptHandler } from './api/socialV2-prompt.js';
 import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
+import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
@@ -3577,6 +3578,21 @@ async function main() {
   }
 
   function startConsoleServer() {
+    // 控制台自管：令牌 / 测试发送 / 只读授权（已拆到 src/api/console-ops.js）
+    // 惰性创建：modeAllowed / agentTokenOk 等是后面才定义的 const，
+    // 在这里立即求值会 TDZ（真实踩过：Cannot access 'agentTokenOk' before initialization）
+    let consoleOpsInstance = null;
+    const getConsoleOps = () => (consoleOpsInstance ??= createConsoleOpsHandlers({
+      log, crypto, path, ROOT, stateDir: STATE_DIR,
+      readConfigObject, atomicWriteJson, atomicWriteText,
+      getCfg: () => cfg,
+      getCurrentMode: () => currentMode,
+      setConsoleToken: (v) => { consoleToken = v; },
+      SENSITIVE_RE, allowed, modeAllowed, escapeCqText, redactKnownTokensOnly,
+      agentTokenOk,
+      getBot: () => bot,
+      text
+    }));
     // 视频只读接口：已拆到 src/api/socialV2-video.js
     const socialVideo = createSocialV2VideoHandlers({
       log, videoLinkConfig, cookieHealth, describeRemaining, videoLinkToModelParts, v2ToolEnabled
@@ -4194,60 +4210,17 @@ async function main() {
         }
         // ── 控制台访问令牌（可手动修改/生成随机） ─────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/console/token') {
-          const body = await readBody();
-          let newToken = String(body.token ?? '').trim();
-          const generated = !newToken;
-          if (generated) {
-            newToken = crypto.randomBytes(24).toString('hex');
-          }
-          if (newToken.length < 16) {
-            sendJson({ ok: false, error: '控制台访问令牌至少需要 16 位；留空可生成随机令牌' }, 400);
-            return;
-          }
-          if (newToken.length > 128) {
-            sendJson({ ok: false, error: '控制台访问令牌不能超过 128 位' }, 400);
-            return;
-          }
-          if (!/^[A-Za-z0-9_-]+$/.test(newToken)) {
-            sendJson({ ok: false, error: '控制台访问令牌只能包含字母、数字、下划线或短横线' }, 400);
-            return;
-          }
-          const configFile = path.join(ROOT, 'config.json');
-          const file = readConfigObject(configFile);
-          // 手动令牌写入 config.json（用户可见、可再改）；随机令牌写入 state/console-token 并清空 config 中的手动值。
-          file.consoleToken = generated ? '' : newToken;
-          atomicWriteJson(configFile, file);
-          cfg.consoleToken = generated ? '' : newToken;
-          atomicWriteText(path.join(STATE_DIR, 'console-token'), newToken);
-          consoleToken = newToken;
-          log(`控制台：访问令牌已${generated ? '重新生成' : '手动修改'}（不记录完整值）`);
-          sendJson({ ok: true, token: newToken, generated });
-          return;
-        }
-        // ── 测试发送消息（强制走白名单校验） ───────────────────────────────────
+      await getConsoleOps().handleToken({ readBody, sendJson });
+      return;
+    }
+
+    // ── 测试发送消息（强制走白名单校验） ───────────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/test-send') {
-          const body = await readBody();
-          const kind = body.kind === 'private' ? 'private' : 'group';
-          const id = Number(body.id);
-          const message = String(body.message ?? '').trim();
-          if (!Number.isFinite(id) || id <= 0) { sendJson({ ok: false, error: '目标 id 无效' }, 400); return; }
-          if (!message) { sendJson({ ok: false, error: '消息不能为空' }, 400); return; }
-          if (SENSITIVE_RE.test(message)) { sendJson({ ok: false, error: '消息含敏感信息，已阻止发送' }, 403); return; }
-          if (!allowed(kind, id, cfg)) { sendJson({ ok: false, error: `目标不在白名单内（${kind} ${id}），请先加入白名单` }, 403); return; }
-          if (!modeAllowed(`${kind}:${id}`, kind, id, cfg, currentMode)) { sendJson({ ok: false, error: `当前模式（${currentMode}）不允许向 ${kind}:${id} 发送测试消息` }, 403); return; }
-          try {
-            const safeMessage = escapeCqText(redactKnownTokensOnly(message));
-            const result = kind === 'private'
-              ? await bot.sendPrivateMessage(id, text(safeMessage))
-              : await bot.sendGroupMessage(id, text(safeMessage));
-            log(`控制台：测试发送 ${kind}:${id} 成功`);
-            sendJson({ ok: true, kind, id, message_id: result?.message_id ?? result });
-          } catch (error) {
-            sendJson({ ok: false, error: `发送失败: ${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
-        // ── 一代仿真社交引擎（已迁出到 src/api/social.js）──────────────────────
+      await getConsoleOps().handleTestSend({ readBody, sendJson });
+      return;
+    }
+
+    // ── 一代仿真社交引擎（已迁出到 src/api/social.js）──────────────────────
         // POST /api/social/state、GET /api/social、POST /api/social、POST /api/social/flush
         if (url.pathname === '/api/social' || url.pathname === '/api/social/state' || url.pathname === '/api/social/flush') {
         }
@@ -4644,28 +4617,11 @@ async function main() {
           return;
         }
         if (req.method === 'POST' && url.pathname === '/api/authorize/read') {
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const token = String(body.token ?? '').trim();
-          const keyMatch = /^(group|private):(\d+)$/.exec(key);
-          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
-          if (!token || !agentTokenOk(key, token)) {
-            // 空 token 一律拒绝：该端点对 agent 流量开放（见 startConsoleServer 里的
-            // agent 白名单），而 MCP 的 agentApi 总是带着真实控制台令牌，
-            // 所以「不传 token 就跳过校验」等于把它变成免鉴权端点。
-            sendJson({ ok: false, error: token ? 'agent token 无效' : '缺少会话令牌；旧只读工具在需要令牌的模式下不可用，请改用带会话令牌的 v2 读工具' }, 403);
-            return;
-          }
-          const kind = keyMatch[1];
-          const id = Number(keyMatch[2]);
-          if (!Number.isFinite(id) || id <= 0 || !modeAllowed(key, kind, id, cfg, currentMode)) {
-            sendJson({ ok: false, error: '当前模式不允许读取该会话' }, 403);
-            return;
-          }
-          sendJson({ ok: true, key });
-          return;
-        }
-        // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
+      await getConsoleOps().handleAuthorizeRead({ readBody, sendJson });
+      return;
+    }
+
+    // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
         // ── 图片/表情查询端点（已迁出到 src/api/images.js） ──────────────────
         if (req.method === 'GET' && url.pathname === '/api/images/message') {
           await handleImages(req, url);
