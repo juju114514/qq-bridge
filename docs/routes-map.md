@@ -1,6 +1,6 @@
 # 路由与模块归属索引（自动生成）
 
-生成时间：2026-10-29T00:31:55.891Z
+生成时间：2026-10-29T00:34:30.499Z
 
 > **动路由前先看这里。** 生成：`node scripts/map-routes.mjs`
 
@@ -87,7 +87,7 @@
 > 注意：**很多模块自己不判断 url.pathname**，是被 bridge.js 的 if 链调用。
 > 所以「bridge 里有 if」不等于「没迁移」—— 判断依据是这里的「已装配」列。
 
-已装配 18 / 19 个模块。
+已装配 18 / 18 个模块。
 
 | 模块 | 行数 | 导出 | 装配位置 |
 | --- | --- | --- | --- |
@@ -106,7 +106,6 @@
 | `src/api/socialV2-wait.js` | 244 | createSocialV2WaitHandler | createSocialV2WaitHandler@L3820 |
 | `src/api/socialV2-write.js` | 759 | createSocialV2WriteHandler | createSocialV2WriteHandler@L3738 |
 | `src/api/status.js` | 78 | createStatusHandler | createStatusHandler@L3616 |
-| `src/api/sticker-curate.js` | 68 | createStickerCurateHandler | **未装配** |
 | `src/api/stickers.js` | 102 | createStickersHandler | createStickersHandler@L3832 |
 | `src/api/tokens.js` | 58 | createTokensHandler | createTokensHandler@L3843 |
 | `src/http/router.js` | 177 | createRouter | createRouter@L3899 |
