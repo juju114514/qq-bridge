@@ -9,6 +9,7 @@
 //
 // 文档：https://bot.q.qq.com/wiki/develop/api-v2/
 
+import { buildUploadBody, buildMediaMessage, pickFileInfo } from './official-media.js';
 const PROD_API = 'https://api.sgroup.qq.com';
 const SANDBOX_API = 'https://sandbox.api.sgroup.qq.com';
 const TOKEN_URL = 'https://bots.qq.com/app/getAppAccessToken';
@@ -245,6 +246,34 @@ export class OfficialQqBot {
     if (msgId) { body.msg_id = String(msgId); body.msg_seq = Number(msgSeq) || 1; }
     if (wakeup === true) body.is_wakeup = true;
     return this._post(`/v2/users/${encodeURIComponent(userOpenid)}/messages`, body);
+  }
+
+  /**
+   * 上传富媒体，拿 file_info（官方发多媒体是两步：先上传，再发 msg_type=7）。
+   * @param {'group'|'user'} kind
+   * @param {string} openid 群 openid 或用户 openid
+   * @param {{buffer?:Buffer, url?:string, fileType?:number}} opts
+   */
+  async uploadMedia(kind, openid, { buffer = null, url = '', fileType = 1 } = {}) {
+    const body = buildUploadBody({ fileType, buffer, url });
+    const seg = kind === 'group' ? 'groups' : 'users';
+    const res = await this._post('/v2/' + seg + '/' + encodeURIComponent(openid) + '/files', body);
+    const info = pickFileInfo(res);
+    if (!info) throw new Error('上传成功但没拿到 file_info：' + JSON.stringify(res).slice(0, 120));
+    return { fileInfo: info, ttl: res?.ttl ?? null, raw: res };
+  }
+
+  /** 群里发多媒体。被动回复传 msgId/msgSeq，主动发不传。 */
+  async sendGroupMedia(groupOpenid, fileInfo, { msgId = '', msgSeq = 0, content = '' } = {}) {
+    const body = buildMediaMessage({ fileInfo, msgId, msgSeq, content });
+    return this._post('/v2/groups/' + encodeURIComponent(groupOpenid) + '/messages', body);
+  }
+
+  /** 单聊多媒体，语义同上。 */
+  async sendC2CMedia(userOpenid, fileInfo, { msgId = '', msgSeq = 0, content = '', wakeup = false } = {}) {
+    const body = buildMediaMessage({ fileInfo, msgId, msgSeq, content });
+    if (wakeup === true) body.is_wakeup = true;
+    return this._post('/v2/users/' + encodeURIComponent(userOpenid) + '/messages', body);
   }
 
   /**

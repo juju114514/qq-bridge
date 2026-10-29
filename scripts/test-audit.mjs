@@ -148,6 +148,8 @@ const tests = [
   'test-private-access.mjs',
   // 网关自动选择：默认 SnowLuma、连续失败降级、回滞。
   'test-gateway-select.mjs',
+  // 官方通道富媒体：两步上传的请求构造与闸门（离线）。
+  'test-official-media.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
