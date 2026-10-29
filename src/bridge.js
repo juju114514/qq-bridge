@@ -44,7 +44,7 @@ import { createDecisionTrace } from './decision-trace.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
-import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ, markListed } from './people.js';
+import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ, markListed, setNote, removeNote, notesInScope, visibleNotes } from './people.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
 import { enrichBili, formatBiliEnrich } from './bili-enrich.js';
@@ -82,6 +82,7 @@ import { createPresetSimHandlers } from './api/preset-sim.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
+import { createPeopleNoteHandler } from './api/people-note.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
@@ -3606,6 +3607,16 @@ async function main() {
       redactKnownTokensOnly, slangEntries, SLANG_STATUS, createSlangEntry, publicSlangEntry,
       mergeEvidence, saveSlangStore, queueSlangTask, runSlangResearch
     }));
+
+    // 人物笔记读写：/api/socialV2/people-note（模型能记事、能纠错）
+    // 注意：必须在这个函数里创建 —— agentTokenOk / v2SessionAllowed 是 console 作用域的 const，
+    // 放到 main 那一层会 ReferenceError（真机 500 教训）。
+    let peopleNoteInstance = null;
+    const getPeopleNoteHandler = () => (peopleNoteInstance ??= createPeopleNoteHandler({
+      log, agentTokenOk, v2SessionAllowed, v2ToolEnabled,
+      loadPeopleDb, schedulePeopleSave,
+      setNote, removeNote, notesInScope, visibleNotes, levelOf, normalizeQQ
+    }));
     // 清空工作区：已拆到 src/api/workspace-reset.js（60+ 个集合，整体 clear）
     const workspaceReset = createWorkspaceResetHandler({
       log, fs, path, process, api, withTimeout, unwrap, DSH_CONTROL_TIMEOUT_MS, STATE_DIR,
@@ -4466,6 +4477,12 @@ async function main() {
         // 为什么需要这一条：qq-chat-v2 预设第 6 条明确要求「QQ 号从 qq_get_group_members 的
         // user_id 拿」，但旧版是无令牌工具、在 reserved2 下必然 403 —— 模型被自己的提示词
         // 引到一个永远失败的工具上（实测 turn10 白烧一步）。这里给它一个带会话令牌的 v2 形态。
+        // 人物笔记：add / list / clear（模型能记事、能纠错）
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/people-note') {
+          await getPeopleNoteHandler().handle({ req, sendJson, readBody });
+          return;
+        }
+
         if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {
       await getGroupMembersHandler().handle({ req, url, sendJson });
       return;
@@ -9144,6 +9161,7 @@ function scheduleWakeV2(key, reason) {
 
   // /status /role /silent /active + /自检：已拆到 src/incoming-status-commands.js
   // 决策追踪：/诊断 的数据来源（环形缓冲 80 条，重启即清；只记截断文本）
+
   const decisionTrace = createDecisionTrace({ max: 80 });
 
   let incomingStatusCommandsInstance = null;

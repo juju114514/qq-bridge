@@ -182,6 +182,8 @@ const tests = [
   'test-mux-tools.mjs',
   // 决策追踪：/诊断 的数据来源（环形缓冲 + 截断 + 按 key/ID 查）。
   'test-decision-trace.mjs',
+  // 人物笔记：add/list/clear + 权限（模型能记事、能纠错）。
+  'test-people-note.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

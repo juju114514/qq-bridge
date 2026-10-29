@@ -936,6 +936,41 @@ server.tool(
   }
 );
 
+    server.tool(
+      'qq_people_note',
+      '给群友/好友记一条**人物笔记**（跨会话生效），或查看、删除已有笔记。'
+      + '用它记住"这个人是谁、在意什么、说过什么关键的事"，比 qq_memory_append（会话级临时记忆）更长期。'
+      + 'scope 默认等于当前会话 key（这个人只在这个群的印象）；传 "global" 写整体印象。'
+      + '写错了就用 op="clear" 删掉，别留着错信息。',
+      {
+        qq: z.string().describe('要记的人的 QQ 号（从消息 userId 或 qq_get_group_members 拿）'),
+        text: z.string().optional().describe('笔记内容（≤200 字，短句；op=clear 时留空表示清空该作用域）'),
+        op: z.enum(['add', 'list', 'clear']).optional().describe('add（默认）记一条；list 看现有；clear 删一条'),
+        scope: z.string().optional().describe('作用域：留空=当前会话；也可传 group:<群号> 或 global'),
+        key: z.string().optional().describe('会话 key（一般由唤醒提示给出）'),
+        token: z.string().optional().describe('二代会话令牌')
+      },
+      async ({ qq, text, op, scope, key, token }) => {
+        const data = await agentApi('/api/socialV2/people-note', {
+          method: 'POST',
+          headers: token ? { 'x-agent-token': token } : {},
+          body: JSON.stringify({ key, qq, text, op: op || 'add', scope }),
+          timeoutMs: 10000
+        });
+        if (!data?.ok) {
+          return { content: [{ type: 'text', text: `笔记操作失败：${data?.error || '未知错误'}` }] };
+        }
+        if (data.op === 'list') {
+          const lines = data.inScope?.length ? data.inScope.map((t) => `· ${t}`) : ['（还没有笔记）'];
+          return { content: [{ type: 'text', text: `关于 ${data.qq} 的笔记（${data.level}，作用域 ${data.scope}）：\n${lines.join('\n')}` }] };
+        }
+        if (data.op === 'clear') {
+          return { content: [{ type: 'text', text: data.removed ? `已删掉一条笔记，剩 ${data.count} 条` : `没找到那条笔记（剩 ${data.count} 条）` }] };
+        }
+        return { content: [{ type: 'text', text: data.added ? `记住了（${data.scope}，共 ${data.count} 条）` : `这条已经记过了（共 ${data.count} 条）` }] };
+      }
+    );
+
 server.tool(
   'qq_memory_append',
   '记录一条轻量记忆：activeTopic=进行中的话题；pendingThought=你想说但还没说的话；memberImpression=对某位群友的印象；selfNote=你对自己表达方式/态度的微调（性格可以随聊天慢慢演化）。记忆会持久化，并在后续唤醒/qq_get_prompt 中自动出现。',

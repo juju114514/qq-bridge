@@ -181,6 +181,27 @@ export function setNote(db, { qq, scope, text, now = Date.now() } = {}) {
   return { added: true, scope: sc, count: p.notes[sc].length };
 }
 
+/**
+ * 删掉某条笔记（按原文精确匹配）。笔记载错了必须能改，否则只能 /reset 全清。
+ * @returns {{removed:boolean, scope:string, count:number}}
+ */
+export function removeNote(db, { qq, scope, text, now = Date.now() } = {}) {
+  const p = db.people?.[normalizeQQ(qq)];
+  const sc = normalizeScope(scope);
+  if (!sc) throw new Error(`作用域非法：${scope}（应为 group:<群号> / private:<QQ号> / global）`);
+  if (!p) return { removed: false, scope: sc, count: 0 };
+  const list = Array.isArray(p.notes?.[sc]) ? p.notes[sc] : [];
+  const body = String(text ?? '').trim();
+  const next = body ? list.filter((n) => n !== body) : [];
+  const removed = next.length !== list.length;
+  if (removed || !body) {
+    if (next.length) p.notes[sc] = next;
+    else if (p.notes) delete p.notes[sc];
+    db.updatedAt = Number(now) || Date.now();
+  }
+  return { removed, scope: sc, count: next.length };
+}
+
 /** 取某作用域的笔记（不做关系过滤）。 */
 export function notesInScope(db, qq, scope) {
   const p = db.people?.[normalizeQQ(qq)];
