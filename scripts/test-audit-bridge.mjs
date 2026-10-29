@@ -9,7 +9,40 @@ async function test(name, run) {
   catch (error) { failures++; console.error('FAIL', name, error.message); }
   finally { await h.close(); }
 }
-await test('closed-agent session is not reused after switching to chat', async (h) => {
+  // 管理员命令必须真的能跑通 —— 拆分时最容易漏"定义它的那行"。
+  // 真实事故（2026-10-30 00:55）：公开命令块搬走后 cmdText 没了来源，
+  // /自检 报 buildSelfCheckReport is not defined、/like 报 cmdText is not defined。
+  await test('owner 私聊发 /自检 能拿到桥接生成的报告（不是模型编的）', async (h) => {
+    h.cfg.ownerQQ = '10001';
+    // 必须在允许范围内，否则 handleIncoming 会在权限检查处提前 return
+    h.cfg.allow = { groups: [], private: ['10001'] };
+    const event = {
+      post_type: 'message', message_type: 'private', sub_type: 'friend',
+      user_id: '10001', self_id: '3976372760', message_id: 1, time: 1,
+      raw_message: '/自检', message: [{ type: 'text', data: { text: '/自检' } }],
+      sender: { user_id: '10001', nickname: '主人' }
+    };
+    await h.handleIncoming('private', '10001', event, h.cfg);
+    const msgs = h.calls.sent.map((c) => String(c.message ?? c.text ?? c));
+    const hit = msgs.find((s) => s.includes('【自检】'));
+    assert.ok(hit, `应该回【自检】报告，实际发了：${JSON.stringify(msgs).slice(0, 200)}`);
+    assert.match(hit, /DSH：/);
+  });
+
+  await test('owner 私聊发裸「自检」也能识别（不带斜杠）', async (h) => {
+    h.cfg.ownerQQ = '10001';
+    // 必须在允许范围内，否则 handleIncoming 会在权限检查处提前 return
+    h.cfg.allow = { groups: [], private: ['10001'] };
+    const event = {
+      post_type: 'message', message_type: 'private', sub_type: 'friend',
+      user_id: '10001', self_id: '3976372760', message_id: 2, time: 1,
+      raw_message: '自检', message: [{ type: 'text', data: { text: '自检' } }],
+      sender: { user_id: '10001', nickname: '主人' }
+    };
+    await h.handleIncoming('private', '10001', event, h.cfg);
+    assert.ok(h.calls.sent.map((c) => String(c.message ?? c.text ?? c)).some((s) => s.includes('【自检】')), '裸「自检」也要能用');
+  });
+  await test('closed-agent session is not reused after switching to chat', async (h) => {
   h.setMode('closed-agent');
   const privileged = await h.ensureSession('private:123');
   h.setMode('chat');

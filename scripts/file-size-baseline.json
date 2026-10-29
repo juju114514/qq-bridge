@@ -33,7 +33,7 @@
     "src/api/whitelist.js": 64,
     "src/audio-transcribe.js": 86,
     "src/bili-enrich.js": 176,
-    "src/bridge.js": 10948,
+    "src/bridge.js": 10955,
     "src/config.js": 420,
     "src/conv-key.js": 36,
     "src/core/session-router.mjs": 624,

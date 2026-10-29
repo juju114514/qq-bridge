@@ -76,6 +76,7 @@ import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
+import { buildSelfCheckReport } from './selfcheck.js';
 import { createIncomingCommands } from './incoming-commands.js';
 import { createIncomingStatusCommands } from './incoming-status-commands.js';
 import { createSendHandler } from './api/send.js';
@@ -9492,7 +9493,17 @@ function scheduleWakeV2(key, reason) {
     }
 
     // 公开命令 + 首次人设引导：已拆到 src/incoming-commands.js
+    // /自检 与「自检」：管理员限定，**不要求斜杠**。
+    // 放在公开命令之前：否则首次使用的人设菜单、快捷命令块都可能先把它吞掉。
+    if (isOwner && /^[\/／]?(自检|selfcheck)$/i.test(String(plainContent ?? '').trim())) {
+      if (await getIncomingStatusCommands().handleStatusCommands({ key, kind, id, plainContent: '/自检' })) return;
+    }
     if (await getIncomingCommands().handlePublic({ key, kind, isOwner, plainContent })) return;
+    // cmdText：公开命令块已搬到 src/incoming-commands.js，这里必须自己定义。
+    // 真实事故（2026-10-30 00:55）：搬走后 /like /song /空间评论 全报
+    // "cmdText is not defined" —— 因为拆分时只搬了"用到它的那段"，没搬"定义它的那行"。
+    const cmdText = String(plainContent ?? '').trim().replace(/^(@\S+\s*)+/, '').trim();
+
     // 管理员快捷命令：/like 与 /song
     if (isOwner && plainContent.startsWith('/')) {
       const likeCmd = /^\/like\s+(\d{5,12})(?:\s+(\d{1,2}))?\s*$/i.exec(cmdText);
@@ -9607,10 +9618,6 @@ function scheduleWakeV2(key, reason) {
       }
     }
 
-    // /自检 与「自检」：管理员限定，**不要求斜杠**（用户两种都发过）
-    if (isOwner && /^[\/／]?(自检|selfcheck)$/i.test(String(plainContent ?? '').trim())) {
-      if (await getIncomingStatusCommands().handleStatusCommands({ key, kind, id, plainContent: '/自检' })) return;
-    }
 
     // 管理命令：仅管理员（ownerQQ）可用，且由桥接直接执行（硬性，不经过模型）
     if (plainContent.startsWith('/')) {
