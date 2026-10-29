@@ -66,6 +66,7 @@ import { createSocialV2InspectHandler } from './api/socialV2-inspect.js';
 import { createConsoleNotifyHandler } from './api/console-notify.js';
 import { createVoiceSendHandler } from './api/voice-send.js';
 import { createWhitelistHandler } from './api/whitelist.js';
+import { createSecurityHandler } from './api/security.js';
 import { createSendHandler } from './api/send.js';
 import { createSessionsHandler } from './api/sessions.js';
 import { createTokensHandler } from './api/tokens.js';
@@ -4240,42 +4241,16 @@ async function main() {
         }
 
         // ── 安全拦截通知设置 ─────────────────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/security') {
-          sendJson({
-            security: cfg.security ?? { interceptNotify: true },
-            // state/ 的 ACL 收紧结果：Windows 上改 ACL 需要管理员权限，未提权时会失败。
-            // 控制台据此显示警告与可复制的命令（而不是让用户以为已经安全）。
-            // 命令必须取自 state-acl 的**安全**版本：把 (OI)(CI) 授权和 /T 混在一句里
-            // 会把子文件 DACL 清空，用户照抄就会把自己的 state/ 弄坏。
-            stateDir: {
-              hardened: stateDirHardened,
-              path: STATE_DIR,
-              manualCommand: process.platform === 'win32'
-                ? manualDirCommand(STATE_DIR)
-                : `chmod 700 "${STATE_DIR}"`
-            }
-          });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/security') {
-          const body = await readBody();
-          // 支持从控制台**重试**收紧 state/ 权限（用户在管理员终端里配好了权限/换了启动方式后）。
-          if (body.rehardenStateDir === true) {
-            stateDirHardened = null;
-            hardenStateDirAcl();
-            sendJson({ ok: stateDirHardened === true, hardened: stateDirHardened, path: STATE_DIR });
-            return;
-          }
-          const configFile = path.join(ROOT, 'config.json');
-          const file = readConfigObject(configFile);
-          const next = { ...(file.security ?? {}), ...body };
-          if (typeof next.interceptNotify === 'boolean') next.interceptNotify = next.interceptNotify;
-          else if (next.interceptNotify !== undefined) next.interceptNotify = Boolean(next.interceptNotify);
-          file.security = next;
-          atomicWriteJson(configFile, file);
-          cfg.security = { ...(cfg.security ?? {}), ...next };
-          log(`控制台：安全拦截通知已更新（interceptNotify=${cfg.security.interceptNotify}）`);
-          sendJson({ ok: true, security: cfg.security });
+        if (url.pathname === '/api/security') {
+          await createSecurityHandler({
+            sendJson, readBody, log,
+            getCfg: () => cfg, rootDir: ROOT, path, crypto,
+            stateDir: STATE_DIR,
+            getStateDirHardened: () => stateDirHardened,
+            setStateDirHardened: (v) => { stateDirHardened = v; },
+            manualDirCommand, hardenStateDirAcl,
+            readConfigObject, atomicWriteJson
+          })(req, url);
           return;
         }
         // ── 控制台访问令牌（可手动修改/生成随机） ─────────────────────────────
