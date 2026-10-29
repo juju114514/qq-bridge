@@ -9247,7 +9247,7 @@ function scheduleWakeV2(key, reason) {
     const resolveReply = (messageId) => resolveReplyInfo(kind, id, messageId, event.self_id);
     // textContent 带引用对象信息，供 DSH 判断“这句话在对谁说”；
     // plainContent 只保留当前消息自己的文字，用于命令/指向性判断，避免被引用原文干扰。
-    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
+    let textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
     let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
     const mediaList = extractMediaFromSegments(event.message ?? []);
     const messageRef = String(event.message_id ?? event.msg_id ?? event.message_seq ?? '');
@@ -9275,6 +9275,31 @@ function scheduleWakeV2(key, reason) {
     const roleState = gateResult.roleState;
     // 半截搬迁教训：这个变量后面（唤醒判定）还要用，必须一起接住
     const quoteTargetIsSelf = gateResult.quoteTargetIsSelf;
+
+    // 抖音链接自动附元数据（可关：socialV2.media.video.links.autoMeta = false）
+    // 为什么放在闸门之后：只处理"确实要进模型"的消息，被拦掉的（静默/待答/空消息）不必浪费请求。
+    // 为什么默认只取元数据：下载视频是风控高危动作，一句"这是谁的什么视频"用不着下整条片。
+    if (cfg.socialV2?.media?.video?.links?.autoMeta !== false && /douyin\.com/i.test(String(textContent ?? ''))) {
+      try {
+        const linkMatch = String(textContent).match(/https?:\/\/(?:v\.douyin\.com\/[\w-]+|www\.douyin\.com\/video\/\d+)/i);
+        if (linkMatch) {
+          const meta = await resolveDouyinMeta(linkMatch[0], {
+            cookiesFile: videoLinkConfig().cookiesPath,
+            key: `auto-meta:${key}`,
+            timeoutMs: 8000
+          });
+          if (meta.ok) {
+            const extra = formatDouyinMeta(meta);
+            if (extra) textContent = `${textContent}\n\n${extra}`;
+            log(`[douyin] 已自动附元数据（${key}）：${meta.author || '?'} / ${String(meta.title || meta.desc || '').slice(0, 30)}`);
+          } else if (meta.code !== 'cooldown') {
+            log(`[douyin] 元数据获取失败（${key}）：${meta.error}`);
+          }
+        }
+      } catch (error) {
+        log(`[douyin] 自动附元数据异常：${error?.message ?? error}`);
+      }
+    }
 
     // 控制类话语：仅管理员（ownerQQ）可下达；群友触发直接拦截
     if (!isOwner && /进入角色扮演|退出角色扮演|切换角色|设置角色|改角色|换角色|关闭角色扮演|开启角色扮演/.test(plainContent)) {
