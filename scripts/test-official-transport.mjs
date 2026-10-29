@@ -143,7 +143,8 @@ check('bridge：官方通道默认关闭；开启后事件走同一个 handleInc
   // 语音/表情在官方通道上必须明确拒绝，而不是把 openid 塞进 Number()
   assert.match(bridge, /__official\?\.atBot === true/, '官方 @ 必须在唤醒判定里被认出来（否则静默不回复）');
   assert.match(bridge, /官方通道暂不支持发送语音/);
-  assert.match(bridge, /官方通道暂不支持发表情包/);
+  // 表情包已接入官方富媒体（2026-10-29）：断言从「必须报错」改成「必须调用 sendImage」
+  assert.match(bridge, /officialTransport\.sendImage\(kind, id, image\.buffer/, '官方发表情要走富媒体');
   // loadConfig 是逐字段装配的：新配置段必须显式登记，否则 config.json 里写什么都读不到
   assert.match(read('src/config.js'), /official:\s*\{/, 'loadConfig 必须登记 official 段（现位于 src/config.js）');
   const cfg = JSON.parse(read('config.example.json'));

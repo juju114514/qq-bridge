@@ -2163,7 +2163,18 @@ async function main() {
     }
     segments.push({ type: 'image', data: { file: 'base64://' + image.buffer.toString('base64') } });
     if (isOfficialId(id)) {
-      throw new Error('官方通道暂不支持发表情包（官方富媒体需先上传，尚未接入）');
+      // 官方通道也能发表情了：图已经在上面下载好（image.buffer），
+      // 直接走富媒体两步（上传 → msg_type=7），和发图片同一条路。
+      if (!officialTransport) throw new Error('官方通道未启用（config.official.enabled=false）');
+      try {
+        const sent = await officialTransport.sendImage(kind, id, image.buffer, { fileName: `sticker-${String(entry.id).slice(0, 16)}.png` });
+        log(`[official] 已发送表情（${kind}）：${entry.id} ${image.buffer.length} 字节`);
+        return { message_id: sent?.id ?? '', official: true, sticker: entry.id };
+      } catch (error) {
+        const reason = String(error?.message ?? error);
+        log(`[official] 发表情失败（${entry.id}）：${reason}`);
+        throw new Error(`官方通道发表情失败：${reason}`);
+      }
     }
     const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
     const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
