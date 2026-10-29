@@ -49,6 +49,13 @@ export function buildSelfCheckReport(snap = {}) {
   const slAge = sl.lastEventAt ? now - Number(sl.lastEventAt) : null;
   lines.push(`· 网关(SnowLuma)：${okMark(sl.connected)}${sl.connected ? '' : '（收不到群消息）'}${slAge !== null ? `，上次消息 ${humanDuration(slAge)} 前` : ''}`);
 
+  // 重连次数：只在实际发生过时显示（0 次说"重连 0 次"是噪音）
+  const reconnects = Number(sl.reconnects) || 0;
+  if (reconnects > 0) {
+    const lossAge = sl.lastLossAt ? now - Number(sl.lastLossAt) : null;
+    lines.push(`· 网关重连：⚠️ ${reconnects} 次${lossAge !== null ? `（最近 ${humanDuration(lossAge)} 前）` : ''}`);
+  }
+
   const off = snap.official || {};
   if (off.enabled) lines.push(`· 官方通道：${okMark(off.ready)}${off.ready ? '' : '（官方消息收发不可用）'}`);
 

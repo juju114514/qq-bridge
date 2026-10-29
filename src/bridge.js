@@ -9346,7 +9346,7 @@ function scheduleWakeV2(key, reason) {
           startedAt: bridgeStartedAt,
           mode: currentMode,
           dshReady,
-          snowluma: { connected: Boolean(bot), lastEventAt: lastInboundAtMs },
+          snowluma: { connected: Boolean(bot), lastEventAt: lastInboundAtMs, reconnects: gatewayReconnects, lastLossAt: gatewayLastLossAt },
           official: { enabled: Boolean(officialTransport), ready: officialTransport?.ready === true },
           queues: {
             queued: queued.size,
@@ -10626,6 +10626,24 @@ function scheduleWakeV2(key, reason) {
     accessToken: cfg.snowluma.accessToken || undefined,
     reconnect: true
   });
+
+  // 网关断线计数：/自检 要能回答"网关断过几次"，而不是让模型靠印象编。
+  // 真实事故（2026-10-30 00:51）：用户问网关为什么断，模型只能含糊说"断过几次"。
+  let gatewayReconnects = 0;
+  let gatewayLastLossAt = 0;
+  try {
+    bot.on('close', () => {
+      gatewayReconnects += 1;
+      gatewayLastLossAt = Date.now();
+      log('[gateway] WS 断开，等待自动重连');
+    });
+    bot.on('error', (error) => log(`[gateway] WS 错误：${error?.message ?? error}`));
+    bot.on('open', () => {
+      if (gatewayLastLossAt) log(`[gateway] WS 已恢复（累计断开 ${gatewayReconnects} 次）`);
+    });
+  } catch (error) {
+    log(`⚠️ 网关断线计数挂载失败：${error?.message ?? error}`);
+  }
 
   bot.onPrivateMessage(async (event) => {
     // 统一按字符串比较：网关可能把 id 序列化成 number/string 混用，

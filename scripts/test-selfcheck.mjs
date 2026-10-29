@@ -79,6 +79,24 @@ check('shortStatus：群友版本只有一行，不含内部细节', () => {
   assert.ok(!m.shortStatus({ dshReady: false }).includes('网关'));
 });
 
+
+check('网关重连过：标 ⚠️ 并给出最近一次时间（0 次时不显示）', () => {
+  const now = 10_000_000;
+  const withLoss = m.buildSelfCheckReport({
+    now, startedAt: now - 3600_000, dshReady: true,
+    snowluma: { connected: true, reconnects: 3, lastLossAt: now - 120_000 },
+    queues: {}
+  });
+  assert.match(withLoss, /网关重连：⚠️ 3 次/);
+  assert.match(withLoss, /最近 2分0秒 前/);
+
+  const noLoss = m.buildSelfCheckReport({
+    now, startedAt: now - 3600_000, dshReady: true,
+    snowluma: { connected: true, reconnects: 0 }, queues: {}
+  });
+  assert.ok(!noLoss.includes('网关重连'), '0 次不该出现这一行');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
