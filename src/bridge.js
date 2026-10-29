@@ -39,6 +39,7 @@ import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
+import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
 import { CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
 import { enrichBili, formatBiliEnrich } from './bili-enrich.js';
@@ -9069,9 +9070,35 @@ async function main() {
     return TIMER_WAKE_REASONS.has(String(reason ?? '').split(':')[0]);
   }
 
+  // 静默时段：配置读一次就缓存，避免每条消息都解析；配置变化时按签名重算。
+  let quietRangeCache;
+  let quietRangeCacheRaw;
+  function quietRangeV2() {
+    const raw = cfg.socialV2?.quietHours ?? null;
+    const sig = JSON.stringify(raw);
+    if (sig === quietRangeCacheRaw) return quietRangeCache;
+    quietRangeCacheRaw = sig;
+    try {
+      quietRangeCache = parseQuietHours(raw);
+    } catch (error) {
+      quietRangeCache = null;
+      log(`⚠️ 静默时段配置无效，已按“不静默”处理：${error?.message ?? error}`);
+    }
+    return quietRangeCache;
+  }
+
   function scheduleWakeV2(key, reason) {
     if (cfg.socialV2?.enabled === false) return;
     if (socialV2.paused) return;
+    // 静默时段：只拦“自己去搭话”的唤醒（定时器/概率/@），管理员指令与引导照旧。
+    // 消息本身已在 handleIncoming 里记录，醒来后仍能看到这段时间发生了什么。
+    {
+      const range = quietRangeV2();
+      if (range && shouldSilenceWake(reason) && inQuietHours(Date.now(), range)) {
+        log(`[reserved2] 静默时段（${String(range[0]).padStart(2, '0')}:00~${String(range[1]).padStart(2, '0')}:00），跳过唤醒 ${key}（${reason}）`);
+        return;
+      }
+    }
     if (!isSessionAllowedInCurrentMode(key)) {
       log(`[reserved2] 跳过计划唤醒 ${key}（${reason}）：会话已不在当前模式允许范围内`);
       return;

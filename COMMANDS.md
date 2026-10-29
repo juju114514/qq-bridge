@@ -97,6 +97,7 @@
 | --- | --- |
 | `socialV2.privateLimit.dailyPerUser` | 非管理员私聊每天最多条数，`0` = 不限 |
 | `socialV2.paused` | 暂停 AI 回复（夜间省钱） |
+| `socialV2.quietHours` | 静默时段，如 `[23, 8]`；期间消息照常记录但不唤醒（`admin`/`bootstrap` 除外），`null` 关闭 |
 | `role.maxInjectChars` | 人设最大注入字数 |
 | `socialV2.wakeConfig.triggers` | 唤醒条件（@、关键词、拍一拍、概率） |
 
