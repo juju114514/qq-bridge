@@ -180,7 +180,15 @@ export function createOfficialTransport(opts = {}) {
     if (!check.ok) throw new Error(`官方通道发图失败：${check.reason}`);
 
     const target = lastInbound.get(officialId(openid));
-    const msgId = shouldUsePassiveWindow(target, { proactive: opts.proactive }) ? target.msgId : '';
+    const passive = shouldUsePassiveWindow(target, { proactive: opts.proactive });
+    const msgId = passive ? target.msgId : '';
+    // msg_seq 必须**递增且不重复**：官方同一 msg_id 最多回 5 条，重复序号直接 400
+    // （真机踩过：文本回复用掉 seq=1 后，发图用 1 会被判"消息被去重"）
+    const msgSeq = passive && msgId ? bot.seqTracker.next(msgId) : null;
+    if (passive && msgId && msgSeq === null) {
+      // 被动次数用完：退回主动消息（多数机器人无权限，但让上层看到真实错误比静默失败好）
+      opts = { ...opts, proactive: true };
+    }
     const fileName = String(opts.fileName ?? '').trim()
       || `image-${Date.now()}.${check.mime === 'image/png' ? 'png' : 'jpg'}`;
 
@@ -189,11 +197,13 @@ export function createOfficialTransport(opts = {}) {
     });
 
     // 立刻发：不要在这里做任何 await 之外的耗时操作（ttl 很短）
+    const useMsgId = opts.proactive === true ? '' : msgId;
+    const useSeq = opts.proactive === true ? 0 : (msgSeq ?? 0);
     if (kind === 'group') {
-      return bot.sendGroupMedia(openid, up.fileInfo, { msgId, content: opts.content ?? '' });
+      return bot.sendGroupMedia(openid, up.fileInfo, { msgId: useMsgId, msgSeq: useSeq, content: opts.content ?? '' });
     }
     return bot.sendC2CMedia(openid, up.fileInfo, {
-      msgId, content: opts.content ?? '', wakeup: opts.wakeup === true
+      msgId: useMsgId, msgSeq: useSeq, content: opts.content ?? '', wakeup: opts.wakeup === true
     });
   }
 
