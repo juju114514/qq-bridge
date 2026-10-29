@@ -74,6 +74,7 @@ import { createSocialV2PromptHandler } from './api/socialV2-prompt.js';
 import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
+import { createPresetSimHandlers } from './api/preset-sim.js';
 import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
@@ -3583,6 +3584,14 @@ async function main() {
   }
 
   function startConsoleServer() {
+    // 仿真预设提示词：读/写/备份/还原（已拆到 src/api/preset-sim.js）
+    const presetSim = createPresetSimHandlers({
+      log, fs, path,
+      knownPresetName, PRESET_NAMES, PRESET_BACKUP_DIR,
+      readPresetPromptText, renderPresetPromptYaml, presetStatus, presetPromptWarnings, presetPromptBlockers,
+      extractPresetPrefix, backupPresetFile, listPresetBackups,
+      atomicWriteText, presetSourceYaml, installedPresetYaml
+    });
     // 控制台自管：令牌 / 测试发送 / 只读授权（已拆到 src/api/console-ops.js）
     // 惰性创建：modeAllowed / agentTokenOk 等是后面才定义的 const，
     // 在这里立即求值会 TDZ（真实踩过：Cannot access 'agentTokenOk' before initialization）
@@ -4038,119 +4047,23 @@ async function main() {
 
         // ── 仿真提示词（一代 / 二代各自的预设内置提示词）──────────────────────
         if (req.method === 'GET' && url.pathname === '/api/preset/sim-prompt') {
-          const preset = knownPresetName(url.searchParams.get('preset'));
-          if (!preset) { sendJson({ ok: false, error: `未知预设（只支持 ${Object.values(PRESET_NAMES).join(' / ')}）` }, 400); return; }
-          try {
-            const { prefix } = readPresetPromptText(preset);
-            sendJson({
-              ok: true,
-              content: prefix,
-              chars: prefix.length,
-              bytes: Buffer.byteLength(prefix, 'utf8'),
-              warnings: presetPromptWarnings(prefix),
-              status: presetStatus(preset),
-              presets: Object.values(PRESET_NAMES).map((n) => presetStatus(n)),
-            });
-          } catch (error) {
-            sendJson({ ok: false, error: error?.message ?? '读取预设失败', status: presetStatus(preset) }, 500);
-          }
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/preset/sim-prompt') {
-          const body = await readBody();
-          const preset = knownPresetName(body.preset);
-          if (!preset) { sendJson({ ok: false, error: `未知预设（只支持 ${Object.values(PRESET_NAMES).join(' / ')}）` }, 400); return; }
-          let nextText;
-          try {
-            const { text, prefix } = readPresetPromptText(preset);
-            // 内容没变就不要写：写回会把折叠块规整成字面量块（值不变但排版变化），
-            // 让一次"打开又保存"把整个提示词块变成全删全加的 diff，失去可复审性。
-            const normalized = String(body.content ?? '').replace(/\r\n/g, '\n').replace(/\n+$/, '');
-            if (normalized === prefix) {
-              sendJson({ ok: true, unchanged: true, chars: prefix.length, warnings: presetPromptWarnings(prefix), synced: fs.existsSync(installedPresetYaml(preset)), requiresRestart: false, status: presetStatus(preset) });
-              return;
-            }
-            nextText = renderPresetPromptYaml(text, body.content, preset === PRESET_NAMES.v1 ? 'v1' : 'v2');
-          } catch (error) {
-            sendJson({ ok: false, error: error?.message ?? '校验失败' }, 400);
-            return;
-          }
-          const warnings = presetPromptWarnings(body.content);
-          let sourceBackup = null;
-          try {
-            sourceBackup = backupPresetFile(preset);
-            atomicWriteText(presetSourceYaml(preset), nextText);
-            // 同步到 DSH 实际读取的安装目录。
-            // 注意：安装副本**不做仓库内备份**——它的内容与刚写好的源文件一致，
-            // 备份它等于把含本机绝对路径的快照塞进仓库工作区，没有额外价值。
-            const installed = installedPresetYaml(preset);
-            if (fs.existsSync(installed)) {
-              fs.copyFileSync(presetSourceYaml(preset), installed);
-            }
-          } catch (error) {
-            // 尽力回滚源文件，避免留下半截状态
-            if (sourceBackup && fs.existsSync(sourceBackup)) {
-              try { fs.copyFileSync(sourceBackup, presetSourceYaml(preset)); } catch {}
-            }
-            sendJson({ ok: false, error: `写入失败：${error?.message ?? error}` }, 500);
-            return;
-          }
-          log(`控制台：${preset} 仿真提示词已更新（${String(body.content ?? '').length} 字符）${warnings.length ? `，${warnings.length} 条警告` : ''}；需重启 DSH 生效`);
-          sendJson({
-            ok: true,
-            chars: String(body.content ?? '').length,
-            warnings,
-            synced: fs.existsSync(installedPresetYaml(preset)),
-            requiresRestart: true,
-            status: presetStatus(preset),
-          });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/preset/sim-prompt/backups') {
-          const preset = knownPresetName(url.searchParams.get('preset'));
-          if (!preset) { sendJson({ ok: false, error: `未知预设（只支持 ${Object.values(PRESET_NAMES).join(' / ')}）` }, 400); return; }
-          try {
-            sendJson({ ok: true, backups: listPresetBackups(preset) });
-          } catch (error) {
-            sendJson({ ok: false, error: error?.message ?? '读取备份失败' }, 500);
-          }
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/preset/sim-prompt/restore') {
-          const body = await readBody();
-          const preset = knownPresetName(body.preset);
-          if (!preset) { sendJson({ ok: false, error: `未知预设（只支持 ${Object.values(PRESET_NAMES).join(' / ')}）` }, 400); return; }
-          try {
-            const requested = String(body.file ?? '').trim();
-            const candidates = listPresetBackups(preset).map((b) => b.file);
-            const target = requested || candidates[0];
-            // 只允许还原本预设目录下的备份文件，拒绝任何路径穿越
-            if (!target || !candidates.includes(target)) { sendJson({ ok: false, error: '没有可用的备份' }, 400); return; }
-            const backupPath = path.join(PRESET_BACKUP_DIR, target);
-            const restored = fs.readFileSync(backupPath, 'utf8');
-            const restoredPrefix = extractPresetPrefix(restored);
-            if (restoredPrefix === null) { sendJson({ ok: false, error: '备份内容不是有效的预设文件' }, 400); return; }
-            // 还原路径必须与保存路径同样严格：旧备份可能来自安全基线加入之前，
-            // 直接还原会把弱化版提示词（缺「你没有本地工具」等不变量）写回去。
-            // 不变量清单**按预设取**：一代本来就没有「你没有本地工具」这类工具面表述。
-            const blockers = presetPromptBlockers(restoredPrefix, preset === PRESET_NAMES.v1 ? 'v1' : 'v2');
-            if (blockers.length) {
-              sendJson({ ok: false, error: `该备份不满足当前的安全不变量，拒绝还原：${blockers.join('；')}` }, 400);
-              return;
-            }
-            backupPresetFile(preset);
-            atomicWriteText(presetSourceYaml(preset), restored);
-            const installed = installedPresetYaml(preset);
-            if (fs.existsSync(installed)) fs.copyFileSync(presetSourceYaml(preset), installed);
-            log(`控制台：${preset} 仿真提示词已还原自备份 ${target}；需重启 DSH 生效`);
-            sendJson({ ok: true, restoredFrom: target, requiresRestart: true });
-          } catch (error) {
-            sendJson({ ok: false, error: error?.message ?? '还原失败' }, 500);
-          }
-          return;
-        }
+      await presetSim.handleGetPrompt({ url, sendJson });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/preset/sim-prompt') {
+      await presetSim.handleSavePrompt({ readBody, sendJson });
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/preset/sim-prompt/backups') {
+      await presetSim.handleListBackups({ url, sendJson });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/preset/sim-prompt/restore') {
+      await presetSim.handleRestore({ readBody, sendJson });
+      return;
+    }
 
-        // ── 黑话库管理 ──────────────────────────────────────────────────────
+    // ── 黑话库管理 ──────────────────────────────────────────────────────
         // ── 黑话系统（已迁出到 src/api/slang.js）────────────────────────────────
         // 14 条路由命中：/api/slang, /clear, /batch-{delete,confirm,reject},
         // /api/slang/:id (PATCH/DELETE), /:id/{confirm,reject}, /extract, /research, /config
