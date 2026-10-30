@@ -9498,7 +9498,12 @@ function selfCheckSnapshot() {
                 // 以前这里只发 QQ、不写日志：出问题时 bridge.log 里什么都没有，排查只能靠猜（PR #24）。
                 log(`⚠️ agent 处理出错 (${key})：${safeMsg}`);
                 appendActivity(`${key} agent 处理出错：${safeMsg.slice(0, 80)}`);
-                await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
+                // 是否把技术报错推到 QQ：默认**推**（排查期有用），但可以用
+                // socialV2.notifyAgentErrors=false 关掉 —— 换第三方模型时这类
+                // 「No API key / context overflow / 无可用渠道」会刷屏，且对群友没意义。
+                if (cfg.socialV2?.notifyAgentErrors !== false) {
+                  await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
+                }
                 if (isFarewell) {
                   const st = socialState(key);
                   if (st.phase === 'exiting') {

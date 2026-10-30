@@ -268,3 +268,85 @@ POST /v1/chat/completions → 503 {"error":{"message":"未配置供应商"}}
 | Bedrock（GPT/Claude） | ❌ 未测 | ❌ 未测 | 缺 `ABSK…` 或 AWS AK/SK |
 
 **生产配置保持不变：`deepseek-official / deepseek-flash`。**
+
+---
+
+# 追加（06:50）：暴喵已弃用；改用 MiMo 直连；qwen-max 工具调用**通过**
+
+## 一、暴喵（暴喵AI管家）结论：坑，已全部移除
+
+| 动作 | 状态 |
+| --- | --- |
+| DSH 里的 `baomiao` provider | ✅ 已删除 |
+| `~/.dsh/.credentials.yaml` 的 `BAOMIAO_API_KEY` | ✅ 已删除 |
+| 真机 `config.json` | 已切回 `deepseek-official`（从未长期停留） |
+
+**为什么是坑**：
+
+1. 界面写 Claude / Claude Official，**实际后端是小米 MiMo**（它自己回答"我是 MiMo"）；
+2. 用 `mimo-v2.6-pro` 直接请求被拒：`503 当前分组 aimgr 下对于模型 mimo-v2.6-pro 无可用渠道`；
+3. 上下文窗口极小（声明 200K → overflow，32K 才勉强）；
+4. 每轮收尾经常空文本；
+5. 报错还会被推到 QQ（`No API key` / `无可用渠道` / `context overflow` 三条连着刷）。
+
+**教训**：中转站先问一句"你是哪个模型"，再决定要不要付钱。
+
+## 二、小米 MiMo 有**官方** OpenAI 兼容 API（不需要中转）
+
+探测结果：
+
+```
+GET https://api.xiaomimimo.com/v1/models
+→ 401 {"error":{"message":"Invalid API Key","param":"Please provide valid..."}}
+```
+
+**401 而不是 404，说明端点在**。控制台在 `https://platform.xiaomimimo.com`（可正常打开）。
+
+已预置 provider（等 key 就能用）：
+
+```yaml
+      mimo:
+        displayName: 小米 MiMo（官方 API，需 MIMO_API_KEY）
+        apiKeyEnv: MIMO_API_KEY
+        api: openai-completions
+        baseURL: https://api.xiaomimimo.com/v1
+        models:
+          - id: mimo-v2.6-pro
+            contextWindow: 131072
+            maxTokens: 8192
+```
+
+> DSH 只在 `MIMO_API_KEY` 已配置时才把该 provider 列进目录 —— 所以现在目录里看不到它，属正常。
+
+## 三、qwen-max：工具调用**通过**（重要）
+
+实测（真机，owner 私聊，测完已切回）：
+
+```
+06:43:56  已设置会话模型 … -> dashscope/qwen-max (默认)
+06:44:14  mcp__snowluma__qq_list_stickers  ok=True     ← 工具真的跑通了
+06:44:47  [AI 内部输出] 拿到 3 个表情。                 ← 收尾正常
+```
+
+对比：
+| 模型 | 工具调用 | 收尾文本 |
+| --- | --- | --- |
+| qwen-flash | ✅ 调起，**token 传错**（403） | — |
+| qwen-plus | ✅ 调起，token 仍错 | — |
+| **qwen-max** | ✅ **ok=True** | ✅ 正常 |
+| MiMo（经暴喵） | ✅ ok=True | ⚠️ 常空 |
+| DeepSeek | ✅ | ✅ |
+
+**结论：千问系里 `qwen-max` 是可用的**，`flash/plus` 不行。`dashscope` 目录已加 `qwen-max`。
+
+## 四、顺手加了个开关：不再把技术报错刷到 QQ
+
+新增 `socialV2.notifyAgentErrors`（默认 `true` 保持原行为）：
+
+```json
+"socialV2": { "notifyAgentErrors": false }
+```
+
+**真机已设为 `false`** —— 换第三方模型时 `No API key` / `context overflow` / `无可用渠道`
+这类消息对群友毫无意义，只会刷屏。要排查时临时改回 `true` 即可。
+日志与活动记录**不受影响**（`bridge.log` 和 `/api/socialV2/activity` 里照旧有）。
