@@ -84,7 +84,7 @@ export function createHandlers(deps) {
 ## 四、每一步的固定动作（不许跳）
 
 ```
-1. 备份：Copy-Item src\bridge.js D:\QQBot\temp\bridge.js.bak-<步骤名>
+1. 备份：Copy-Item src\bridge.js D:\qq-bridge\.tmp\bridge.js.bak-<步骤名>
 2. 先跑一遍快照：node scripts/snapshot-prompt.mjs --save
 3. 改 → node --check → node scripts/test-audit.mjs（必须 69/69）
 4. 部署到 live → 重启 → 看日志（桥接已启动 / SnowLuma 已连接 / DSH 已就绪）

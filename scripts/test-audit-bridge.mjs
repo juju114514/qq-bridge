@@ -18,7 +18,7 @@ async function test(name, run) {
     h.cfg.allow = { groups: [], private: ['10001'] };
     const event = {
       post_type: 'message', message_type: 'private', sub_type: 'friend',
-      user_id: '10001', self_id: '3976372760', message_id: 1, time: 1,
+      user_id: '10001', self_id: '10000', message_id: 1, time: 1,
       raw_message: '/自检', message: [{ type: 'text', data: { text: '/自检' } }],
       sender: { user_id: '10001', nickname: '主人' }
     };
@@ -35,7 +35,7 @@ async function test(name, run) {
     h.cfg.allow = { groups: [], private: ['10001'] };
     const event = {
       post_type: 'message', message_type: 'private', sub_type: 'friend',
-      user_id: '10001', self_id: '3976372760', message_id: 2, time: 1,
+      user_id: '10001', self_id: '10000', message_id: 2, time: 1,
       raw_message: '自检', message: [{ type: 'text', data: { text: '自检' } }],
       sender: { user_id: '10001', nickname: '主人' }
     };
@@ -49,7 +49,7 @@ await test('owner 发 /诊断 能看到最近消息的决策链', async (h) => {
   h.cfg.allow = { groups: [], private: ['10001'] };
   const mk = (id, text) => ({
     post_type: 'message', message_type: 'private', sub_type: 'friend',
-    user_id: '10001', self_id: '3976372760', message_id: id, time: 1,
+    user_id: '10001', self_id: '10000', message_id: id, time: 1,
     raw_message: text, message: [{ type: 'text', data: { text } }],
     sender: { user_id: '10001', nickname: '主人' }
   });
@@ -68,13 +68,13 @@ await test('被闸门拦掉的消息，/诊断 能说出拦截原因', async (h)
   // 空文本会被闸门拦下（这是最典型的"发了但没反应"）
   const emptyEvent = {
     post_type: 'message', message_type: 'private', sub_type: 'friend',
-    user_id: '10001', self_id: '3976372760', message_id: 201, time: 1,
+    user_id: '10001', self_id: '10000', message_id: 201, time: 1,
     raw_message: '', message: [], sender: { user_id: '10001', nickname: '主人' }
   };
   await h.handleIncoming('private', '10001', emptyEvent, h.cfg);
   const diagEvent = {
     post_type: 'message', message_type: 'private', sub_type: 'friend',
-    user_id: '10001', self_id: '3976372760', message_id: 202, time: 1,
+    user_id: '10001', self_id: '10000', message_id: 202, time: 1,
     raw_message: '/诊断', message: [{ type: 'text', data: { text: '/诊断' } }],
     sender: { user_id: '10001', nickname: '主人' }
   };

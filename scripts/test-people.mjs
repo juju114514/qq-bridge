@@ -31,7 +31,7 @@ check('cleanName：去控制字符/换行并限长', () => {
 });
 
 check('normalizeScope：三种作用域，其余为空', () => {
-  assert.equal(m.normalizeScope('group:659013538'), 'group:659013538');
+  assert.equal(m.normalizeScope('group:123456789'), 'group:123456789');
   assert.equal(m.normalizeScope('private:10001'), 'private:10001');
   assert.equal(m.normalizeScope('global'), 'global');
   assert.equal(m.normalizeScope('group:abc'), '');
@@ -40,10 +40,10 @@ check('normalizeScope：三种作用域，其余为空', () => {
 
 check('① 身份只认 QQ 号：改群名片不新增人，只更新名片', () => {
   const db = m.emptyDb(T0);
-  m.touchPerson(db, { qq: '10001', groupId: '659013538', displayName: '旧名片', now: T0 });
-  m.touchPerson(db, { qq: '10001', groupId: '659013538', displayName: '新名片', now: T0 + 1000 });
+  m.touchPerson(db, { qq: '10001', groupId: '123456789', displayName: '旧名片', now: T0 });
+  m.touchPerson(db, { qq: '10001', groupId: '123456789', displayName: '新名片', now: T0 + 1000 });
   assert.equal(Object.keys(db.people).length, 1, '应该还是同一个人');
-  assert.equal(db.people['10001'].names.byGroup['659013538'], '新名片');
+  assert.equal(db.people['10001'].names.byGroup['123456789'], '新名片');
   assert.equal(db.people['10001'].relation.msgCount, 2);
 });
 
@@ -75,9 +75,9 @@ check('② 首次部署存量标 listed，不是 stranger', () => {
 
 check('笔记按作用域隔离 + 去重 + 上限', () => {
   const db = m.emptyDb(T0);
-  m.setNote(db, { qq: '10001', scope: 'group:659013538', text: '这个群聊游戏', now: T0 });
-  m.setNote(db, { qq: '10001', scope: 'group:659013538', text: '这个群聊游戏', now: T0 });
-  assert.deepEqual(m.notesInScope(db, '10001', 'group:659013538'), ['这个群聊游戏'], '重复不新增');
+  m.setNote(db, { qq: '10001', scope: 'group:123456789', text: '这个群聊游戏', now: T0 });
+  m.setNote(db, { qq: '10001', scope: 'group:123456789', text: '这个群聊游戏', now: T0 });
+  assert.deepEqual(m.notesInScope(db, '10001', 'group:123456789'), ['这个群聊游戏'], '重复不新增');
   m.setNote(db, { qq: '10001', scope: 'private:10001', text: '喜欢被叫小A', now: T0 });
   assert.deepEqual(m.notesInScope(db, '10001', 'global'), [], '别的域看不到');
   assert.throws(() => m.setNote(db, { qq: '10001', scope: 'nope', text: 'x' }), /作用域非法/);

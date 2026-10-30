@@ -12,7 +12,7 @@
 //   node scripts/official-probe.mjs                     # 监听 90 秒
 //   node scripts/official-probe.mjs --seconds 180
 //   node scripts/official-probe.mjs --send-test <group_openid>   # 额外测一次主动消息
-//   node scripts/official-probe.mjs --creds D:\QQBot\temp\official.json
+//   node scripts/official-probe.mjs --creds D:\qq-bridge\.tmp\official.json
 //
 // 凭证文件（默认 state/official.json，已被 .gitignore 排除）：
 //   { "appid": "102xxxxx", "secret": "xxxx", "sandbox": false }

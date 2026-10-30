@@ -10,7 +10,7 @@
 
     1) Edge/Chrome 装扩展「Get cookies.txt LOCALLY」
     2) 打开 douyin.com（已登录状态），点扩展 → Export → 存成 cookies.txt
-    3) 跑本脚本：powershell -File scripts\set-video-cookies.ps1 -File D:\QQBot\temp\douyin-cookies.txt
+    3) 跑本脚本：powershell -File scripts\set-video-cookies.ps1 -File D:\qq-bridge\.tmp\douyin-cookies.txt
 
   本脚本做四件事：
     · 校验文件形态（Netscape 格式、看起来属于目标站点、行数够）
@@ -28,7 +28,7 @@
   期望的域名片段（默认 douyin.com）。
 
 .EXAMPLE
-  powershell -File scripts\set-video-cookies.ps1 -File D:\QQBot\temp\douyin-cookies.txt
+  powershell -File scripts\set-video-cookies.ps1 -File D:\qq-bridge\.tmp\douyin-cookies.txt
 
 .NOTES
   退出码：0 = 配置好且试跑成功；1 = cookies 无效/试跑失败；2 = 参数或环境问题。
@@ -52,7 +52,7 @@ if (-not $Root) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.M
 # 体会：扩展导出时默认落在「下载」里，文件名形如 www.douyin.com_cookies.txt，
 # 让用户再抄路径是多余的摩擦 —— 直接按"最近 2 小时内改动的 *cookie*.txt"挑最新的。
 if (-not $File) {
-  $dirs = @((Join-Path $env:USERPROFILE 'Downloads'), (Join-Path $env:USERPROFILE 'Desktop'), 'D:\QQBot\temp')
+  $dirs = @((Join-Path $env:USERPROFILE 'Downloads'), (Join-Path $env:USERPROFILE 'Desktop'), $env:TEMP)
   $since = (Get-Date).AddHours(-6)
   $hits = @()
   foreach ($d in $dirs) {
@@ -76,7 +76,7 @@ if (-not $File) {
   $hits = @($hits | Sort-Object LastWriteTime -Descending)
   if ($hits.Count -eq 0) {
     Bad '没找到最近导出的 cookies 文件'
-    Info '请用扩展「Get cookies.txt LOCALLY」在 douyin.com 上导出，存到「下载」或 D:\QQBot\temp\ 即可；'
+    Info '请用扩展「Get cookies.txt LOCALLY」在 douyin.com 上导出，存到「下载」或 D:\qq-bridge\.tmp\ 即可；'
     Info '也可以直接指定：-File <路径>'
     exit 2
   }

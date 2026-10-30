@@ -70,9 +70,9 @@ if (!Array.isArray(quiet) || quiet.length !== 2 ||
   "people": {
     "123456789": {
       "qq": "123456789",
-      "names": { "global": "小A", "byGroup": { "659013538": "群名片A" } },
+      "names": { "global": "小A", "byGroup": { "123456789": "群名片A" } },
       "relation": { "level": "acquaintance", "firstSeenAt": 0, "lastSeenAt": 0, "msgCount": 0 },
-      "notes": { "global": ["喜欢被叫小A"], "group:659013538": ["在这个群聊游戏"] },
+      "notes": { "global": ["喜欢被叫小A"], "group:123456789": ["在这个群聊游戏"] },
       "history": [{ "kind": "join", "at": 0 }]
     }
   }

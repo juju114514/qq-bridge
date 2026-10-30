@@ -53,7 +53,7 @@
 
 ```powershell
 # 唱一句
-powershell -File D:\QQBot\launcher\sing.ps1 -Lyric "小鲸鱼游啊游" -Style 儿歌 -Target private:1599683156
+powershell -File D:\QQBot\launcher\sing.ps1 -Lyric "小鲸鱼游啊游" -Style 儿歌 -Target private:123456789
 # 唱某首歌的副歌（自动从网易云取歌词）
 powershell -File D:\QQBot\launcher\sing.ps1 -Song "晴天" -Style 流行
 ```
@@ -238,14 +238,14 @@ train.train ... -bs 1 -g 0                       # batch 必须 1
 
 ```powershell
 # A. 说话（7 种情绪，音色 zh-CN-XiaoyiNeural，整体抬音高做"童声基线"）
-powershell -File D:\QQBot\launcher\speak.ps1 -Text "晚安啦" -Mood 温柔 -Target private:1599683156
+powershell -File D:\QQBot\launcher\speak.ps1 -Text "晚安啦" -Mood 温柔 -Target private:123456789
 
 # B. 唱歌（TTS 变调，6 种曲风；跑调最有节目效果）
-powershell -File D:\QQBot\launcher\sing.ps1 -Lyric "小鲸鱼游啊游" -Style 跑调 -Target private:1599683156
+powershell -File D:\QQBot\launcher\sing.ps1 -Lyric "小鲸鱼游啊游" -Style 跑调 -Target private:123456789
 #    产出：audio\gen\sing_1027093252.mp3（22.4 KB，约 3 秒）
 
 # C. 点歌（截 45 秒）
-powershell -File D:\QQBot\launcher\song.ps1 -Name "孤勇者" -Seconds 45 -Target private:1599683156
+powershell -File D:\QQBot\launcher\song.ps1 -Name "孤勇者" -Seconds 45 -Target private:123456789
 #    产出：audio\music\孤勇者_222038.mp3（274 KB）
 
 # D. 换声翻唱（本机环境存在，但当前会失败在导出/没有模型）

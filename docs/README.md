@@ -44,6 +44,20 @@
 | [guides/MIGRATION.md](guides/MIGRATION.md) | **换一台机器**：哪些能带走 / 哪些必须丢（`sessions.json` 的 sessionId、DPAPI 备份）、新机器必须重做的四件事（DSH 端口与凭据、预设、外部工具路径、白名单）、按顺序检错的七步 | ✅ 2026-10-27 |
 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) | **安全基线与威胁模型**：威胁主体、已实现的边界（准入/工具面/出站/控制台/落盘/网络）、已知残余风险、发布前回归清单、改动检查单 | ✅ **改动安全相关代码前必读**（2026-09-20 新增） |
 
+## validation/ 与 sessions/ —— 实测记录与现场（越新越权威）
+
+> 规矩：**没实测过的，不写"已支持"**。这一节就是"实测过什么"的账本。
+
+| 文档 | 一句话说明 | 状态 |
+| --- | --- | --- |
+| [ROUTES.md](ROUTES.md) | **路由总表**（自动生成）：109 条模块路由 + 仍在 bridge 内联的条目，附行号。改路由后跑 `node scripts/gen-route-index.mjs --write` | ✅ 由 `check-route-index-fresh.mjs` 守住新鲜度 |
+| [validation/regression-2026-10-31.md](validation/regression-2026-10-31.md) | 波次 4 拆完 5 批后的**整体回归**：干净克隆 113/113 + 46 条 GET 端点探测（404/400 逐条解释） | ✅ |
+| [validation/live-endpoints-2026-10-31.md](validation/live-endpoints-2026-10-31.md) | **8 条"真发"端点实测**（发消息/语音/点歌/表情同步/长轮询），含每条的日志证据；顺带抓到 `/api/voice/send` 长期 500 | ✅ 含未覆盖项说明 |
+| [validation/dirty-env-2026-10-31.md](validation/dirty-env-2026-10-31.md) | **脏环境七场景**：坏状态文件/垃圾字段/`__proto__`/坏 config/双实例/.tmp 残留/脏端口 | ✅ 并据此加了 `consolePort` 校验 |
+| [validation/clean-clone-2026-10-31.md](validation/clean-clone-2026-10-31.md) | 干净克隆 + 全量审计（证明"没有只有本机能过的测试"） | ✅ |
+| [sessions/2026-10-31.md](sessions/2026-10-31.md) | 那一夜的会话记录：10 批迁移明细、12 个真缺陷、自己犯的 5 个错 | ✅ |
+| [plan-2026-11-01.md](plan-2026-11-01.md) | 次日计划：脏环境一键脚本、波次 5、红包提示词接线、历史清理的取舍 | 📋 待执行 |
+
 ## design/ —— 设计与规划（读设计意图用）
 
 > ⚠️ 本目录被 `.gitignore` 排除（见 FOLDER_MAP 第三节）：只在本机可见，公开仓库里是死链。

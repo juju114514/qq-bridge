@@ -1,7 +1,7 @@
 # 真发端点实测 · 2026-10-31 04:00
 
 波次 4 剩下 8 条"必须真发东西才能验证"的端点，逐条实打了一遍。
-全部发到 **owner 私聊**或经授权后的群 `630679184`，不打扰其它群。
+全部发到 **owner 私聊**或经授权后的群 `123456789`，不打扰其它群。
 
 ## 一、结果
 
@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | `POST /api/send/private` | ✅ 200 | 日志 `[send] /api/send/private private:…: 成功 1/1 条` |
 | `POST /api/voice/send` | ✅ 200（**修了 3 个 bug 才通**） | `已发送语音 bieji.mp3（2秒 · 12.1 KB, messageId=151113528）` |
-| `POST /api/send/group`（群 630679184） | ✅ 200 | `[send] /api/send/group group:630679184: 成功 1/1 条` |
+| `POST /api/send/group`（群 123456789） | ✅ 200 | `[send] /api/send/group group:123456789: 成功 1/1 条` |
 | `POST /api/send/reply`（非法 id） | ✅ 400 且原因明确 | `无法解析被引用消息，请确认 message id 正确…` |
 | `POST /api/socialV2/sticker-list` | ✅ 200 | `total: 66, matched: 66`（触发了一次 OneBot 同步） |
 | `POST /api/socialV2/wait`（1s） | ✅ 200 | `{ purpose:"messages", arrived:false, timeout:true, waitedMs:5294 }` |

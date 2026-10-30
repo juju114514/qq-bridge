@@ -20,8 +20,8 @@ function check(name, fn) {
 }
 
 check('数字 id：群/私聊都解析成 Number', () => {
-  assert.deepEqual(parseConvKey('group:630679184'), { kind: 'group', id: 630679184, official: false });
-  assert.deepEqual(parseConvKey('private:1599683156'), { kind: 'private', id: 1599683156, official: false });
+  assert.deepEqual(parseConvKey('group:123456789'), { kind: 'group', id: 123456789, official: false });
+  assert.deepEqual(parseConvKey('private:123456789'), { kind: 'private', id: 123456789, official: false });
 });
 
 check('官方 id：openid 原样保留成字符串，official=true', () => {

@@ -25,14 +25,14 @@
 `SnowLuma` 是第三方程序，必须用户自己启动并登录 —— 守护**只探测** `:3000/:3001`，
 不代启、不代停（设计不变量 L6）。完整契约见 [docs/guides/LAUNCHER.md](docs/guides/LAUNCHER.md)。
 
-## 当前状态快照（2026-10-27）
+## 当前状态快照（2026-10-31）
 
 | 项 | 值 |
 | --- | --- |
 | 入口 | Windows：`start-bridge.ps1`（[LAUNCHER.md](docs/guides/LAUNCHER.md)）；Linux：`deploy/install-server.sh` + systemd |
-| 自检（离线） | `node scripts/test-audit.mjs` → **88 套**（**以脚本输出为准**，本数字随版本更新）；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
+| 自检（离线） | `node scripts/test-audit.mjs` → **115 套**（**以脚本输出为准**，本数字随版本更新）；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
 | 自测（活的） | `powershell -File scripts\live-full-test.ps1` → **54 项**（只发 ownerQQ 私聊；`-MaxSends` 限流；会自动处理「AI 暂停」与 agentToken） |
-| 代码结构 | `src/bridge.js`（约 1.1 万行，当前 10,771；以 `wc -l` 为准，主循环 + 唤醒状态机）、`src/api/*`（14 个域 handler）、`src/http/*`（响应/请求体/前导关/路由表） |
+| 代码结构 | `src/bridge.js`（当前 **10,050**，硬上限 10,800；以 `wc -l` 为准，主循环 + 唤醒状态机）、`src/api/*`（14 个域 handler）、`src/http/*`（响应/请求体/前导关/路由表） |
 | 人格 | 身份在文件 front matter：`roles/<任意文件名>.md` 里 `id:` + `name:`。state 只存 id，**改名不影响绑定**（`test-role-id.mjs` 钉住） |
 | 协议层 | 自带 `src/onebot-ws.js`（Node 内置 WebSocket）；**不依赖 `@snowluma/*`**，也不修改任何第三方包 |
 | 契约 | [COMPAT.md](COMPAT.md)（人读）+ [compat.json](compat.json)（机器读），`test-compat.mjs` 保证两者与代码一致 |
@@ -153,6 +153,24 @@ Select-String -Path state\bridge.log -Pattern 'is not defined|事件流中断|Re
 - 只读端点可以随时探；**写端点要么带正确 body，要么用 `--dry-run`/只读等价物**。
 - 金标准是 `scripts/snapshot-prompt.mjs --diff` 的输出，**不是 HTTP 状态码**。
 - 真被写坏了：`POST /api/role {"role":"<角色显示名>"}` 可以恢复（日志里有"角色已清除"可追溯）。
+
+
+### 硬性规则 5：推之前跑隐私守卫
+
+```powershell
+node scripts/check-privacy.mjs
+```
+
+它会拦四类东西：**不该被跟踪的文件**（state/config/official.json/备份）、**本机私有路径**
+（工作区目录、开发目录、`C:\Users\<你>`）、**令牌形态字符串**、以及本机 deny-list
+（`$env:QQB_PRIVACY_DENY`，逗号分隔，**不进仓库**）。
+
+> 由来（2026-10-31）：收工扫描发现**主人的真实 QQ、机器人的真实 QQ、被授权群的群号**
+> 已经跟着文档示例和测试夹具推上 GitHub 好几个提交，还有 8 个文件里写着本机目录。
+> 这类信息**一旦进历史，改 HEAD 是清不掉的** —— 只能在推之前拦。
+
+规矩：文档示例一律用占位（`123456789`、`<你的QQ号>`、`D:\qq-bridge`），
+真实凭证只放 `state/`（已 gitignore）。
 
 ## 常见坑（你先知道，能省几轮）
 

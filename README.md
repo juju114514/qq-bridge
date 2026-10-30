@@ -12,6 +12,7 @@
 
 | 你现在的环境 | 能不能直接用 | 怎么做 |
 | --- | --- | --- |
+| 2026-10-31 | **波次 4 收官**：`bridge.js` 11,236 → **10,050** 行，内联路由 **41 → 1 条**（棘轮只许减），审计 88 → **115** 个脚本；新增路由总表 [docs/ROUTES.md](docs/ROUTES.md) 与**隐私守卫** `check-privacy.mjs`；真机实测 8 条"真发"端点（发消息/语音/点歌），脏环境七场景全过 | [docs/sessions/2026-10-31.md](docs/sessions/2026-10-31.md) |
 | **已装 NapCat**（AstrBot / 其它方案常带） | ✅ **不用换网关** | `gateway-select` 自动识别 SnowLuma 与 NapCat，谁在跑用谁；一个挂了自动降级，带 60 秒冷却不回跳 |
 | 已装 SnowLuma | ✅ 主通道 | 默认就走它 |
 | 正在用 **AstrBot** | ✅ 可以共存 | 先开只读模式试跑，两条轨道互不影响 → [迁移指南](docs/guides/MIGRATE-FROM-ASTRBOT.md) |

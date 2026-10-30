@@ -83,7 +83,7 @@ powershell -File scripts\install-skills.ps1 -Name caveman -Uninstall
 
 ```powershell
 # 1) 拿上游（只接受纯 markdown、零脚本、不联网的技能）
-git clone --depth 1 <repo> D:\QQBot\temp\<name>-src
+git clone --depth 1 <repo> D:\qq-bridge\.tmp\<name>-src
 # 2) vendored 进仓库（带许可证 + NOTICE + 改动说明）
 copy ...\skills\<name>\SKILL.md  skills\<name>\SKILL.md
 # 3) 登记 skills\README.md 的表格（来源/commit/许可证/改动）

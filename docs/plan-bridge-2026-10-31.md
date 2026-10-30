@@ -128,7 +128,7 @@ turn/start → tool/call → tool/result → turn/end
 
 ```powershell
 # 1) 备份
-Copy-Item src\bridge.js D:\QQBot\temp\bridge.js.bak-<名字>
+Copy-Item src\bridge.js D:\qq-bridge\.tmp\bridge.js.bak-<名字>
 
 # 2) 改完自检
 node --check src\bridge.js
