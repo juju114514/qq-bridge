@@ -4483,7 +4483,7 @@ async function main() {
         if (await handleExtraRoutes({
           req, url, sendJson,
           // 惰性：只在命中路由时求值（否则每请求一次，VM 注入不全时会 ReferenceError）
-  deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ })
+  deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, allowed, resolveMode: () => currentMode })
         })) return;
 
         if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {

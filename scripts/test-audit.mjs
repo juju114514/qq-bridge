@@ -194,6 +194,8 @@ const tests = [
   'test-tool-version.mjs',
   // 人物库列表：搜索 / 档位筛 / 排序 / scope 笔记。
   'test-people-list.mjs',
+  // 定时任务：validateTarget 契约 / 规则解析 / 登记+投递 / 白名单拒绝 / 落盘。
+  'test-scheduler.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
