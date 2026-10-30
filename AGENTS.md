@@ -142,6 +142,18 @@ Select-String -Path state\bridge.log -Pattern 'is not defined|事件流中断|Re
 原因是真踩过：`decideReplyAction` 的 import 因为脚本中途异常没落盘，
 `node --check` 通过、审计 97/97 通过，线上却每个回合都 `事件流中断`。
 
+### 硬性规则 4：联调探针不要 POST 到"会写状态"的端点
+
+2026-10-31 03:00 事故：为了验证"删掉墓碑后控制台还正常"，我拿
+`{"key":"private:1","level":"info","message":"..."}` 去 POST `/api/role`。
+该端点只要 body.role 不是字符串就走"清除角色"分支 —— 于是**人格被清空**，
+表现是黄金快照 4 处差异（`role.hint` 从整张角色卡变成空串），而接口全部返回 200。
+
+规矩：
+- 只读端点可以随时探；**写端点要么带正确 body，要么用 `--dry-run`/只读等价物**。
+- 金标准是 `scripts/snapshot-prompt.mjs --diff` 的输出，**不是 HTTP 状态码**。
+- 真被写坏了：`POST /api/role {"role":"<角色显示名>"}` 可以恢复（日志里有"角色已清除"可追溯）。
+
 ## 常见坑（你先知道，能省几轮）
 
 | 坑 | 说明 |
