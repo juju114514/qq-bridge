@@ -420,3 +420,21 @@ GET https://api.xiaomimimo.com/v1/models
 - 模型：`deepseek-official / deepseek-flash`
 - `socialV2.notifyAgentErrors: false`（技术报错不再刷 QQ）
 - dashscope 目录：`qwen-flash` / `qwen-plus` / `qwen-max`
+
+---
+
+# 定案（2026-10-31 07:00）：选 C —— 继续用 DeepSeek
+
+| 项 | 决定 |
+| --- | --- |
+| 生产模型 | **`deepseek-official / deepseek-flash`**（不改） |
+| 千问 | 目录里保留 `qwen-flash / qwen-plus / qwen-max`，**备查**，不切 |
+| 暴喵 | **已彻底移除**（坑：假 Claude，实为 MiMo；窗口小；报错刷 QQ） |
+| MiMo 官方 | provider 已预置，等 `MIMO_API_KEY` 才启用 |
+| Bedrock | 目录里保留 193 个模型，缺 `ABSK`/AWS 凭据 |
+| 技术报错推送 | `socialV2.notifyAgentErrors: false`（不再刷 QQ） |
+
+**以后想临时换模型**：只改 `config.json` 的 `dsh.provider` / `dsh.model` 两行 + 重启桥接，
+不需要改代码（`ensureChatModel` 会自动处理不支持思考强度的模型）。
+
+想换之前先看这份文档的"三条路线最终结论"表，别重复踩坑。
