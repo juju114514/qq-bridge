@@ -33,6 +33,35 @@
 | R. 杀软 / 安全软件干扰 | [R](#r-杀软--安全软件干扰) |
 | S. 维护 / 隐私 / 风控 | [S](#s-维护--隐私--风控) |
 | T. 安全事件与越权 | [T](#t-安全事件与越权) |
+| **官方通道（q.qq.com）排错** | [OFFICIAL-QQ.md 第九节](docs/guides/OFFICIAL-QQ.md#九排错官方通道) |
+
+---
+
+## 症状 → 节号（AI 和人都先看这张表）
+
+| 症状关键词 | 去哪节 |
+| --- | --- |
+| `1006` 反复重连 / 连上就断 | D2、运维指南 §4 |
+| `401` 但端口确实对 | N1 |
+| `dshReady=false` | C1 |
+| 能发不能收（发得出去，收不到消息） | D5、运维指南 §17 |
+| 群里 @ 了不回 | E.0、官方通道见 [OFFICIAL-QQ 第九节](docs/guides/OFFICIAL-QQ.md#九排错官方通道) |
+| 日志里**没有** `[official]` 前缀 | 说明不是官方通道那条腿 → E |
+| `msg_seq` / 「消息被去重」 | [OFFICIAL-MEDIA 坑 3](docs/guides/OFFICIAL-MEDIA.md) |
+| 「主动消息失败/无权限」 | [OFFICIAL-MEDIA 坑 4](docs/guides/OFFICIAL-MEDIA.md) |
+| `paused: true` / 只回管理员 | E2 |
+| 只读降级 / `503` | M1 |
+| 图片发不出去 / 表情失效 | H1、H2 |
+| 语音没声音 / 点了不放 | H5、[SINGING](docs/guides/SINGING.md) |
+| 控制台打不开 / 令牌不对 | I1、I2 |
+| 升级后行为变了 | J0–J3、[UPGRADE.md](docs/UPGRADE.md) |
+| 磁盘涨 / 内存高 | K1、K2 |
+| 状态文件损坏 | M2、M3 |
+| 被杀软拦 / 文件被删 | R1–R3 |
+| 怀疑越权 / 事件响应 | T1–T4 |
+
+> 找不到对应症状时：先 `node scripts/test-audit.mjs` 看是不是环境问题，
+> 再按 [三条最快的定位路径](#附三条最快的定位路径) 跑一遍。
 
 ---
 
@@ -236,7 +265,7 @@ node src\bridge.js
 3. **2026-10-27 起不需要这么麻烦了**：守护超时后不再退出，而是每 60 秒慢探一次，
    SnowLuma 一登录就自动启动桥接（`-SnowlumaPollSeconds 0` 可恢复旧行为）
 4. DSH 端口在 SnowLuma 起来之前也可能变过 —— 顺手核对 `config.json` 的 `dsh.baseUrl`
-   与 DSH 实际监听端口（本例：54694 → 65452，见 C1/C2）
+   与 DSH 实际监听端口（示例：`<旧端口>` → `<新端口>`，**每次启动都不同，不要写死**；见 C1/C2）
 
 ### C1. 控制台 `dshReady=false`
 
@@ -367,6 +396,10 @@ node scripts/verify-adaptation.mjs  # 或 npm run verify:adaptation
 ---
 
 ## E. 能连上但不回话
+
+> **官方通道（q.qq.com）的报错不在这份文档里** —— 那是一条独立的腿。
+> 先看日志有没有 `[official]` 前缀：有 → 去 [OFFICIAL-QQ.md 第九节 排错](docs/guides/OFFICIAL-QQ.md#九排错官方通道)；
+> 没有 → 就是本节的 SnowLuma 那条腿。
 
 ### E.0 先查「AI 是不是被暂停了」（2026-10 实测踩过，最容易被忽略）
 
@@ -736,7 +769,7 @@ node src\mcp-snowluma-safe.js
 这句话来自桥接：**DSH 连不上**（`dshReady=false`），消息进队列等它恢复。
 
 最常见的原因只有一个：**DSH 每次启动都换一个随机回环端口**
-（实测 54694 → 65452 → 50075）。以前要手动把新端口写进 `config.json` 的 `dsh.baseUrl` 再重启桥接，
+（实测会连续漂：`<旧端口>` → `<新端口>` → `<再一个>`，同样**不要写死**）。以前要手动把新端口写进 `config.json` 的 `dsh.baseUrl` 再重启桥接，
 而 QQ 侧的症状完全指不到这里。
 
 **2026-10-28 起桥接会自己修**：连不上时先问系统「DSH 在听哪个端口」
@@ -1415,92 +1448,6 @@ npm audit fix          # 小心：可能升级大版本
 
 ---
 
-## 附：这次审计补进来的缺口（自查表）
-
-| 缺口 | 现在在哪 |
-| --- | --- |
-| state JSON 损坏 / 只读降级 503 | M1 |
-| 磁盘写满 ENOSPC | M2 |
-| 升级后 state 结构迁移 | M3 |
-| 备份 / 恢复 | M4 |
-| Cookie 生命周期 / 密钥轮换 / 持续 401 | N1 |
-| 系统时间错误 | N2 |
-| 代理变量污染 localhost | N3 |
-| 防火墙 / 杀软 | N4 |
-| IPv6 / DNS | N5 |
-| 三个 MCP server 故障 | O1 |
-| 联网搜索失败 | O2 |
-| ASR（Python） | O3 |
-| 仓库外语音工具 | O4 |
-| 平台级 429 | O5 |
-| 多实例 / 多账号冲突 | P1 |
-| 日志增长 | P2 |
-| 崩溃恢复 | P3 |
-| 配置被静默收敛 | P4 |
-| 安全事件处置 | P5 |
-| npm audit | P6 |
-| 升级检查单 | Q |
-
----
-
----
-
-## S. 官方通道（QQ Bot · q.qq.com）
-
-> 官方通道与 SnowLuma 是**两条独立的腿**，排障时先分清「哪条腿不说话」：
-> 看 `state/bridge.log` 里有没有 `[official]` 前缀。
-
-### S1. 群里 @ 了它，桥接日志只有「收到 群消息」，然后什么都没发生
-
-按版本对应的**五个坑**逐个对：
-
-| # | 症状 | 根因 | 修法 |
-| --- | --- | --- | --- |
-| 1 | 收到事件但不唤醒 | 官方 @ 是网关**在事件层**剥掉的，`message` 里没有 `at` 段 → 被判"没人叫我" | 唤醒判定认 `event.__official.atBot` |
-| 2 | 启用了但一条 `[official]` 日志都没有 | `loadConfig()` 是逐字段装配的，漏登记 `official` 段 | 在 loadConfig 里登记 `official` |
-| 3 | 收到后静默丢弃 | 会话 key 的正则只认数字：`/^(group|private):(\d+)$/` → `group:official-<openid>` 不匹配 | `canonicalV2Key` / `isSessionAllowedInCurrentMode` 放行 `official-` |
-| 4 | 只 @ 不说话就完全没反应 | `content` 为空，被"空消息"分支丢掉 | 官方 `atBot` 且正文为空时合成一句上下文 |
-| 5 | 发送工具报「目标不在当前模式允许范围内」 | 守卫短路：`!Number.isFinite(id)` 对字符串 id 恒为 true，压根没走到白名单 | `typeof id !== 'string' && ...` |
-
-一句话自检：`grep '\[official\]' state/bridge.log`，如果连「进入处理」都没有，问题在 1/2；
-有「进入处理」但没有后续，问题在 3/4/5。
-
-### S2. 官方会话里模型说「我这边没有 qq_* 工具」
-
-几乎都是 **DSH 的 MCP 注入被关掉了**（搬目录/重装后常见）：
-
-```powershell
-Get-Content "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" | Select-String 'qq-bridge MCP'
-```
-
-- 有输出 → MCP 区块在，问题是没重启 DSH（工具清单是**启动快照**）
-- 没输出 → 区块被改名成了 `.disabled` / `.with-mcp`，把它恢复回 `cordis.patch.yml`，然后重启 DSH
-
-恢复后必须重启 DSH，并且**新建会话**才会看到 `mcp__snowluma__qq_*`。
-
-### S3. 被唤醒后 5 分钟不说话（界面显示「深度求索中」）
-
-模型把「沉睡前观察」当成回复前置，直接开 300 秒等待。桥接侧有**首回复闸门**：
-本轮还没发过话就请求 >= `preSleepWaitMs` 的观察 → 直接 409 并提示「先回复再观察」。
-若仍出现，检查日志里有没有 `firstReplyGate`；没有说明闸门未生效（版本旧）。
-
-### S4. 主动消息发不出去（定时播报/手动播报）
-
-三类错误要分开看（`explainProactiveError` 会直接给中文原因）：
-
-| 报错特征 | 含义 | 处理 |
-| --- | --- | --- |
-| `11000` / `no permission` / 「主动消息」 | 群主没勾「主动推送消息」 | 让群主在群机器人设置里打开；**别人的群你开不了** |
-| 「用户关闭」「not allowed」 | 对方关了「允许主动发送」 | 无解，等他先说话 |
-| 「频率」「too many」「2200」 | 撞频控 | 降低频率；配额已由 `QuotaBook` 兜住（30/分、1000/天） |
-
-检查配额与定时任务：`GET /api/socialV2/official-proactive`。
-
-### S5. `qq_wait_for_messages` 报 `[object Object]`
-
-错误体被 `String()` 化的老问题（长轮询非 2xx 分支）。看到时按 429 处理：
-先看是不是「同一会话已有等待」，等上一次返回再重试；不要连续重试（会烧 token）。
-
 ## R. 杀软 / 安全软件干扰
 
 > **典型症状：关掉卡巴斯基（或 360/火绒）就正常，开着就不正常。**
@@ -1773,6 +1720,36 @@ sudo systemctl restart qq-bridge
 **例外**：DSH 不在本机（`dsh.baseUrl` 非回环）时，本机密钥铸造本来就不成立 —— 别改权限，改填 `dsh.authToken`。
 
 详见 [SERVER.md#降权之后必须补的那份访问dsh-凭据](docs/guides/SERVER.md)。
+
+---
+
+## 附：这次审计补进来的缺口（自查表）
+
+| 缺口 | 现在在哪 |
+| --- | --- |
+| state JSON 损坏 / 只读降级 503 | M1 |
+| 磁盘写满 ENOSPC | M2 |
+| 升级后 state 结构迁移 | M3 |
+| 备份 / 恢复 | M4 |
+| Cookie 生命周期 / 密钥轮换 / 持续 401 | N1 |
+| 系统时间错误 | N2 |
+| 代理变量污染 localhost | N3 |
+| 防火墙 / 杀软 | N4 |
+| IPv6 / DNS | N5 |
+| 三个 MCP server 故障 | O1 |
+| 联网搜索失败 | O2 |
+| ASR（Python） | O3 |
+| 仓库外语音工具 | O4 |
+| 平台级 429 | O5 |
+| 多实例 / 多账号冲突 | P1 |
+| 日志增长 | P2 |
+| 崩溃恢复 | P3 |
+| 配置被静默收敛 | P4 |
+| 安全事件处置 | P5 |
+| npm audit | P6 |
+| 升级检查单 | Q |
+
+---
 
 ---
 

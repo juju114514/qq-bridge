@@ -30,9 +30,9 @@
 | 项 | 值 |
 | --- | --- |
 | 入口 | Windows：`start-bridge.ps1`（[LAUNCHER.md](docs/guides/LAUNCHER.md)）；Linux：`deploy/install-server.sh` + systemd |
-| 自检（离线） | `node scripts/test-audit.mjs` → **43 套**；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
+| 自检（离线） | `node scripts/test-audit.mjs` → **88 套**（**以脚本输出为准**，本数字随版本更新）；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
 | 自测（活的） | `powershell -File scripts\live-full-test.ps1` → **54 项**（只发 ownerQQ 私聊；`-MaxSends` 限流；会自动处理「AI 暂停」与 agentToken） |
-| 代码结构 | `src/bridge.js`（约 10,940 行，主循环 + 唤醒状态机）、`src/api/*`（14 个域 handler）、`src/http/*`（响应/请求体/前导关/路由表） |
+| 代码结构 | `src/bridge.js`（约 1.1 万行，当前 10,771；以 `wc -l` 为准，主循环 + 唤醒状态机）、`src/api/*`（14 个域 handler）、`src/http/*`（响应/请求体/前导关/路由表） |
 | 人格 | 身份在文件 front matter：`roles/<任意文件名>.md` 里 `id:` + `name:`。state 只存 id，**改名不影响绑定**（`test-role-id.mjs` 钉住） |
 | 协议层 | 自带 `src/onebot-ws.js`（Node 内置 WebSocket）；**不依赖 `@snowluma/*`**，也不修改任何第三方包 |
 | 契约 | [COMPAT.md](COMPAT.md)（人读）+ [compat.json](compat.json)（机器读），`test-compat.mjs` 保证两者与代码一致 |
@@ -158,3 +158,12 @@ node scripts/test-audit.mjs
 ```
 
 CI 在 `.github/workflows/ci.yml`，PR 必须绿。
+
+## 硬规矩（对 AI 也适用）
+
+1. **没端到端跑过的，不写「已支持」** —— 文档里的 ✅ 必须有真机证据（命令 + 输出）。
+2. **数字以脚本输出为准**：审计套数看 `node scripts/test-audit.mjs`，行数看 `wc -l`。
+   文档里的数字过期不丢人，写死不更新才丢人。
+3. **改 `bridge.js` 前后各跑一次** `node scripts/test-audit.mjs`，只许增不许减。
+4. **拆分/迁移一律「一个模块一个提交」**，每刀都要能单独 `git revert`。
+5. **日志不打印凭据片段**（含前几位）——要追踪就用不可逆标识。

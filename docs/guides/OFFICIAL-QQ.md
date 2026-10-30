@@ -10,7 +10,7 @@
 
 | | **个人号通道（SnowLuma / OneBot v11）** | **官方通道（q.qq.com · QQ Bot）** |
 | --- | --- | --- |
-| 身份 | 你自己的 QQ 号（扫码登录） | 独立的机器人号（如 `1906089685`，有自己的 QQ 号） |
+| 身份 | 你自己的 QQ 号（扫码登录） | 独立的机器人号（`<你的机器人QQ号>`，有自己的 QQ 号） |
 | 登录方式 | 扫码 / 密码，有掉线与风控 | AppID + AppSecret → access_token，**不封个人号** |
 | 能读到什么 | **群里所有消息**（全量） | 默认只有被 @ 的；群主可开「接收全量消息」 |
 | 回复限制 | 无（可分条、可沉默、可撤回、拍一拍） | 被动回复 **5 分钟 / 每条消息最多 5 次**；主动消息有频控 |
@@ -69,12 +69,12 @@ node scripts\official-probe.mjs --seconds 120
 | 项 | 状态 |
 | --- | --- |
 | 协议实现（token / gateway / WS / 事件 / 回复） | ✅ 已完成，**11 项离线测试通过** |
-| **端到端实测（真机器人 + 真群）** | ✅ **2026-10-28 已通过**：`access_token` ✓ → gateway `wss://api.sgroup.qq.com/websocket` ✓ → WS 鉴权 `机器人1906089685` ✓ → 收到群 @ 事件（作者「居居」，内容「测试」）✓ → **被动回复成功（msg_id 链路通）** ✓ |
+| **端到端实测（真机器人 + 真群）** | ✅ **2026-10-28 已通过**：`access_token` ✓ → gateway `wss://api.sgroup.qq.com/websocket` ✓ → WS 鉴权 `机器人<你的机器人QQ号>` ✓ → 收到群 @ 事件（作者 `<群友昵称>`，内容「测试」）✓ → **被动回复成功（msg_id 链路通）** ✓ |
 | 接入 qq-bridge（作为第二 transport） | ✅ 已接入：官方事件走同一个 `handleIncoming`，人格/记忆/工具共用；发送按 `official-` 前缀分流 |
-| **会话内工具可用**（模型自己调 `qq_send_message`） | ✅ 2026-10-29 打通（前提：DSH 的 MCP 注入未被关掉，见 TROUBLESHOOTING S2） |
+| **会话内工具可用**（模型自己调 `qq_send_message`） | ✅ 2026-10-29 打通（前提：DSH 的 MCP 注入未被关掉，见 本文 9.2） |
 | 腾讯频道（帖子/成员）那套 skill | ✅ 已装并实测（建频道→发帖→读回），但**那是频道，不是群聊** |
 
-> 按本仓库的规矩：**没端到端跑过的，不写"已支持"**。2026-10-28 23:5x 实测通过后，状态已改为 ✅。
+> 按本仓库的规矩：**没端到端跑过的，不写"已支持"**。2026-10-28 23:50 左右实测通过后，状态已改为 ✅。
 > 复现命令（凭证放 `state/official.json`，跑完去群里 @ 一次）：
 >
 > ```powershell
@@ -85,12 +85,12 @@ node scripts\official-probe.mjs --seconds 120
 >
 > ```
 > [official] WebSocket 已连接
-> [official] 鉴权成功：机器人1906089685
-> · [群@] id=7132C…8B3（长 32） 作者=居居 内容「测试」
+> [official] 鉴权成功：机器人<你的机器人QQ号>
+> · [群@] id=official-<openid 前几位>…（长 32） 作者=<群友昵称> 内容「测试」
 >   ✓ 被动回复成功（msg_id 链路通）
 > ```
 
-## 六、接进 qq-bridge 的设计（下一步）
+## 六、接入设计（**已落地**）
 
 ```
 官方事件 ──► toBridgeEvent() ──► key = official:group:<group_openid> / official:private:<openid>
@@ -101,18 +101,21 @@ node scripts\official-probe.mjs --seconds 120
                                          其它        → OneBot HTTP（现状）
 ```
 
-三处要改的地方（都是**单一入口**，不散落）：
+三处改动（**均已落地**，每处都是单一入口，不散落）：
 
-| 位置 | 改法 |
-| --- | --- |
-| 事件注入 | 桥接启动时若 `official.enabled`，连 gateway，把事件翻成 OneBot 形状（`group_id` 用 openid、`message_id` 用官方 `id`）后走**同一个**入站处理函数 |
-| 发送路由 | 三处 `send_group_msg` / `send_private_msg` 前加一个 `transportOf(key)` 判断；官方 key 就走 `OfficialQqBot.reply()` |
-| 权限 | `allow.groups` 只认数字 QQ 号；官方通道单独用 `allow.officialGroups`（openid 白名单），默认空 = 全拒 |
+| 位置 | 改法 | 状态 |
+| --- | --- | --- |
+| 事件注入 | 桥接启动时若 `official.enabled`，连 gateway，把事件翻成 OneBot 形状（`group_id` 用 openid、`message_id` 用官方 `id`）后走**同一个**入站处理函数 | ✅ 已落地 |
+| 发送路由 | 三处 `send_group_msg` / `send_private_msg` 前加一个 `transportOf(key)` 判断；官方 key 就走 `OfficialQqBot.reply()` | ✅ 已落地 |
+| 权限 | `allow.groups` 只认数字 QQ 号；官方通道单独用 `allow.officialGroups`（openid 白名单），默认空 = 全拒 | ✅ 已落地 |
 
 **已知会退化的能力**（接之前先说清）：分条拟人（官方最多 5 条/消息）、拍一拍（无接口）、表情包库（只能当富媒体发）、
 "潜水接话"（除非群主开了全量消息）。
 
 ## 七、给接手的 AI
+
+> 官方通道的 bug 九成落在「事件形状」和「白名单类型」上，不是网络。
+> 改代码前先对照第九节的五个坑。
 
 ```
 1. 官方通道 ≠ SnowLuma，两套协议；openid ≠ QQ 号，key 必须带前缀
@@ -139,7 +142,7 @@ node scripts\official-probe.mjs --seconds 120
 ```powershell
 curl -X POST http://127.0.0.1:3100/api/socialV2/official-say ^
   -H "X-Console-Token: <state/console-token>" -H "content-type: application/json" ^
-  -d "{\"key\":\"group:official-7132C6...\",\"text\":\"今晚八点开黑，来不来\"}"
+  -d "{\"key\":\"group:official-<openid>\",\"text\":\"今晚八点开黑，来不来\"}"
 ```
 
 - 走 `/api/socialV2/` 前缀 → 自动继承控制台令牌校验、暂停/只读降级
@@ -202,3 +205,77 @@ curl -X POST http://127.0.0.1:3100/api/socialV2/official-say ^
 
 判定顺序：先看"告别语 + 下次语 + 无具体约定"→ soft；否则走四类规则。
 `RecallWindow.arm()` 会把 tier 记进 `armedTier`，状态端点可查。
+
+## 九、排错（官方通道）
+
+> 官方通道与 SnowLuma 是**两条独立的腿**，排障时先分清「哪条腿不说话」：
+> 看 `state/bridge.log` 里有没有 `[official]` 前缀。
+
+### 9.1 群里 @ 了它，日志只有「收到 群消息」然后什么都没发生
+
+> 这五条都是"**官方 @ 在事件层被剥掉**"引发的连锁，按 现象 → 根因 → 怎么防 排。
+
+**① 收到事件但不唤醒**
+- 现象：日志有「收到 群消息」，之后什么都没有
+- 根因：官方 @ 是网关**在事件层**剥掉的，`message` 里没有 `at` 段 → 被判"没人叫我"
+- 怎么防：唤醒判定认 `event.__official.atBot`；回归测试钉住"无 at 段也唤醒"
+
+**② 启用了却一条 `[official]` 日志都没有**
+- 现象：配置里 `official.enabled=true`，日志干净得像没开
+- 根因：`loadConfig()` 是**逐字段显式装配**的，漏登记 `official` 段
+- 怎么防：新增配置段时同时加"装配 + 一条启动日志"；缺日志本身就是信号
+
+**③ 收到后静默丢弃**
+- 现象：有 `[official]` 日志，但没有回复也没有报错
+- 根因：会话 key 正则只认数字 `/^(group|private):(\d+)$/` → `group:official-<openid>` 不匹配
+- 怎么防：`canonicalV2Key` / `isSessionAllowedInCurrentMode` 显式放行 `official-` 前缀
+
+**④ 只 @ 不说话完全没反应**
+- 现象：群里 @ 它一下（不带正文），毫无动静
+- 根因：`content` 为空，被"空消息"分支丢掉
+- 怎么防：`atBot` 且正文为空时合成一句上下文再进模型
+
+**⑤ 发送工具报「目标不在当前模式允许范围内」**
+- 现象：模型调 `qq_send_message` 被拒，但目标群在白名单里
+- 根因：守卫短路 —— `!Number.isFinite(id)` 对字符串 id 恒为真，压根没走到白名单
+- 怎么防：改成 `typeof id !== 'string' && ...`；补一条"字符串 id 放行"的用例
+
+一句话自检：`grep '\[official\]' state/bridge.log`，如果连「进入处理」都没有，问题在 1/2；
+有「进入处理」但没有后续，问题在 3/4/5。
+
+### 9.2 官方会话里模型说「我这边没有 qq_* 工具」
+
+几乎都是 **DSH 的 MCP 注入被关掉了**（搬目录/重装后常见）：
+
+```powershell
+Get-Content "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" | Select-String 'qq-bridge MCP'
+```
+
+- 有输出 → MCP 区块在，问题是没重启 DSH（工具清单是**启动快照**）
+- 没输出 → 区块被改名成了 `.disabled` / `.with-mcp`，把它恢复回 `cordis.patch.yml`，然后重启 DSH
+
+恢复后必须重启 DSH，并且**新建会话**才会看到 `mcp__snowluma__qq_*`。
+
+### 9.3 被唤醒后 5 分钟不说话（界面显示「深度求索中」）
+
+模型把「沉睡前观察」当成回复前置，直接开 300 秒等待。桥接侧有**首回复闸门**：
+本轮还没发过话就请求 >= `preSleepWaitMs` 的观察 → 直接 409 并提示「先回复再观察」。
+若仍出现，检查日志里有没有 `firstReplyGate`；没有说明闸门未生效（版本旧）。
+
+### 9.4 主动消息发不出去（定时播报 / 手动播报）
+
+三类错误要分开看（`explainProactiveError` 会直接给中文原因）：
+
+| 报错特征 | 含义 | 处理 |
+| --- | --- | --- |
+| `11000` / `no permission` / 「主动消息」 | 群主没勾「主动推送消息」 | 让群主在群机器人设置里打开；**别人的群你开不了** |
+| 「用户关闭」「not allowed」 | 对方关了「允许主动发送」 | 无解，等他先说话 |
+| 「频率」「too many」「2200」 | 撞频控 | 降低频率；配额已由 `QuotaBook` 兜住（30/分、1000/天） |
+
+检查配额与定时任务：`GET /api/socialV2/official-proactive`。
+
+### 9.5 `qq_wait_for_messages` 报 `[object Object]`
+
+错误体被 `String()` 化的老问题（长轮询非 2xx 分支）。看到时按 429 处理：
+先看是不是「同一会话已有等待」，等上一次返回再重试；不要连续重试（会烧 token）。
+
