@@ -216,6 +216,8 @@ const tests = [
   'test-social-v2-state.mjs',
   // 社交状态落盘整形：裁剪上限 / 落盘失败不抛。
   'test-social-v2-store.mjs',
+  // 运行时 rt：共享容器归属 / 计数器 / 事件总线。
+  'test-runtime.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

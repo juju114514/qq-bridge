@@ -48,6 +48,7 @@ import { decideWakeReminder } from './turn-wake.js';
 import { createWakeConfigDomain } from './domains/wake-config.js';
 import { normalizeSpeakerIds, hasExplicitEnd, isSleepingConfig, computeWakeSafety } from './domains/social-v2-rules.js';
 import { saveSocialV2StateTo, loadSocialV2StateInto } from './domains/social-v2-store.js';
+import { createRuntime } from './runtime.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -1621,6 +1622,9 @@ async function main() {
 
   const cfg = loadConfig();
   fs.mkdirSync(STATE_DIR, { recursive: true });
+  // 运行时：共享状态的唯一来源（先于任何状态容器创建）
+  const rt = createRuntime({ cfg, log, fs, path });
+  const counters = rt.counters;   // 可变计数器唯一归属（ARCHITECTURE §3）
   hardenStateDirAcl();
   acquireLock();
   loadState();
@@ -3512,6 +3516,8 @@ async function main() {
       // `bot`：它在本闭包里声明得晚得多（`const`，TDZ），一旦有人把本函数提前调用就会
       // 抛 "Cannot access 'bot' before initialization"。
       connected: snowlumaHealth.connected,
+      // 重连累计次数：唯一归属 rt.counters（ARCHITECTURE §3 接缝 1）
+      reconnects: counters.gatewayReconnects,
       accountOnline: snowlumaHealth.accountOnline,
       good: snowlumaHealth.good,
       goodSource: snowlumaHealth.goodSource || null,
@@ -6296,10 +6302,8 @@ async function main() {
   };
 
   // ── 二代仿真模式（reserved2）运行时状态与唤醒配置 ────────────────────────
-  const socialV2 = {
-    conversations: new Map(), // key -> state
-    paused: false, // 控制台可暂停整个二代 AI 活动（停止唤醒/等待）
-  };
+  // 二代仿真的会话状态：归 rt 所有（ARCHITECTURE §3 接缝 1）
+  const socialV2 = rt.socialV2;
 
   // 一代/普通模式的图片/表情元数据存储：key -> Map<messageId/seq, media[]>
   // 二代模式则直接存在 socialV2 会话的 recentMessages/unread 消息对象上。
@@ -8972,7 +8976,7 @@ function selfCheckSnapshot() {
           startedAt: bridgeStartedAt,
           mode: currentMode,
           dshReady,
-          snowluma: { connected: Boolean(bot), lastEventAt: lastInboundAtMs, reconnects: gatewayReconnects, lastLossAt: gatewayLastLossAt },
+          snowluma: { connected: Boolean(bot), lastEventAt: lastInboundAtMs, reconnects: counters.gatewayReconnects, lastLossAt: gatewayLastLossAt },
           official: { enabled: Boolean(officialTransport), ready: officialTransport?.ready === true },
           queues: {
             queued: queued.size,
@@ -10232,17 +10236,16 @@ function selfCheckSnapshot() {
 
   // 网关断线计数：/自检 要能回答"网关断过几次"，而不是让模型靠印象编。
   // 真实事故（2026-10-30 00:51）：用户问网关为什么断，模型只能含糊说"断过几次"。
-  let gatewayReconnects = 0;
   let gatewayLastLossAt = 0;
   try {
     bot.on('close', () => {
-      gatewayReconnects += 1;
+      counters.gatewayReconnects += 1;
       gatewayLastLossAt = Date.now();
       log('[gateway] WS 断开，等待自动重连');
     });
     bot.on('error', (error) => log(`[gateway] WS 错误：${error?.message ?? error}`));
     bot.on('open', () => {
-      if (gatewayLastLossAt) log(`[gateway] WS 已恢复（累计断开 ${gatewayReconnects} 次）`);
+      if (gatewayLastLossAt) log(`[gateway] WS 已恢复（累计断开 ${counters.gatewayReconnects} 次）`);
     });
   } catch (error) {
     log(`⚠️ 网关断线计数挂载失败：${error?.message ?? error}`);

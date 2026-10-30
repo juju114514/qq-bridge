@@ -180,7 +180,10 @@ import { pickWakeReason } from './wake.js';   // cross-domain: turn-end 收尾�
 | 回合帧形状（测试） | 5 组 | **交错回合会吞掉回复**（collector 被无条件释放） |
 
 `bridge.js` 行数：11,236 → **10,670**（-566）。
-还有一件事没做：**`rt` 本体尚未落地** —— 现在是把判定搬到 `src/domains/*`，
+`rt` 本体已落地（`src/runtime.js`，95 行）：`socialV2` 与 `counters.gatewayReconnects` 已归它所有，
+其余容器（`social` / `queues` / `clients` / `events`）已就位但还没接线。
+
+原先写的是：**`rt` 本体尚未落地** —— 现在是把判定搬到 `src/domains/*`，
 真正"共享状态的唯一来源"（`src/runtime.js`）等 `socialV2` 状态搬完再引入，
 否则会出现两套状态来源并存。
 
