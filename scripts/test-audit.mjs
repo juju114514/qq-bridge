@@ -226,6 +226,8 @@ const tests = [
   'test-wake-schedule.mjs',
   // 进线主流程端到端（波次 3 前置）：@ 唤醒 / 无权限群 / 只记未读 / 静默时段。
   'test-incoming-pipeline.mjs',
+  // 进线媒体阶段：表情入队上限 / 失败静默 / 媒体引用有界且按会话隔离。
+  'test-incoming-media.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

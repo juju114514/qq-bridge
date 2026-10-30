@@ -99,6 +99,7 @@ import { createSocialV2VideoHandlers } from './api/socialV2-video.js';
 import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
 import { createIncomingGuards } from './incoming-guards.js';
+import { capturePendingStickers, rememberMessageMedia } from './incoming-media.js';
 import { buildSelfCheckReport } from './selfcheck.js';
 import { createToolProbe, parseYtDlpVersion } from './tool-version.js';
 import { createIncomingCommands } from './incoming-commands.js';
@@ -8966,21 +8967,11 @@ function selfCheckSnapshot() {
         log(`[private] 放行 ${key}（${pv.reason}）`);
       }
     }
-    // 待判表情：把这条消息里的图/表情挂进队列，交给 AI 自己判断要不要看、要不要收。
-    // 只记 id，不存图；scope 按会话分仓，群聊的绝不喂给私聊。
-    try {
-      if (stickerCuratorEnabled(cfg) && Array.isArray(event?.message)) {
-        const sc = stickerScopeOf(key);
-        const mid = String(event?.message_id ?? event?.messageId ?? 'm');
-        event.message
-          .filter((s) => ['image', 'face', 'mface'].includes(String(s?.type ?? '')))
-          .slice(0, 3)
-          .forEach((s, i) => stickerPending.add(sc, {
-            id: `${mid}:${i}`,
-            from: String(event?.sender?.card ?? event?.sender?.nickname ?? event?.sender?.user_id ?? '').slice(0, 20)
-          }));
-      }
-    } catch { /* 表情记录失败绝不影响收消息 */ }
+    // 媒体阶段已拆到 src/incoming-media.js：待判表情入队（失败静默，不影响收消息）
+    capturePendingStickers({
+      enabled: stickerCuratorEnabled(cfg), key, event,
+      stickerScopeOf, stickerPending
+    });
     if (!modeAllowed(key, kind, id, cfg, currentMode)) {
       log(`忽略未授权会话 ${key}（当前模式 ${currentMode}，来自 ${event.user_id}）`);
       return;
@@ -8996,23 +8987,8 @@ function selfCheckSnapshot() {
     let textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
     let plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, onSticker: (s) => { try { stickerPending.add(stickerScopeOf(key), s); } catch { /* 不影响收消息 */ } } });
     const mediaList = extractMediaFromSegments(event.message ?? []);
-    const messageRef = String(event.message_id ?? event.msg_id ?? event.message_seq ?? '');
-    const seqRef = event.message_seq != null ? String(event.message_seq) : '';
-    const refsToStore = [...new Set([messageRef, seqRef].filter(Boolean))];
-    if (refsToStore.length > 0 && mediaList.length > 0) {
-      let mediaByRef = messageMediaStore.get(key);
-      if (!mediaByRef) {
-        mediaByRef = new Map();
-        messageMediaStore.set(key, mediaByRef);
-      }
-      for (const ref of refsToStore) mediaByRef.set(ref, mediaList);
-      // 防止无限增长：超过上限时删除最旧一条（Map 保持插入序）
-      while (mediaByRef.size > MAX_MEDIA_STORE_PER_KEY) {
-        const oldestKey = mediaByRef.keys().next().value;
-        if (oldestKey === undefined) break;
-        mediaByRef.delete(oldestKey);
-      }
-    }
+    // 媒体引用存起来（有界）：引用这条消息时还能取到图。实现在 src/incoming-media.js
+    rememberMessageMedia({ key, event, mediaList, messageMediaStore, maxPerKey: MAX_MEDIA_STORE_PER_KEY });
     // 入站闸门：引用解析 → 空文本兜底 → 待答 → 静默（已拆到 src/incoming-guards.js）
     // 决策追踪：这条消息从进来到去哪，/诊断 能查
     const traceRec = decisionTrace.begin({ key, kind, messageId: id, sender: kind === 'group' ? (event.sender?.card || event.sender?.nickname || '') : '', text: textContent });

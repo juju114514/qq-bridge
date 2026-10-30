@@ -47,6 +47,7 @@ import { createMuxToolTracker } from '../src/mux-tools.js';
 import { createDecisionTrace } from '../src/decision-trace.js';
 import { createPeopleNoteHandler } from '../src/api/people-note.js';
 import { createRuntime } from '../src/runtime.js';
+import { capturePendingStickers, rememberMessageMedia } from '../src/incoming-media.js';
 import * as quietHours from '../src/quiet-hours.js';
 import { decideNoAction } from '../src/turn-guard.js';
 import { finalizeTurn } from '../src/turn-finalize.js';
@@ -241,7 +242,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     execFileSync: () => '',
     // process 桩要带 env：voice-core / bridge 会读 process.env.FFMPEG_PATH、FFPROBE_PATH 等。
     // 之前只给 pid/platform/kill/exit，导致 `process.env.FFMPEG_PATH` 直接抛 TypeError。
-    process: { pid: process.pid, platform: process.platform, kill: process.kill, env: {}, exit: (code) => { throw new Error('unexpected exit ' + code); } },
+    process: { pid: process.pid, cwd: () => process.cwd(), platform: process.platform, kill: process.kill, env: {}, exit: (code) => { throw new Error('unexpected exit ' + code); } },
     setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timers.add(timer); return timer; },
     clearTimeout, setInterval: () => ({ unref() {} }), clearInterval: () => {},
     NodeApiClient: class { constructor() { return api; } },
@@ -257,6 +258,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
     createRuntime,
+    capturePendingStickers, rememberMessageMedia,
   createSessionRegistry: (...args) => { registryRef = createSessionRegistry(...args); return registryRef; },
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
