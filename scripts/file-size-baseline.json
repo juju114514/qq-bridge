@@ -5,7 +5,7 @@
   "files": {
     "src/api/console-diagnostics.js": 65,
     "src/api/console-dsh.js": 93,
-    "src/api/console-extra-routes.js": 26,
+    "src/api/console-extra-routes.js": 34,
     "src/api/console-notify.js": 97,
     "src/api/console-ops.js": 113,
     "src/api/dead-letter.js": 42,
@@ -14,6 +14,7 @@
     "src/api/inject.js": 124,
     "src/api/mode.js": 89,
     "src/api/official-say.js": 112,
+    "src/api/people-list.js": 87,
     "src/api/people-note.js": 85,
     "src/api/preset-sim.js": 134,
     "src/api/roles.js": 221,

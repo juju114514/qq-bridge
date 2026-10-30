@@ -192,6 +192,8 @@ const tests = [
   'check-md-links.mjs',
   // 外部工具探测（yt-dlp）：缓存 / 失败不抛 / 版本解析。
   'test-tool-version.mjs',
+  // 人物库列表：搜索 / 档位筛 / 排序 / scope 笔记。
+  'test-people-list.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

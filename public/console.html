@@ -1776,6 +1776,8 @@ button:active:not(:disabled) {
       <button data-view="access" class="nav-item"><span class="nav-icon" aria-hidden="true">⊙</span>访问与安全</button>
       <button data-view="operations" class="nav-item"><span class="nav-icon" aria-hidden="true">⌘</span>调试与运维</button>
       <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
+        <button data-view="diagnostics" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>诊断与健康</button>
+        <button data-view="people" class="nav-item"><span class="nav-icon" aria-hidden="true">☺</span>人物库</button>
     </nav>
     <div class="sidebar-bottom"><span class="local-dot"></span>本地控制台<small>QQ ↔ DeepSeek Harness</small></div>
   </aside>
@@ -2418,7 +2420,39 @@ button:active:not(:disabled) {
         </div>
       </details>
     </section>
-<section id="section-reference" data-page="reference" class="card span-all">
+<section id="section-people" data-page="people" class="card span-all">
+        <h2>人物库</h2>
+        <div class="meta">身份只认 QQ 号（改群名片不会断成两个人）；关系档位由「消息数 + 活跃天数」决定。
+          笔记默认写到当前会话作用域，写错可单条删除。</div>
+        <div class="row" style="margin-top:10px">
+          <input type="text" id="peopleSearch" placeholder="搜 QQ 号 / 昵称 / 群名片" style="width:240px">
+          <select id="peopleLevel" style="width:140px">
+            <option value="">全部档位</option>
+            <option value="stranger">陌生人</option>
+            <option value="listed">仅名单</option>
+            <option value="acquaintance">熟人</option>
+            <option value="familiar">老熟人</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="peopleHasNotes" style="width:auto"> 只看有笔记</label>
+          <span id="peopleStat" class="meta"></span>
+        </div>
+        <div id="peopleBody" style="margin-top:12px"><div class="meta">正在读取…</div></div>
+        <div id="peopleNotes" style="margin-top:16px"></div>
+      </section>
+      <section id="section-diagnostics" data-page="diagnostics" class="card span-all">
+        <h2>自助诊断</h2>
+        <div class="meta">数据来自桥接的 <code>/api/diagnostics</code>（与 QQ 里的 <code>/自检</code>、<code>/诊断</code> 同源）。
+          只读，不会改变任何状态。</div>
+        <div class="row" style="margin-top:10px">
+          <button id="diagRefresh" class="primary">刷新</button>
+          <button id="diagCopy">复制报告</button>
+          <span id="diagUpdated" class="meta"></span>
+        </div>
+        <div id="diagBody" style="margin-top:12px">
+          <div class="meta">正在读取…</div>
+        </div>
+      </section>
+      <section id="section-reference" data-page="reference" class="card span-all">
       <h2>DSH 侧 MCP 工具</h2>
       <div class="meta">由 qq-bridge 的 MCP server 提供给 DSH agent；修改后需重启 DSH 才会刷新工具 schema。</div>
       <table>
@@ -4433,7 +4467,9 @@ const consolePages = {
   usage: ['令牌与花费', '每一次思考，都算得清楚。', '实时查看 AI 的 token 消耗与花费，可下钻到每个群、每个好友、每一轮对话。'],
   access: ['访问与安全', '明确边界，安心连接。', '管理允许对话的对象、管理员权限与控制台访问凭证。'],
   operations: ['调试与运维', '让桥接，始终井然有序。', '测试消息、引导 AI，或维护桥接进程与会话工作区。'],
-  reference: ['工具参考', '每一种能力，都清晰可见。', '查看桥接提供给 DSH 的 MCP 工具与用途。']
+  reference: ['工具参考', '每一种能力，都清晰可见。', '查看桥接提供给 DSH 的 MCP 工具与用途。'],
+  diagnostics: ['诊断与健康', '先看证据，再改代码。', '桥接健康一屏看完；每条消息为什么没回、卡在哪一步，都在这里。'],
+  people: ['人物库', '它认识谁，记得什么。', '按关系档位查看群友/好友，编辑或删掉关于他的笔记。']
 };
 let currentConsolePage = 'overview';
 let toastTimer;
@@ -4444,6 +4480,197 @@ function showConsoleToast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.hidden = true; }, 4200);
 }
+// ── 人物库 ────────────────────────────────────────────────────────
+// 后端：GET /api/socialV2/people（列表）+ POST /api/socialV2/people-note（add/list/clear）
+// 刻意不做"批量删人"——删除是不可逆操作，放在 QQ 里用命令更安全。
+let peopleCache = [];
+
+function escPeople(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function peopleLevelLabel(level) {
+  return ({ stranger: '陌生人', listed: '仅名单', acquaintance: '熟人', familiar: '老熟人' })[level] || level;
+}
+
+async function loadPeople() {
+  const body = document.getElementById('peopleBody');
+  const q = document.getElementById('peopleSearch')?.value || '';
+  const level = document.getElementById('peopleLevel')?.value || '';
+  const onlyNotes = document.getElementById('peopleHasNotes')?.checked;
+  if (body) body.innerHTML = '<div class="meta">正在读取…</div>';
+  try {
+    const params = new URLSearchParams({ limit: '300' });
+    if (q) params.set('q', q);
+    if (level) params.set('level', level);
+    const d = await api(`/api/socialV2/people?${params}`);
+    let list = d.people || [];
+    if (onlyNotes) list = list.filter((p) => p.noteCount > 0);
+    peopleCache = list;
+    const stat = document.getElementById('peopleStat');
+    if (stat) {
+      stat.textContent = `共 ${d.total} 人，匹配 ${d.matched}${d.truncated ? '（已截断）' : ''}` +
+        Object.entries(d.levelCounts || {}).map(([k, v]) => ` · ${peopleLevelLabel(k)} ${v}`).join('');
+    }
+    if (!body) return;
+    if (!list.length) { body.innerHTML = '<div class="meta">没有匹配的人。</div>'; return; }
+    body.innerHTML = `
+      <table>
+        <tr><th>QQ</th><th>昵称</th><th>档位</th><th>消息</th><th>活跃天</th><th>笔记</th><th>最近出现</th><th></th></tr>
+        ${list.map((p) => `<tr>
+          <td>${escPeople(p.qq)}</td>
+          <td>${escPeople(p.name || '—')}</td>
+          <td>${escPeople(peopleLevelLabel(p.level))}</td>
+          <td>${p.msgCount}</td>
+          <td>${p.activeDays}</td>
+          <td>${p.noteCount}</td>
+          <td>${p.lastSeenAt ? new Date(p.lastSeenAt).toLocaleString() : '—'}</td>
+          <td><button data-people-notes="${escPeople(p.qq)}">笔记</button></td>
+        </tr>`).join('')}
+      </table>`;
+    body.querySelectorAll('[data-people-notes]').forEach((btn) => {
+      btn.addEventListener('click', () => showPeopleNotes(btn.dataset.peopleNotes));
+    });
+  } catch (error) {
+    if (body) body.innerHTML = `<div class="meta" style="color:#c33">读取失败：${escPeople(error?.message || error)}</div>`;
+  }
+}
+
+async function showPeopleNotes(qq) {
+  const box = document.getElementById('peopleNotes');
+  if (!box) return;
+  box.innerHTML = '<div class="meta">正在读取笔记…</div>';
+  const scopeKey = currentConsoleScopeKey();
+  try {
+    const d = await api('/api/socialV2/people-note', 'POST', { key: scopeKey, qq, op: 'list', scope: scopeKey });
+    const list = d.inScope || [];
+    box.innerHTML = `
+      <h3>关于 ${escPeople(qq)} 的笔记（${escPeople(peopleLevelLabel(d.level))}）</h3>
+      <div class="meta">${d.hint ? escPeople(d.hint) : '这些笔记会注入到提示词（档位够高时）。'}</div>
+      <table style="margin-top:8px">
+        <tr><th>内容</th><th></th></tr>
+        ${list.length ? list.map((n) => `<tr><td>${escPeople(n)}</td>
+          <td><button data-note-del="${escPeople(n)}" data-qq="${escPeople(qq)}">删</button></td></tr>`).join('')
+          : '<tr><td colspan="2" class="meta">还没有笔记</td></tr>'}
+      </table>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="peopleNoteInput" placeholder="写一条：他是谁 / 在意什么 / 说过什么" style="flex:1">
+        <button id="peopleNoteAdd">记下来</button>
+      </div>`;
+    box.querySelectorAll('[data-note-del]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await api('/api/socialV2/people-note', 'POST',
+            { key: scopeKey, qq: btn.dataset.qq, op: 'clear', text: btn.dataset.noteDel, scope: scopeKey });
+          showConsoleToast('已删除');
+          showPeopleNotes(btn.dataset.qq);
+          loadPeople();
+        } catch (e) { showConsoleToast(`删除失败：${e?.message || e}`); }
+      });
+    });
+    document.getElementById('peopleNoteAdd')?.addEventListener('click', async () => {
+      const input = document.getElementById('peopleNoteInput');
+      const text = (input?.value || '').trim();
+      if (!text) { showConsoleToast('先写点什么'); return; }
+      try {
+        await api('/api/socialV2/people-note', 'POST', { key: scopeKey, qq, op: 'add', text, scope: scopeKey });
+        showConsoleToast('已记住');
+        showPeopleNotes(qq);
+        loadPeople();
+      } catch (e) { showConsoleToast(`保存失败：${e?.message || e}`); }
+    });
+  } catch (error) {
+    box.innerHTML = `<div class="meta" style="color:#c33">读取笔记失败：${escPeople(error?.message || error)}</div>`;
+  }
+}
+
+// 当前会话 key：人物笔记是"按会话隔离"的，控制台没有登录态，默认写 global。
+function currentConsoleScopeKey() { return 'global'; }
+
+let peopleSearchTimer = null;
+document.getElementById('peopleSearch')?.addEventListener('input', () => {
+  clearTimeout(peopleSearchTimer);
+  peopleSearchTimer = setTimeout(() => loadPeople(), 250);
+});
+document.getElementById('peopleLevel')?.addEventListener('change', () => loadPeople());
+document.getElementById('peopleHasNotes')?.addEventListener('change', () => loadPeople());
+
+// ── 诊断与健康 ────────────────────────────────────────────────────
+// 把 /自检 + /诊断 的信息搬到控制台：健康一屏、每条消息的决策链、yt-dlp 状态。
+// 只读接口，进入页面时拉一次，不轮询（运维排查不需要秒级刷新）。
+let diagCache = null;
+
+function escDiag(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderDiagnostics(d) {
+  const body = document.getElementById('diagBody');
+  if (!body) return;
+  if (!d || d.ok === false) {
+    body.innerHTML = `<div class="meta" style="color:#c33">读取失败：${escDiag(d?.error || '未知错误')}</div>`;
+    return;
+  }
+  diagCache = d;
+  const sc = d.selfcheck || {};
+  const q = sc.queues || {};
+  const yt = d.ytdlp || {};
+  const sl = sc.snowluma || {};
+  const of = sc.official || {};
+  const rows = [
+    ['版本', `${escDiag(sc.version || '?')}${sc.schemaVersion != null ? `（schema v${sc.schemaVersion}）` : ''}`],
+    ['模式', escDiag(sc.mode || '?')],
+    ['DSH', sc.dshReady ? '✅' : '❌'],
+    ['网关', sl.connected ? `✅ 上次消息 ${sl.lastEventAt ? new Date(sl.lastEventAt).toLocaleTimeString() : '—'}` : '❌ 未连接'],
+    ['官方通道', of.enabled ? (of.ready ? '✅' : '⚠️ 已启用未就绪') : '（未启用）'],
+    ['队列', `待处理 ${q.pending ?? 0} / 暂存 ${q.queued ?? 0} / 死信 ${q.deadLetters ?? 0}`],
+    ['yt-dlp', yt.available ? `✅ ${escDiag(yt.version || '版本未知')}` : '❌ 不可用 —— 视频链接会直接拒绝'],
+  ];
+  const decisionRows = (d.decisions || []).slice().reverse().map((r) => {
+    const steps = (r.steps || []).map((s) => `${escDiag(s.stage)}：${escDiag(s.verdict)}`).join(' → ') || '—';
+    return `<tr><td>${r.seq ?? ''}</td><td>${escDiag(r.key || '')}</td><td>${escDiag(r.text || '')}</td><td>${steps}</td><td>${escDiag(r.outcome || '（未记录）')}</td></tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <table>
+      <tr><th>项</th><th>状态</th></tr>
+      ${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}
+    </table>
+    <h3 style="margin-top:16px">最近消息决策链</h3>
+    <div class="meta">"为什么没回我"就查这里：每条消息走到哪一步、在哪一步停下的。</div>
+    <table style="margin-top:8px">
+      <tr><th>#</th><th>会话</th><th>文本</th><th>决策链</th><th>结果</th></tr>
+      ${decisionRows || '<tr><td colspan="5" class="meta">还没有消息记录（重启后清空）</td></tr>'}
+    </table>
+    <h3 style="margin-top:16px">完整报告（可复制）</h3>
+    <pre id="diagReportText" style="white-space:pre-wrap;font-size:12px;background:rgba(0,0,0,.04);padding:10px;border-radius:8px">${escDiag(d.report || '')}</pre>
+  `;
+  const stamp = document.getElementById('diagUpdated');
+  if (stamp) stamp.textContent = `更新于 ${new Date().toLocaleTimeString()}`;
+}
+
+async function loadDiagnostics() {
+  const body = document.getElementById('diagBody');
+  if (body && !diagCache) body.innerHTML = '<div class="meta">正在读取…</div>';
+  try {
+    const d = await api('/api/diagnostics');
+    renderDiagnostics(d);
+  } catch (error) {
+    if (body) body.innerHTML = `<div class="meta" style="color:#c33">读取失败：${escDiag(error?.message || error)}</div>`;
+  }
+}
+
+document.getElementById('diagRefresh')?.addEventListener('click', () => loadDiagnostics());
+document.getElementById('diagCopy')?.addEventListener('click', async () => {
+  const text = diagCache?.report || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    showConsoleToast('报告已复制');
+  } catch {
+    showConsoleToast('复制失败，请手动选中断言文本');
+  }
+});
+
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -4462,6 +4689,8 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   closeConsoleSearch();
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
   if (page === 'social-v2' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
+  if (page === 'diagnostics' && typeof loadDiagnostics === 'function') loadDiagnostics();
+  if (page === 'people' && typeof loadPeople === 'function') loadPeople();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });

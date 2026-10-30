@@ -4482,7 +4482,8 @@ async function main() {
         // 其余零散端点（诊断等）在 src/api/console-extra-routes.js：bridge 只保留这一次调用
         if (await handleExtraRoutes({
           req, url, sendJson,
-          deps: { log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport }
+          // 惰性：只在命中路由时求值（否则每请求一次，VM 注入不全时会 ReferenceError）
+  deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ })
         })) return;
 
         if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {

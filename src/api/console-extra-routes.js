@@ -10,15 +10,27 @@
 //   · deps 由 bridge 在调用点组装（这样模块不依赖 bridge 的闭包，可单测）
 
 import { createDiagnosticsHandler } from './console-diagnostics.js';
+import { createPeopleListHandler } from './people-list.js';
 
 export async function handleExtraRoutes(ctx = {}) {
-  const { req, url, sendJson, deps = {} } = ctx;
+  const { req, url, sendJson } = ctx;
+  // deps 允许传函数：bridge 侧有些访问器在别的闭包里，**每个请求都求值**会
+  // 在测试环境（VM 注入不全）里直接炸出 ReferenceError（真实踩过：levelOf is not defined）。
+  // 惰性求值保证"只有真的命中路由才去碰依赖"。
+  const resolveDeps = () => (typeof ctx.deps === 'function' ? ctx.deps() : (ctx.deps || {}));
   if (!url || !req) return false;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {
-    const handler = createDiagnosticsHandler(deps);
+    const handler = createDiagnosticsHandler(resolveDeps());
     await handler.handle({ sendJson });
+    return true;
+  }
+
+  // GET /api/socialV2/people —— 人物库列表（只读）
+  if (req.method === 'GET' && url.pathname === '/api/socialV2/people') {
+    const handler = createPeopleListHandler(resolveDeps());
+    await handler.handle({ url, sendJson });
     return true;
   }
 
