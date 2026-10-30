@@ -10,7 +10,7 @@ import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import yaml from 'js-yaml';
 import { extractPresetPrefix, presetPromptBlockers, presetPromptWarnings, renderPresetPromptYaml } from './preset-prompt.js';
 import {
@@ -35,7 +35,7 @@ import { normalizeImageForModel, normalizeVideoForModel, probeVideo, extractVide
 import { ocrAvailable, ocrImage } from './ocr.js';
 import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcribe.js';
 import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js';
-import { downloadVideoLink, ytDlpAvailable } from './video-download.js';
+import { downloadVideoLink, ytDlpAvailable, resolveYtDlp } from './video-download.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
 import { createLearnerFrameHandler } from './mux-learner.js';
@@ -88,6 +88,7 @@ import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
 import { createIncomingGuards } from './incoming-guards.js';
 import { buildSelfCheckReport } from './selfcheck.js';
+import { createToolProbe, parseYtDlpVersion } from './tool-version.js';
 import { createIncomingCommands } from './incoming-commands.js';
 import { createIncomingStatusCommands } from './incoming-status-commands.js';
 import { createSendHandler } from './api/send.js';
@@ -9166,6 +9167,19 @@ function scheduleWakeV2(key, reason) {
   let lastInboundAtMs = 0;
 
   // /status /role /silent /active + /自检：已拆到 src/incoming-status-commands.js
+  // 外部工具探测（yt-dlp）：带 10 分钟缓存，避免每次 /自检 都 spawn 子进程
+  let toolProbeInstance = null;
+  const getToolProbe = () => (toolProbeInstance ??= createToolProbe({
+    ytdlpPath: videoLinkConfig().ytdlpPath,
+    runVersion: (exe) => {
+      try {
+        const r = spawnSync(exe || 'yt-dlp', ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 8000 });
+        if (r.status !== 0) return '';
+        return parseYtDlpVersion(r.stdout);
+      } catch { return ''; }
+    }
+  }));
+
   // 决策追踪：/诊断 的数据来源（环形缓冲 80 条，重启即清；只记截断文本）
 
   const decisionTrace = createDecisionTrace({ max: 80 });
@@ -9196,7 +9210,11 @@ function scheduleWakeV2(key, reason) {
           sessions: sessionRegistry.stats(),
           people: Object.keys(loadPeopleDb().people || {}).length,
           stickers: Array.isArray(stickerEntries) ? stickerEntries.length : 0,
-          douyin: (() => {
+          // yt-dlp：视频链接功能的唯一外部依赖。装了没装、版本多旧，不该等用户贴链接才发现。
+        ytdlp: (() => {
+          try { return getToolProbe().getYtdlp(); } catch { return null; }
+        })(),
+        douyin: (() => {
             try {
               const health = cookieHealth(videoLinkConfig().cookiesPath);
               return {

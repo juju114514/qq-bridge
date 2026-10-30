@@ -102,6 +102,16 @@ export function buildSelfCheckReport(snap = {}) {
     }
   }
 
+  // yt-dlp：视频链接功能全靠它。没装就是"贴链接必失败"，要提前说，而不是等报错。
+  const yt = snap.ytdlp;
+  if (yt !== undefined && yt !== null) {
+    if (yt.available) {
+      lines.push(`· yt-dlp：✅ ${yt.version || '版本未知'}${yt.path ? `（${String(yt.path).replace(/\\/g, '/')}）` : ''}`);
+    } else {
+      lines.push('· yt-dlp：❌ 不可用 —— 视频链接功能会直接拒绝（装一份或在 socialV2.media.video.links.ytdlpPath 指定路径）');
+    }
+  }
+
   const counts = [];
   if (Number.isFinite(snap.people)) counts.push(`人物 ${snap.people}`);
   if (Number.isFinite(snap.stickers)) counts.push(`表情 ${snap.stickers}`);

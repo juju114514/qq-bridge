@@ -134,6 +134,26 @@ check('版本行：显示版本与 state schema（升级排查第一句）', () 
   assert.match(noVer, /· 版本：未知/, '拿不到版本时也不能崩');
 });
 
+
+check('yt-dlp 行：可用显示版本，不可用给出修法', () => {
+  const now = 1_000_000;
+  const ok = m.buildSelfCheckReport({
+    now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {},
+    ytdlp: { available: true, version: '2026.10.21', path: 'D:/QQBot/tts/Scripts/yt-dlp.exe' }
+  });
+  assert.match(ok, /· yt-dlp：✅ 2026\.10\.21/);
+
+  const bad = m.buildSelfCheckReport({
+    now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {},
+    ytdlp: { available: false, version: '' }
+  });
+  assert.match(bad, /· yt-dlp：❌ 不可用/);
+  assert.match(bad, /ytdlpPath/, '不可用时要给出修法');
+
+  const none = m.buildSelfCheckReport({ now, startedAt: now - 1000, dshReady: true, snowluma: { connected: true }, queues: {} });
+  assert.ok(!none.includes('yt-dlp'), '没有该项时不显示');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

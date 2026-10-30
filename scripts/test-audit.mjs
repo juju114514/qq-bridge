@@ -190,6 +190,8 @@ const tests = [
   'test-issue-fixes-1030.mjs',
   // 文档链接守卫：本地文件必须存在（锚点只警告，slug 规则难精确复刻）。
   'check-md-links.mjs',
+  // 外部工具探测（yt-dlp）：缓存 / 失败不抛 / 版本解析。
+  'test-tool-version.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
