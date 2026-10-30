@@ -18,6 +18,8 @@ export function getSchedulerInstance(getDeps) {
     stateDir = '',
     getCfg = () => ({}),
     deliverPrompt = async () => {},
+    sendToQQ = null,
+    onebotSend = null,
     allowed = () => false,
     log = () => {}
   } = deps;
@@ -40,24 +42,41 @@ export function getSchedulerInstance(getDeps) {
       return allowed(m[1], Number(m[2]), cfgOf()) ? '' : '目标不在白名单内（定时任务不给陌生人发消息）';
     },
     // 引擎调用约定：deliver(task, target, meta)
+    //   kind='text' → **直接发 QQ**（sendToQQ）。不要走 deliverPrompt：
+    //                 那等于把"早上好"当问题丢给模型，模型会再回一句，语义全错。
+    //   kind='ai'   → 把 instruction 交给模型，由它组织语言。
     deliver: async (task, target) => {
       try {
         if (task?.kind === 'ai') {
           const instruction = String(task.instruction ?? '').trim();
-          if (!instruction) return { ok: false, reason: 'empty' };
+          if (!instruction) return { ok: false, status: 'failed', reason: '内容为空' };
           await deliverPrompt(target, `【定时任务：${task.name || '提醒'}】\n${instruction}`);
-          return { ok: true };
+          return { ok: true, status: 'sent' };
         }
         const text = String(task?.text ?? '').trim();
-        if (!text) return { ok: false, reason: 'empty' };
-        await deliverPrompt(target, text);
-        return { ok: true };
+        if (!text) return { ok: false, status: 'failed', reason: '内容为空' };
+        // 优先用 onebotSend：它在失败时**抛错**，引擎才能把状态记成 failed。
+        // sendToQQ 是 fire-and-forget（内部 catch 掉错误），拿它当成功依据会骗自己。
+        const [kind, id] = String(target).split(':');
+        if (typeof onebotSend === 'function') {
+          await onebotSend(kind, id, text);
+          return { ok: true, status: 'sent' };
+        }
+        if (typeof sendToQQ !== 'function') return { ok: false, status: 'failed', reason: '没有可用的发送通道' };
+        await sendToQQ(target, text);
+        return { ok: true, status: 'sent' };
       } catch (error) {
         log(`定时任务投递失败 ${target}：${error?.message ?? error}`);
-        return { ok: false, reason: String(error?.message ?? error) };
+        return { ok: false, status: 'failed', reason: String(error?.message ?? error) };
       }
     }
   });
+  // 关键两步，缺一不可：
+  //   load()  —— 把 state/scheduler.json 读进来（否则重启后任务"消失"）
+  //   start() —— 起 30 秒一次的 tick；**不调用就永远不会触发**（第一次接的时候漏了）
+  instance.load();
+  instance.refreshAll();   // 关键：nextRunAt 是运行期字段，load 不会重算 —— 不补这行，重启后任务永不再触发
+  instance.start();
   return instance;
 }
 

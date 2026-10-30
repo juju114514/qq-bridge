@@ -4559,7 +4559,7 @@ function renderScheduler(d) {
         <td>${escSched(x.scheduleText || '')}</td>
         <td>${escSched(x.kind === 'ai' ? '叫 AI 说' : (x.text || '').slice(0, 20))}</td>
         <td>${escSched((x.targets || []).join(', '))}</td>
-        <td>${schedTimeText(x.nextAt)}</td>
+        <td>${escSched(x.nextRunText || schedTimeText(x.nextRunAt))}</td>
         <td>${x.enabled ? '✅' : '⏸'}${x.lastResult ? ` · ${escSched(x.lastResult)}` : ''}</td>
         <td>
           <button data-sched-run="${x.id}">跑一次</button>

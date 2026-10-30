@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const { createSchedulerRoutes } = await import(new URL('../src/api/scheduler-routes.js', import.meta.url).href);
+const { resetSchedulerInstance } = await import(new URL('../src/scheduler/instance.js', import.meta.url).href);
 const sched = await import(new URL('../src/scheduler/schedule.js', import.meta.url).href);
 
 let failures = 0;
@@ -24,12 +25,15 @@ const cfg = { ownerQQ: '10001', allow: { groups: ['456789'], private: ['10002'] 
 const sent = [];
 
 function makeRoutes() {
+  // 引擎是**单例**：每个用例都要先重置，否则会复用上一个用例的依赖与数据
+  resetSchedulerInstance();
   return createSchedulerRoutes({
     log: () => {},
     stateDir: tmp,
     getCfg: () => cfg,
     allowed: (kind, id) => (kind === 'group' ? cfg.allow.groups.includes(String(id)) : cfg.allow.private.includes(String(id))),
     deliverPrompt: async (key, text) => { sent.push({ key, text }); },
+    onebotSend: async (kind, id, text) => { sent.push({ key: `${kind}:${id}`, text }); },
     readBody: async () => ({}),
     sendJson: () => {}
   });
@@ -84,6 +88,27 @@ await check('落盘：任务写进 state/scheduler.json（重启后还在）', a
   assert.ok(Array.isArray(raw.tasks) && raw.tasks.length >= 1);
 });
 
+const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sched2-'));
+
+await check('deliver 契约：必须返回 { status: sent }，否则引擎记成 failed（消息发了也显示失败）', async () => {
+  const sent2 = [];
+  resetSchedulerInstance();
+  const r2 = createSchedulerRoutes({
+    log: () => {}, stateDir: tmp2, getCfg: () => cfg,
+    allowed: () => true,
+    onebotSend: async (kind, id, text) => { sent2.push({ kind, id, text }); },
+    deliverPrompt: async () => {},
+    readBody: async () => ({}), sendJson: () => {}
+  });
+  const s2 = r2.getScheduler();
+  const task = s2.createTask({ name: 't', kind: 'text', text: 'hi', targets: ['private:10001'], schedule: { type: 'daily', times: ['09:00'] } }, { source: 'console' });
+  const run = await s2.runNow(task.id, { source: 'console' });
+  const outcome = (run?.outcomes || [])[0] || {};
+  assert.equal(outcome.status, 'sent', `应为 sent，实际 ${JSON.stringify(outcome)}`);
+  assert.equal(sent2.length, 1, '应该真的调了一次发送');
+});
+
+fs.rmSync(tmp2, { recursive: true, force: true });
 fs.rmSync(tmp, { recursive: true, force: true });
 
 console.log('');

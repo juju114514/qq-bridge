@@ -265,7 +265,19 @@ export function createScheduler({ file, deliver, validateTarget, ownerKey, holid
       .filter((t) => !forAi || t.createdBy === 'owner-chat-ai' || t.targets.includes(ownerKey()))
       .map(summarize),
 
-    /** 改设置：只有控制台 / 管理员命令可以。 */
+    /**
+   * 重算所有任务的"下次执行时间"。
+   * 这是相对上游的**新增**：上游 load() 只把 schedule 规范化，不重算 nextRunAt，
+   * 而 nextRunAt 是运行期字段（不落盘）→ 重启后任务全变成"永不触发"。
+   * 我们在 instance 里 load() 之后立刻调用它。
+   */
+  refreshAll() {
+    for (const t of data.tasks) { try { refreshNext(t); } catch { /* 单条坏了不影响其它 */ } }
+    save();
+    return data.tasks.length;
+  },
+
+  /** 改设置：只有控制台 / 管理员命令可以。 */
     updateSettings(patch, { source }) {
       if (!ADMIN_SOURCES.includes(source)) throw new Error('定时任务的总开关和安全限制只能在控制台或管理员命令里改');
       const merged = normalizeSettings({ ...data.settings, ...patch, limits: { ...data.settings.limits, ...(patch?.limits ?? {}) } });
