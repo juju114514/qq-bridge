@@ -41,6 +41,7 @@ import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
 import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
+import { decideNoAction } from './turn-guard.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -10001,30 +10002,27 @@ function selfCheckSnapshot() {
               // 则累计 noActionCount；达到阈值后自动重置 WakeConfig，避免 AI 卡死。
               const silentQueueNow = social.silentTurns.get(frame.sessionId) ?? [];
               const isSilentTurn = silentQueueNow.length > 0;
-              if (currentMode === 'reserved2' && key && !isSilentTurn) {
+              // 无行动计数（已拆到 src/turn-guard.js）：三处坑见模块注释
+              const guard = decideNoAction({
+                mode: currentMode, key, isSilentTurn,
+                turnStart: v2TurnStartAt.get(frame.sessionId) ?? 0,
+                sendToolHit: sendToolSucceededSessions.has(frame.sessionId),
+                lastActionAt: getSocialV2State(key).lastActionAt,
+                noActionCount: getSocialV2State(key).wakeConfig?.noActionCount ?? 0,
+                limit: Number(cfg.socialV2?.wake?.noActionLimit) || 3
+              });
+              if (guard.skip === 'no-turn-start') {
+                log(`[reserved2] ${key} 回合结束但缺少 turn/start（重连补发），跳过无行动计数`);
+              } else if (!guard.skip) {
                 const st = getSocialV2State(key);
-                const turnStart = v2TurnStartAt.get(frame.sessionId) ?? 0;
-                const sendToolHit = sendToolSucceededSessions.has(frame.sessionId);
-                // turn/start 丢了（重连后由快照补发的回合）就无从判断「这一轮有没有行动」：
-                // 此时记 miss 会冤枉 AI，连续 3 次就把 AI 自己设的唤醒配置重置成默认值。
-                if (turnStart > 0 || sendToolHit) {
-                  const actionTaken = sendToolHit || (turnStart > 0 && st.lastActionAt >= turnStart);
-                  if (actionTaken) {
-                    st.wakeConfig.noActionCount = 0;
-                  } else {
-                    st.wakeConfig.noActionCount = (st.wakeConfig.noActionCount || 0) + 1;
-                    const limit = Number(cfg.socialV2?.wake?.noActionLimit) || 3;
-                    if (st.wakeConfig.noActionCount >= limit) {
-                      log(`[reserved2] ${key} 连续 ${st.wakeConfig.noActionCount} 次唤醒无行动，重置唤醒配置`);
-                      st.wakeConfig = defaultWakeConfigV2();
-                      st.bootstrapSent = true;
-                      st.wakeConfig.noActionCount = 0;
-                    }
-                  }
-                  saveSocialV2State();
-                } else {
-                  log(`[reserved2] ${key} 回合结束但缺少 turn/start（重连补发），跳过无行动计数`);
+                st.wakeConfig.noActionCount = guard.count;
+                if (guard.reset) {
+                  log(`[reserved2] ${key} 连续 ${guard.count} 次唤醒无行动，重置唤醒配置`);
+                  st.wakeConfig = defaultWakeConfigV2();
+                  st.bootstrapSent = true;
+                  st.wakeConfig.noActionCount = 0;
                 }
+                saveSocialV2State();
               }
               v2TurnStartAt.delete(frame.sessionId);
               collectors.delete(frame.sessionId);

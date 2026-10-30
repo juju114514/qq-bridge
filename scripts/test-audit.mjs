@@ -198,6 +198,8 @@ const tests = [
   'test-scheduler.mjs',
   // /提醒 命令：帮助 / 建任务（只发管理员）/ 列表（同一单例）/ 删除 / 错误提示。
   'test-remind-command.mjs',
+  // 回合收尾的无行动计数：turn/start 缺失 / 静默回合 / 阈值重置。
+  'test-turn-guard.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
