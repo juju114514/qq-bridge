@@ -214,6 +214,8 @@ const tests = [
   'test-social-v2-rules.mjs',
   // 社交状态加载契约：脏键清洗 / token 去重 / 读水位夹取 / 坏文件隔离。
   'test-social-v2-state.mjs',
+  // 社交状态落盘整形：裁剪上限 / 落盘失败不抛。
+  'test-social-v2-store.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

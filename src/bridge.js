@@ -47,6 +47,7 @@ import { decideReplyAction } from './turn-reply.js';
 import { decideWakeReminder } from './turn-wake.js';
 import { createWakeConfigDomain } from './domains/wake-config.js';
 import { normalizeSpeakerIds, hasExplicitEnd, isSleepingConfig, computeWakeSafety } from './domains/social-v2-rules.js';
+import { saveSocialV2StateTo } from './domains/social-v2-store.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -6558,38 +6559,12 @@ async function main() {
     }
   }
 
+  // 落盘整形已搬到 src/domains/social-v2-store.js（裁剪上限也在那边）
   function saveSocialV2State() {
-    try {
-      const obj = { paused: socialV2.paused, conversations: Object.create(null) };
-      for (const [key, st] of socialV2.conversations) {
-        obj.conversations[key] = {
-          wakeConfig: st.wakeConfig,
-          recentMessages: st.recentMessages.slice(-200),
-          unread: st.unread.slice(-100),
-          lastWakeReason: st.lastWakeReason,
-          lastAiReplyAt: st.lastAiReplyAt,
-          lastActionAt: st.lastActionAt,
-          agentToken: st.agentToken,
-          bootstrapSent: st.bootstrapSent,
-          wakeTimes: st.wakeTimes.slice(-200),
-          sendTimes: st.sendTimes.slice(-500),
-          stickerCollectTimes: Array.isArray(st.stickerCollectTimes) ? st.stickerCollectTimes.slice(-500) : [],
-          lastIncomingAt: st.lastIncomingAt || 0,
-          preSleepWaitSatisfiedAt: st.preSleepWaitSatisfiedAt || 0,
-          preSleepWaitObservedAt: st.preSleepWaitObservedAt || 0,
-          preSleepWaitAccumMs: st.preSleepWaitAccumMs || 0,
-          lastUnreadSeq: st.lastUnreadSeq || 0,
-          lastReadThroughSeq: st.lastReadThroughSeq || 0,
-          activeTopics: Array.isArray(st.activeTopics) ? st.activeTopics.slice(-50) : [],
-          pendingThoughts: Array.isArray(st.pendingThoughts) ? st.pendingThoughts.slice(-50) : [],
-          memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {},
-          seenForwardIds: Array.from(seenForwardIds.get(key) || []).slice(-1000)
-        };
-      }
-      atomicWriteJson(SOCIAL_V2_FILE, obj);
-    } catch (error) {
-      log('保存 socialV2 状态失败:', error?.message ?? error);
-    }
+    return saveSocialV2StateTo({
+      file: SOCIAL_V2_FILE, conversations: socialV2.conversations, seenForwardIds,
+      paused: socialV2.paused, atomicWriteJson, log
+    });
   }
 
   // ── 二代仿真：操作者预写的「初始提示词」（每个会话一份，只在首次唤醒时注入） ──────
