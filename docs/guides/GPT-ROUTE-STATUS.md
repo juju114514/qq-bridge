@@ -171,3 +171,100 @@ setx AWS_REGION "us-east-1"
 | 硅基流动 | 聚合多家，OpenAI 兼容，注册门槛低 |
 
 **建议顺序**：先加 `qwen-max`（零成本，改一条配置）→ 不行再考虑智谱/火山。
+
+---
+
+# 第三路线实测：暴喵AI管家（本机网关 → 暴喵API → 小米 MiMo）
+
+## 一、它是什么
+
+用户机器上装了「暴喵AI管家」（`ai-manager.exe`），它在 **`127.0.0.1:15721`** 跑了一个本地网关：
+
+```
+GET  /status              → {"running":true,"current_provider":"暴喵API","success_rate":100}
+POST /v1/messages         → 200   （Anthropic Messages 协议）
+GET  /v1/models           → {"models":[]}
+POST /v1/chat/completions → 503 {"error":{"message":"未配置供应商"}}
+```
+
+**结论：它是 Anthropic 协议，不是 OpenAI 协议。** 接 DSH 必须用 `api: anthropic-messages`，
+用 `openai-completions` 会得到 503。
+
+## 二、⚠️ 它叫 Claude，实际是小米 MiMo
+
+直接问它"你是哪个模型"，它自己回答：
+
+> 我是 MiMo，由小米大模型 Core 团队（Xiaomi LLM Core Team）开发的大语言模型。
+
+响应体里 `"model": "mimo-v2.6-pro"`。界面上的 "Claude Code / Claude Desktop / Claude Official"
+是**工具标签**，不是模型身份 —— 请求经 暴喵API 中转后落到 MiMo。
+
+**这正是"中转站模型降级"的教科书案例。** 买之前先问它一句"你是谁"。
+
+## 三、实测结果
+
+| 测试 | 结果 |
+| --- | --- |
+| 直连 `/v1/messages` 问身份 | ✅ 200，回答 "我是 MiMo" |
+| 直连 Anthropic 格式 `tool_use` | ✅ **完美**：`{"type":"tool_use","name":"get_weather","input":{"city":"北京"}}`，`stop_reason:"tool_use"` |
+| 经 DSH + 桥接调 `qq_list_stickers` | ✅ **`ok=True`** —— **第一个工具调用成功的非 DeepSeek 模型** |
+| 同一轮收尾文本 | ⚠️ `回合完成但无文本`（工具调完没有输出结尾） |
+| 上下文窗口 | ⚠️ 声明 200000 → `context overflow`；降到 32768 才勉强跑 |
+
+对比千问：千问是 **token 传错（403）**；MiMo 是 **token 传对（ok=True）**。
+工具保真度 MiMo 明显更好，但上下文窗口很小，长对话会 overflow。
+
+## 四、接入配置（已写进 DSH，可直接复用）
+
+`~/.dsh/profiles/desktop/cordis.patch.yml`：
+
+```yaml
+      baomiao:
+        displayName: 暴喵网关（本机 15721，后端自报 MiMo）
+        apiKeyEnv: BAOMIAO_API_KEY      # 网关不校验，占位值即可
+        api: anthropic-messages
+        baseURL: http://127.0.0.1:15721
+        models:
+          - id: claude-sonnet-4-5       # ⚠️ 中转只认这个名字，会映射到 mimo
+            contextWindow: 32768
+            maxTokens: 4096
+          - id: mimo-v2.6-pro
+            contextWindow: 32768
+            maxTokens: 4096
+```
+
+`~/.dsh/.credentials.yaml` 的 `refs` 里要有 `BAOMIAO_API_KEY`（任意非空值），
+否则 DSH 直接报 `No API key for provider: baomiao`。
+
+**两条踩坑**：
+
+1. 用 `mimo-v2.6-pro` 作为请求 model 名会被中转拒：
+   `503 当前分组 aimgr 下对于模型 mimo-v2.6-pro 无可用渠道` ——
+   **必须用 `claude-sonnet-4-5`**，中转才会映射到实际后端。
+2. 自定义 provider 必须声明 `contextWindow`，否则真实会话直接 overflow（与千问同一个坑）。
+
+## 五、适用性判断
+
+| 用途 | 结论 |
+| --- | --- |
+| 纯文本聊天 | ✅ 可用 |
+| 工具调用（`reserved2`） | ⚠️ 基本可用（已验证 ok=True），但**窗口小、收尾常空** |
+| 替换 `reserved2` 主力 | ❌ 不建议：试用积分、后端非 Claude、窗口小 |
+| 当"第二意见"交叉验证 | ✅ 合适 |
+
+## 六、三个风险（写进文档，避免以后忘）
+
+1. **它会转发你的对话**（第三方中转）—— 别聊敏感内容。
+2. **200 积分是试用**，用完需充值；这家随时可能换后端模型。
+3. **"Claude" 是标签不是身份** —— 实测后端是 MiMo，按 MiMo 的价位衡量才不吃亏。
+
+## 七、当前三条路线的最终结论
+
+| 路线 | 文本 | 工具调用 | 能用在哪 |
+| --- | --- | --- | --- |
+| **DeepSeek（deepseek-official）** | ✅ | ✅ | **生产主力**（`reserved2`） |
+| 千问（dashscope） | ✅ | ❌ 参数保真度不够 | 纯文本 / 第二意见 |
+| 暴喵网关（MiMo） | ✅ | ⚠️ 通了但窗口小 | 第二意见、工具调用备选 |
+| Bedrock（GPT/Claude） | ❌ 未测 | ❌ 未测 | 缺 `ABSK…` 或 AWS AK/SK |
+
+**生产配置保持不变：`deepseek-official / deepseek-flash`。**
