@@ -42,6 +42,7 @@ import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { decideNoAction } from './turn-guard.js';
+import { finalizeTurn } from './turn-finalize.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -10025,25 +10026,15 @@ function selfCheckSnapshot() {
                 }
                 saveSocialV2State();
               }
-              v2TurnStartAt.delete(frame.sessionId);
-              collectors.delete(frame.sessionId);
-              turnLeaseNoted.delete(frame.sessionId);
-              const sendToolSucceeded = sendToolSucceededSessions.has(frame.sessionId);
-              sendToolSucceededSessions.delete(frame.sessionId);
-              pendingSendToolCalls.delete(frame.sessionId);
-              toolCallNames.delete(frame.sessionId);
-              // 标记本次 turn 是否为“活跃超时退场”发言（用于准确回到观望，避免把旧回复误判为退场）
-              const isFarewell = social.exitingSessions.has(frame.sessionId);
-              if (isFarewell) social.exitingSessions.delete(frame.sessionId);
-              // 摘要投喂触发的 turn：回复静默（不发送到 QQ）。
-              // 用 FIFO 时间戳队列 + 超时回收，避免计数残留吞掉后续正常回复。
-              const silentQueue = social.silentTurns.get(frame.sessionId) ?? [];
-              const silentNow = Date.now();
-              while (silentQueue.length && silentNow - silentQueue[0].ts > SILENT_TURN_TIMEOUT_MS) silentQueue.shift();
-              if (silentQueue.length > 0) {
-                silentQueue.shift();
-                if (silentQueue.length > 0) social.silentTurns.set(frame.sessionId, silentQueue);
-                else social.silentTurns.delete(frame.sessionId);
+              // 回合收尾记账（已拆到 src/turn-finalize.js）：删会话级集合 + 消费静默队列
+              const fin = finalizeTurn({
+                sessionId: frame.sessionId, social, v2TurnStartAt, collectors, turnLeaseNoted,
+                sendToolSucceededSessions, pendingSendToolCalls, toolCallNames,
+                silentTimeoutMs: SILENT_TURN_TIMEOUT_MS
+              });
+              const sendToolSucceeded = fin.sendToolSucceeded;
+              const isFarewell = fin.isFarewell;
+              if (fin.silent) {
                 log(`摘要投喂 turn 结束，静默 (${key})`);
                 continue;
               }

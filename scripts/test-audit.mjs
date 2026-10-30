@@ -202,6 +202,8 @@ const tests = [
   'test-turn-guard.mjs',
   // 回合帧形状与生命周期（chunk 忽略 / 交错回合 / 无 start 的 end）。
   'test-turn-frames.mjs',
+  // 回合收尾记账：退场标记 / 静默队列 / 超时回收。
+  'test-turn-finalize.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
