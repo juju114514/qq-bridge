@@ -29,6 +29,10 @@ const asJson = args.includes('--json');
 
 const PATH_RE = /pathname\s*(?:===|!==)\s*'([^']+)'|pathname\.startsWith\(\s*'([^']+)'\)/g;
 
+// 内联路由预算（棘轮）：bridge.js 里还没搬进派发链的 `url.pathname` 判断条数。
+// 波次 4 的目标是把它降到 0；在那之前**只能减不能增** —— 新端点必须写进 src/api/*.js 并接链。
+const INLINE_ROUTE_BUDGET = 41;
+
 /** 每个 api 模块：导出名 + 它判定的 (method, path) 集合 */
 function scanApiModule(file) {
   const src = fs.readFileSync(path.join(API_DIR, file), 'utf8');
@@ -127,7 +131,15 @@ for (const t of tombstones) {
   warnings.push(line);
 }
 
+// 内联路由计数：bridge 里仍在直接按 pathname 分派的条数
+const inlineRoutes = bridgeSrc.split('\n').filter((l) => /url\.pathname/.test(l) && /(===|startsWith)/.test(l) && !l.trim().startsWith('//'));
+if (inlineRoutes.length > INLINE_ROUTE_BUDGET) {
+  problems.push(`bridge.js 内联路由 ${inlineRoutes.length} 条，超过预算 ${INLINE_ROUTE_BUDGET}（新端点请写进 src/api/*.js 并接进派发链）`);
+}
+
 const report = {
+  inlineRoutes: inlineRoutes.length,
+  inlineBudget: INLINE_ROUTE_BUDGET,
   handlers: moduleHandlers.size,
   paths: pathOwners.size,
   wired: wired.size,
@@ -140,6 +152,7 @@ if (asJson) {
   console.log(JSON.stringify(report, null, 2));
 } else {
   console.log(`  模块 handler: ${report.handlers} 个，path 字面量: ${report.paths} 条，桥接里引用: ${report.wired} 个名字`);
+  console.log(`  bridge 内联路由: ${report.inlineRoutes}/${report.inlineBudget}（棘轮：只能减）`);
   if (problems.length) {
     console.error('✗ 路由清单有问题：');
     for (const p of problems) console.error('   ' + p);
