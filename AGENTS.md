@@ -118,6 +118,30 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1
 5. **不要改 `dsh/agent-presets/` 里的提示词**（安全边界在里面）；要改先说明理由
 6. **不要用 `-NoStart` 装完后忘记启动**——用户会以为坏了
 
+### 硬性规则 3：给 bridge 加新模块时，必须同步改测试 harness
+
+`scripts/audit-bridge-harness.mjs` 是把 `bridge.js` 丢进 Node VM 跑的：
+**顶层 import 会被剥掉，所有标识符按名字注入 context**。
+所以"我在 bridge 里 import 了 X" ≠ "VM 里能拿到 X"。
+
+今晚（10-31）连续三次踩同一个坑，每次表现都不同：
+
+| 写法 | VM 里的表现 | 修法 |
+| --- | --- | --- |
+| 新模块函数没注入 | `createWakeConfigDomain is not defined` | 在 harness 里注入，或把模块放进 `src/api` / `src/http` / `src/domains` 由 loader 自动装载 |
+| **别名 import**（`X as Y`） | `Y is not defined` | VM 只有原名；改成 `const Y = X;` 或 `obj.X` 自取 |
+| 注入顺序错（TDZ） | `Cannot access 'x' before initialization` | 先定义依赖，再定义使用它的常量 |
+
+**上线前的自检**（不能只靠 `node --check` 和审计全绿）：
+
+```powershell
+# 重启后扫日志：本次启动之后不能出现这些词
+Select-String -Path state\bridge.log -Pattern 'is not defined|事件流中断|ReferenceError'
+```
+
+原因是真踩过：`decideReplyAction` 的 import 因为脚本中途异常没落盘，
+`node --check` 通过、审计 97/97 通过，线上却每个回合都 `事件流中断`。
+
 ## 常见坑（你先知道，能省几轮）
 
 | 坑 | 说明 |
