@@ -25,7 +25,7 @@ export async function handleExtraRoutes(ctx = {}) {
   // /api/scheduler* —— 定时任务（引擎在 src/scheduler/，从同源分叉移植）
   if (url.pathname === '/api/scheduler' || url.pathname.startsWith('/api/scheduler/')) {
     schedulerRoutes ??= createSchedulerRoutes(resolveDeps());
-    await schedulerRoutes.handle({ req, url, sendJson });
+    await schedulerRoutes.handle({ req, url, sendJson, readBody: ctx.readBody });
     return true;
   }
 

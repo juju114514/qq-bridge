@@ -15,7 +15,6 @@ import { createScheduler } from '../scheduler/engine.js';
 export function createSchedulerRoutes(baseDeps = {}) {
   const {
     log = () => {},
-    readBody,
     stateDir,
     getCfg,
     deliverPrompt,
@@ -84,7 +83,8 @@ export function createSchedulerRoutes(baseDeps = {}) {
   }
 
   async function handle(ctx = {}) {
-    const { req, url, sendJson } = ctx || {};   // sendJson 是**每请求**的，不能从 baseDeps 拿
+    // sendJson / readBody 都是**每请求**的闭包，不能从 baseDeps 拿（真实踩过：readBody is not a function）
+    const { req, url, sendJson, readBody } = ctx || {};
     const s = getScheduler();
     const sub = url.pathname.slice('/api/scheduler'.length);
     const fail = (error, code = 400) => sendJson({ ok: false, error: error?.message ?? String(error) }, code);
