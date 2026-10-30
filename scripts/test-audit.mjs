@@ -206,6 +206,8 @@ const tests = [
   'test-turn-finalize.mjs',
   // 回合收尾要不要发：空 / 静默标记 / 工具已发送。
   'test-turn-reply.mjs',
+  // 防遗忘判定：settled / remind / reset 三条出口。
+  'test-turn-wake.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

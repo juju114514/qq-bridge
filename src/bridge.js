@@ -43,6 +43,8 @@ import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { decideNoAction } from './turn-guard.js';
 import { finalizeTurn } from './turn-finalize.js';
+import { decideReplyAction } from './turn-reply.js';
+import { decideWakeReminder } from './turn-wake.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -10040,42 +10042,45 @@ function selfCheckSnapshot() {
               }
               // reserved2 防遗忘：每次唤醒回合结束时，若 AI 没有调用 qq_set_wake_config 设置下一次唤醒条件，
               // 则发送提醒；连续未设置达到上限后重置为默认唤醒配置。静默/后台提醒回合已在上方 continue，不触发。
+              // 防遗忘：AI 没设下一次唤醒条件就提醒，连续漏到上限则重置（判定在 src/turn-wake.js）
               if (pendingWakeKeys.has(key)) {
                 pendingWakeKeys.delete(key);
                 disarmPendingWakeLease(key);
-                if (wakeConfigUpdatedKeys.has(key) || markReadCalledKeys.has(key)) {
+                const maxReminders = Number(cfg.socialV2?.wake?.maxWakeConfigReminders) || 2;
+                const decision = decideWakeReminder({
+                  pending: true,
+                  wakeConfigUpdated: wakeConfigUpdatedKeys.has(key),
+                  markReadCalled: markReadCalledKeys.has(key),
+                  missCount: wakeConfigMissCount.get(key) ?? 0,
+                  maxReminders
+                });
+                if (decision.action === 'settled') {
                   ensureWakeableV2(getSocialV2State(key), { key });
                   wakeConfigUpdatedKeys.delete(key);
                   markReadCalledKeys.delete(key);
                   wakeConfigMissCount.delete(key);
-                } else {
-                  const currentMiss = (wakeConfigMissCount.get(key) ?? 0) + 1;
-                  const maxReminders = Number(cfg.socialV2?.wake?.maxWakeConfigReminders) || 2;
-                  if (currentMiss < maxReminders) {
-                    wakeConfigMissCount.set(key, currentMiss);
-                    pendingWakeKeys.add(key);
-                    armPendingWakeLease(key);
-                    deliverPrompt(key, buildWakeReminderPromptV2(key)).then((result) => {
-                      if (result && result.ok === false) {
-                        pendingWakeKeys.delete(key);
-                        disarmPendingWakeLease(key);
-                      }
-                    }).catch((error) => {
+                } else if (decision.action === 'remind') {
+                  wakeConfigMissCount.set(key, decision.missCount);
+                  pendingWakeKeys.add(key);
+                  armPendingWakeLease(key);
+                  deliverPrompt(key, buildWakeReminderPromptV2(key)).then((result) => {
+                    if (result && result.ok === false) {
                       pendingWakeKeys.delete(key);
                       disarmPendingWakeLease(key);
-                      log(`[reserved2] ${key} 唤醒提醒投递失败: ${error?.message ?? error}`);
-                    });
-                    log(`[reserved2] ${key} 未设置唤醒条件，发送提醒 (${currentMiss}/${maxReminders})`);
-                  } else {
-                    const st = getSocialV2State(key);
-                    st.wakeConfig = defaultWakeConfigV2();
-                    saveSocialV2State();
-                    log(`[reserved2] ${key} 连续未设置唤醒条件，已重置为默认唤醒配置`);
-                  }
+                    }
+                  }).catch((error) => {
+                    pendingWakeKeys.delete(key);
+                    disarmPendingWakeLease(key);
+                    log(`[reserved2] ${key} 唤醒提醒投递失败: ${error?.message ?? error}`);
+                  });
+                  log(`[reserved2] ${key} 未设置唤醒条件，发送提醒 (${decision.missCount}/${maxReminders})`);
+                } else if (decision.action === 'reset') {
+                  const st = getSocialV2State(key);
+                  st.wakeConfig = defaultWakeConfigV2();
+                  saveSocialV2State();
+                  log(`[reserved2] ${key} 连续未设置唤醒条件，已重置为默认唤醒配置`);
                 }
               }
-              // 繁忙期间被暂存的唤醒原因：当前 turn 结束后补一次（定时器类与消息类语义不同，
-              // 详见 replayPendingWakeReasonsV2 的注释）。
               replayPendingWakeReasonsV2(key);
               if (ended.reason.kind === 'completed' && ended.text.trim()) {
                 const plain = mdToPlain(ended.text);
