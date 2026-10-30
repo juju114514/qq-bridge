@@ -6,17 +6,17 @@
 > 第三方组件与数据出机清单在 [NOTICE.md](NOTICE.md)）。**仓库不含任何真实账号、群号、令牌或 Cookie。**
 
 > **已经装过、要升级？** → [docs/UPGRADE.md](docs/UPGRADE.md)（按版本看要做什么，含回滚）
-> **想直接跑起来？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
+> **第一次用（没写过代码）？** → [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)（零基础八步：每步都写了「应该看到什么 / 没看到怎么办」）
+> **想直接跑起来（会命令行）？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
 >
 ### 你已经装了什么？不用换，直接用
 
 | 你现在的环境 | 能不能直接用 | 怎么做 |
 | --- | --- | --- |
-| 2026-10-31 | **波次 4 收官**：`bridge.js` 11,236 → **10,050** 行，内联路由 **41 → 1 条**（棘轮只许减），审计 88 → **115** 个脚本；新增路由总表 [docs/ROUTES.md](docs/ROUTES.md) 与**隐私守卫** `check-privacy.mjs`；真机实测 8 条"真发"端点（发消息/语音/点歌），脏环境七场景全过 | [docs/sessions/2026-10-31.md](docs/sessions/2026-10-31.md) |
 | **已装 NapCat**（AstrBot / 其它方案常带） | ✅ **不用换网关** | `gateway-select` 自动识别 SnowLuma 与 NapCat，谁在跑用谁；一个挂了自动降级，带 60 秒冷却不回跳 |
 | 已装 SnowLuma | ✅ 主通道 | 默认就走它 |
 | 正在用 **AstrBot** | ✅ 可以共存 | 先开只读模式试跑，两条轨道互不影响 → [迁移指南](docs/guides/MIGRATE-FROM-ASTRBOT.md) |
-| 什么都没有 | ✅ 从零装 | → [QUICKSTART.md](QUICKSTART.md) |
+| 什么都没有 | ✅ 从零装 | → [BEGINNER.md](docs/guides/BEGINNER.md)（零基础）或 [QUICKSTART.md](QUICKSTART.md)（一页版） |
 
 **只想先看看效果、不想动现有机器人？** 用只读模式：
 
@@ -34,7 +34,9 @@ node src/bridge.js   # 然后 /role 里切到 silent，或控制台点「暂停�
 │
 ├─ 只想先看看它怎么想   →  npm run demo          （不用 QQ、不联网，30 秒）
 │
-├─ 什么都没有           →  QUICKSTART.md          （体检 → 三条路线选一条）
+├─ 什么都没有（新手）    →  docs/guides/BEGINNER.md（零基础八步，含截图）
+  │
+  ├─ 什么都没有（会命令行）→  QUICKSTART.md          （体检 → 三条路线选一条）
 │      └ 装不上/报错    →  npm run doctor        （逐条告诉你缺什么）
 │
 ├─ 已经装了 NapCat      →  直接用，不用换         （start-all.ps1 -StatusOnly 自检）
@@ -177,6 +179,7 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 
 | 日期 | 内容 | 看这里 |
 | --- | --- | --- |
+| 2026-10-31 | **波次 4 收官**：`bridge.js` 11,236 → **10,050** 行，内联路由 **41 → 1 条**（棘轮只许减），审计 88 → **115** 个脚本；新增路由总表 [docs/ROUTES.md](docs/ROUTES.md) 与**隐私守卫** `check-privacy.mjs`；真机实测 8 条"真发"端点（发消息/语音/点歌），脏环境七场景全过 | [docs/sessions/2026-10-31.md](docs/sessions/2026-10-31.md) |
 | 2026-10-30 | **可维护性大修**：bridge.js 11,236 → **10,771** 行（硬上限压到 10,800，由棘轮守住），拆出 15 个模块，审计 73 → **87** 个脚本；新增 [ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 `find-symbol`（查符号不用读整文件） | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 2026-10-30 | **`/诊断`**：回答「这条消息为什么没回我」——闸门 / 暂停 / 唤醒 / 投递逐段给判定，环形缓冲 80 条，只记截断文本 | [COMMANDS.md](COMMANDS.md) |
 | 2026-10-30 | **`qq_people_note`**：模型能记事也能纠错（人物库以前只读，记错只能 `/reset`）；档位低时笔记不注入会明确告知 | [CHANGELOG](CHANGELOG.md) |

@@ -102,7 +102,8 @@ if (!fs.existsSync(nm)) {
 const cfgPath = path.join(ROOT, 'config.json');
 let cfg = null;
 if (!fs.existsSync(cfgPath)) {
-  fail('config.json', '不存在：复制 config.example.json 改名，或跑 setup.ps1', 'README「安装与配置」');
+  fail('config.json', '不存在：第一次用直接跑 `node scripts/first-run.ps1`（它会生成），或复制 config.example.json 改名',
+    'docs/guides/BEGINNER.md 第 3~4 步');
 } else {
   const parsed = readJsonSafe(cfgPath);
   if (!parsed.raw) fail('config.json', `解析失败：${parsed.error}`, 'TROUBLESHOOTING.md#a7-config-json-解析失败unexpected-utf-8-bom');

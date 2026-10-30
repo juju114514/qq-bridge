@@ -79,7 +79,7 @@ npm install
 # 3) 一条命令安装（自动探测 DSH 端口、读 SnowLuma token、写配置、启动、验收）
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -OwnerQQ <管理员QQ号>
 
-# 4) 体检（16 项，退出码 0=通过 2=警告 1=致命；第 16 项查「视频工具是否会注册」）
+# 4) 体检（12 项，退出码 0=通过 2=警告 1=致命；项数以脚本输出为准）
 powershell -ExecutionPolicy Bypass -File .\verify.ps1
 ```
 
