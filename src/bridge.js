@@ -78,6 +78,7 @@ import { createSocialV2PromptHandler } from './api/socialV2-prompt.js';
 import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
+import { handleExtraRoutes } from './api/console-extra-routes.js';
 import { createPresetSimHandlers } from './api/preset-sim.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
@@ -4473,16 +4474,16 @@ async function main() {
           sendJson({ ok: true, key, members });
           return;
         }
-        // ── 群成员列表（v2 读工具；替代只有 closed-agent 才能用的旧只读工具）────────
-        //
-        // 为什么需要这一条：qq-chat-v2 预设第 6 条明确要求「QQ 号从 qq_get_group_members 的
-        // user_id 拿」，但旧版是无令牌工具、在 reserved2 下必然 403 —— 模型被自己的提示词
-        // 引到一个永远失败的工具上（实测 turn10 白烧一步）。这里给它一个带会话令牌的 v2 形态。
-        // 人物笔记：add / list / clear（模型能记事、能纠错）
         if (req.method === 'POST' && url.pathname === '/api/socialV2/people-note') {
           await getPeopleNoteHandler().handle({ req, sendJson, readBody });
           return;
         }
+
+        // 其余零散端点（诊断等）在 src/api/console-extra-routes.js：bridge 只保留这一次调用
+        if (await handleExtraRoutes({
+          req, url, sendJson,
+          deps: { log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport }
+        })) return;
 
         if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {
       await getGroupMembersHandler().handle({ req, url, sendJson });
@@ -9185,13 +9186,7 @@ function scheduleWakeV2(key, reason) {
   const decisionTrace = createDecisionTrace({ max: 80 });
 
   let incomingStatusCommandsInstance = null;
-  const getIncomingStatusCommands = () => (incomingStatusCommandsInstance ??= createIncomingStatusCommands({
-    sendToQQ, readRoleState, writeRoleStateForKey,
-    sanitizeRoleName, resolveRoleName, listRoles, roleName,
-    allowed, getCfg: () => cfg, getState: () => state, getRoleState: () => readRoleState(),
-    buildSelfCheckReport,
-    getDecisionTrace: () => decisionTrace,
-    getSelfCheck: () => {
+function selfCheckSnapshot() {
       try {
         return {
           now: Date.now(),
@@ -9231,7 +9226,15 @@ function scheduleWakeV2(key, reason) {
       } catch (error) {
         return { now: Date.now(), mode: currentMode, dshReady, recentErrors: [String(error?.message ?? error)] };
       }
-    }
+}
+
+  const getIncomingStatusCommands = () => (incomingStatusCommandsInstance ??= createIncomingStatusCommands({
+    sendToQQ, readRoleState, writeRoleStateForKey,
+    sanitizeRoleName, resolveRoleName, listRoles, roleName,
+    allowed, getCfg: () => cfg, getState: () => state, getRoleState: () => readRoleState(),
+    buildSelfCheckReport,
+    getDecisionTrace: () => decisionTrace,
+    getSelfCheck: () => selfCheckSnapshot(),
   }));
 
   // /reset 的清理逻辑：已拆到 src/session-reset.js（惰性创建，避免 TDZ）
