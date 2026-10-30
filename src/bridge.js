@@ -6456,7 +6456,8 @@ async function main() {
         const seenTokens = new Set();
         for (const [key, val] of Object.entries(raw.conversations)) {
           if (!val || typeof val !== 'object') continue;
-          if (!/^(group|private):\d+$/.test(key)) continue;
+          const canonicalKey = canonicalV2Key(key);
+          if (!canonicalKey) continue;   // 与 getSocialV2State 同一口径：group:0 / 乱格式一律丢弃
           const defaultWc = defaultWakeConfigV2();
           let agentToken = String(val.agentToken || crypto.randomBytes(16).toString('hex'));
           if (!agentToken || seenTokens.has(agentToken)) {
@@ -6512,7 +6513,7 @@ async function main() {
           // 仍使用默认唤醒配置的会话，在重启加载时同步到当前推荐/默认参数。
           refreshDefaultWakeConfigV2(st);
           rememberAgentToken(key, st.agentToken);
-          socialV2.conversations.set(key, st);
+          socialV2.conversations.set(canonicalKey, st);
           // 重启后从已持久化的消息与 seenForwardIds 字段重建“本会话见过的 forward id”
           {
             const rebuilt = new Set();

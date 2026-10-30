@@ -21,10 +21,20 @@ export const MIGRATIONS = {
   1: () => {},
   // v2：长期记忆层落地 —— 给已有会话补 longTermMemories: []（读代码时按"缺省空数组"兼容，
   //     但显式补上能让后续统计/迁移少一层判断）。
-  2: ({ stateDir }) => {
+  2: ({ stateDir, log }) => {
     const file = path.join(stateDir, 'social-v2.json');
     if (!fs.existsSync(file)) return;
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    // 文件损坏**不能阻断启动**：迁移阶段抛错会让 main() 直接退出，机器人整个起不来。
+    // 处置：把坏文件改名隔离（保留证据），然后当作"没有这个文件"继续。
+    let raw;
+    try {
+      raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    } catch (error) {
+      const quarantine = `${file}.corrupt-${Date.now()}`;
+      try { fs.renameSync(file, quarantine); } catch { /* 改名失败就算了，下面照样返回 */ }
+      log?.(`⚠️ [schema] social-v2.json 解析失败，已隔离到 ${path.basename(quarantine)}（${error?.message ?? error}）`);
+      return;
+    }
     let changed = false;
     for (const conv of Object.values(raw?.conversations ?? {})) {
       if (conv && typeof conv === 'object' && !Array.isArray(conv.longTermMemories)) {

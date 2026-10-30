@@ -212,6 +212,8 @@ const tests = [
   'test-wake-config.mjs',
   // 社交模式纯规则：名单归一化 / 退场判定 / 沉睡判定 / 唤醒安全性。
   'test-social-v2-rules.mjs',
+  // 社交状态加载契约：脏键清洗 / token 去重 / 读水位夹取 / 坏文件隔离。
+  'test-social-v2-state.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
