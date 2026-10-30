@@ -220,6 +220,8 @@ const tests = [
   'test-runtime.mjs',
   // 唤醒判定：at / 昵称 / 关键词词边界 / 指定群友 / 概率锁定。
   'test-wake-trigger.mjs',
+  // 有限潜水定时器：清旧 / 到期即醒 / 远未来分段续期 / 时钟跳变纠正。
+  'test-sleep-timer.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

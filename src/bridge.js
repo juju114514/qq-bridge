@@ -49,6 +49,7 @@ import { createWakeConfigDomain } from './domains/wake-config.js';
 import { normalizeSpeakerIds, hasExplicitEnd, isSleepingConfig, computeWakeSafety } from './domains/social-v2-rules.js';
 import { saveSocialV2StateTo, loadSocialV2StateInto } from './domains/social-v2-store.js';
 import { evaluateWakeTrigger } from './domains/wake-trigger.js';
+import { setupSleepTimer } from './domains/sleep-timer.js';
 import { createRuntime } from './runtime.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
@@ -8756,47 +8757,18 @@ function scheduleWakeV2(key, reason) {
     return { reason: item.reason, action: 'skipped' };
   }
 
+  // 有限潜水定时器已搬到 src/domains/sleep-timer.js（波次 2）
   function setupSleepTimerV2(key) {
-    if (cfg.socialV2?.enabled === false) return;
-    if (!isSessionAllowedInCurrentMode(key)) {
-      if (key.includes('official-')) log(`[official] 会话未通过当前模式校验，丢弃：${key}（模式 ${currentMode}）`);
-      return;
-    }
     const st = getSocialV2State(key);
-    cancelReplyCheckV2(key); // 有限睡眠配置已接管，取消回复检查
-    if (st.sleepTimer) {
-      clearTimeout(st.sleepTimer);
-      st.sleepTimer = null;
-    }
-    if (socialV2.paused) return;
-    const wc = st.wakeConfig;
-    if (!wc || wc.infinite || !wc.sleepUntil) return;
-    const until = Date.parse(wc.sleepUntil);
-    if (!Number.isFinite(until)) return;
-    const delay = until - Date.now();
-    if (delay <= 0) {
-      void sendWakePromptV2(key, 'timeout').catch((error) => log(`[reserved2] 睡眠到期唤醒异常 ${key}:`, error?.message ?? error));
-      return;
-    }
-    // Node setTimeout 超过 2^31-1ms 会按 1ms 触发；远未来定时器先等一小段后重新续期，
-    // 而不是提前唤醒。这里刻意用 100 秒级的小步长（而不是 24 天的上限）：
-    // 每次续期都会用 Date.now() 重新算剩余时间，系统时钟被校正/跳变时能很快纠正过来。
-    const MAX_TIMEOUT_MS = 100009;
-    if (delay > MAX_TIMEOUT_MS) {
-      st.sleepTimer = setTimeout(() => {
-        st.sleepTimer = null;
-        setupSleepTimerV2(key);
-      }, MAX_TIMEOUT_MS);
-      st.sleepTimer.unref?.();
-      log(`[reserved2] 设置远未来有限潜水定时器 ${key}，首段 ${Math.round(MAX_TIMEOUT_MS / 1000)} 秒后续期`);
-      return;
-    }
-    st.sleepTimer = setTimeout(() => {
-      st.sleepTimer = null;
-      void sendWakePromptV2(key, 'timeout').catch((error) => log(`[reserved2] 睡眠到期唤醒异常 ${key}:`, error?.message ?? error));
-    }, delay);
-    st.sleepTimer.unref?.();
-    log(`[reserved2] 设置有限潜水定时器 ${key}，剩余 ${Math.round(delay / 1000)}s`);
+    return setupSleepTimer({
+      key, st, wakeConfig: st.wakeConfig,
+      enabled: cfg.socialV2?.enabled !== false,
+      paused: socialV2.paused,
+      allowed: isSessionAllowedInCurrentMode,
+      cancelReplyCheck: cancelReplyCheckV2,
+      onWake: (k, why) => { void sendWakePromptV2(k, why).catch((error) => log(`[reserved2] 睡眠到期唤醒异常 ${k}:`, error?.message ?? error)); },
+      log
+    });
   }
 
   function cancelProactiveCheckV2(key) {
