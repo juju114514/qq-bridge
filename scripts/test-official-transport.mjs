@@ -141,7 +141,10 @@ check('bridge：官方通道默认关闭；开启后事件走同一个 handleInc
   assert.match(bridge, /handleIncoming\(event\.kind/, '官方事件必须复用同一个入站处理（人格/记忆/工具共享）');
   assert.match(bridge, /if \(isOfficialId\(id\)\)/, '发送侧要按官方前缀分流');
   // 语音/表情在官方通道上必须明确拒绝，而不是把 openid 塞进 Number()
-  assert.match(bridge, /__official\?\.atBot === true/, '官方 @ 必须在唤醒判定里被认出来（否则静默不回复）');
+  // 唤醒判定已搬到 src/domains/wake-trigger.js（波次 2）：断言改到域文件，
+  // 同时确认 bridge 仍然把事件委托给它（否则"搬走了但没接上"会静默失效）。
+  assert.match(read('src/domains/wake-trigger.js'), /__official\?\.atBot === true/, '官方 @ 必须在唤醒判定里被认出来（否则静默不回复）');
+  assert.match(bridge, /evaluateWakeTrigger\(\{/, 'bridge 必须把唤醒判定委托给域模块');
   assert.match(bridge, /官方通道暂不支持发送语音/);
   // 表情包已接入官方富媒体（2026-10-29）：断言从「必须报错」改成「必须调用 sendImage」
   assert.match(bridge, /officialTransport\.sendImage\(kind, id, image\.buffer/, '官方发表情要走富媒体');

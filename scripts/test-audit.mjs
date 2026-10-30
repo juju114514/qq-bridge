@@ -218,6 +218,8 @@ const tests = [
   'test-social-v2-store.mjs',
   // 运行时 rt：共享容器归属 / 计数器 / 事件总线。
   'test-runtime.mjs',
+  // 唤醒判定：at / 昵称 / 关键词词边界 / 指定群友 / 概率锁定。
+  'test-wake-trigger.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
