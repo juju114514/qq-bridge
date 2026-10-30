@@ -46,6 +46,7 @@ import { finalizeTurn } from './turn-finalize.js';
 import { decideReplyAction } from './turn-reply.js';
 import { decideWakeReminder } from './turn-wake.js';
 import { createWakeConfigDomain } from './domains/wake-config.js';
+import { normalizeSpeakerIds, hasExplicitEnd, isSleepingConfig, computeWakeSafety } from './domains/social-v2-rules.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -6320,21 +6321,8 @@ async function main() {
   // - 只保留正整数 QQ 号（字符串形式），拒绝 null/对象/“null”/非法字符等脏数据；
   // - 去重并限制最多 20 个，避免唤醒名单无限膨胀/被恶意塞入异常值；
   // - undefined/null 都视为“不启用”（空数组）。
-  function normalizeSpeakerIdsV2(value) {
-    if (value === undefined || value === null) return [];
-    const rawList = Array.isArray(value) ? value : String(value).split(/[,，\s]+/);
-    const seen = new Set();
-    const clean = [];
-    for (const v of rawList) {
-      const s = String(v ?? '').trim();
-      if (!/^[1-9]\d*$/.test(s)) continue;
-      if (seen.has(s)) continue;
-      seen.add(s);
-      clean.push(s);
-      if (clean.length >= 20) break;
-    }
-    return clean;
-  }
+  // 名单归一化已搬到 src/domains/social-v2-rules.js
+  const normalizeSpeakerIdsV2 = (value) => normalizeSpeakerIds(value);
 
   // triggers 的**唯一**合法字段集合。写入与加载都按它过滤：
   // 旧写法 `{...current.triggers, ...inputTriggers}` 会把模型传来的任意键原样并入、
@@ -6363,18 +6351,9 @@ async function main() {
   //   AI 看过新消息后若判断没必要参与，可以直接沉睡；若参与了（发送/拍一拍），则下次想睡需重新观察。
   const EXPLICIT_END_RE = /(?:不聊了|不说了|晚安|睡了|先睡了|下了|先下了|拜拜|再见|走了|先走|撤了|去忙|忙了|下次再聊|下次聊|散了吧|结束|就到这|先这样|就这样吧|886|88|睡觉了|下班了|去洗澡|去吃饭了)/i;
 
-  function hasExplicitEndV2(st) {
-    const recent = Array.isArray(st?.recentMessages) ? st.recentMessages : [];
-    const last = [...recent].reverse().find((m) => m && !m.isSelf);
-    if (!last) return false;
-    return EXPLICIT_END_RE.test(String(last.tail || last.plain || last.text || ''));
-  }
+  const hasExplicitEndV2 = (st) => hasExplicitEnd(st, EXPLICIT_END_RE);
 
-  function isSleepingConfigV2(wc) {
-    if (!wc) return false;
-    if (wc.mode === 'active' || wc.triggers?.anyMessage) return false;
-    return true; // diving 且不是 anyMessage 都视为“沉睡/潜水”，需要先观察
-  }
+  const isSleepingConfigV2 = (wc) => isSleepingConfig(wc);
 
   function preSleepWaitBlockedV2(st) {
     if (!st) return false;
@@ -6392,18 +6371,7 @@ async function main() {
     return true;
   }
 
-  function computeWakeSafetyV2(wc) {
-    const tr = wc?.triggers || {};
-    const hard = wc?.mode === 'active' || tr.anyMessage || tr.atMention || tr.nameMention || tr.question || tr.poke ||
-      (Array.isArray(tr.keywords) && tr.keywords.length > 0) ||
-      normalizeSpeakerIdsV2(tr.speakerIds).length > 0;
-    const timed = !wc?.infinite && wc?.sleepUntil && Date.parse(wc.sleepUntil) > Date.now();
-    const soft = Number(tr.probability) > 0;
-    const guaranteed = hard || timed || soft;
-    const confirmedNum = Number(wc?.confirmedAt);
-    const stale = !wc?.confirmedAt || !Number.isFinite(confirmedNum) || Date.now() - confirmedNum > 24 * 60 * 60 * 1000;
-    return { hard, timed, soft, guaranteed, stale };
-  }
+  const computeWakeSafetyV2 = (wc) => computeWakeSafety(wc, { now: Date.now() });
 
   // 防“永眠”：检查当前 WakeConfig 是否至少有一个可触发唤醒的途径；没有则重置为默认配置。
   // opts.skipSave=true 用于加载状态阶段，避免中途落盘覆盖尚未加载的会话。

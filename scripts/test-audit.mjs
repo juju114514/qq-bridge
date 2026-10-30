@@ -210,6 +210,8 @@ const tests = [
   'test-turn-wake.mjs',
   // 唤醒配置域（波次 1 第一个搬出来的域）：默认值 / 硬边界 / 不覆盖显式设置。
   'test-wake-config.mjs',
+  // 社交模式纯规则：名单归一化 / 退场判定 / 沉睡判定 / 唤醒安全性。
+  'test-social-v2-rules.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
