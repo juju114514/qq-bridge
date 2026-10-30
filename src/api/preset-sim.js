@@ -132,3 +132,21 @@ export function createPresetSimHandlers(baseDeps = {}) {
 
   return { handleGetPrompt, handleSavePrompt, handleListBackups, handleRestore };
 }
+
+/**
+ * 派发链入口：/api/preset/sim-prompt*
+ *    GET  /api/preset/sim-prompt          读提示词
+ *    POST /api/preset/sim-prompt          保存
+ *    GET  /api/preset/sim-prompt/backups  备份列表
+ *    POST /api/preset/sim-prompt/restore  从备份恢复
+ * 返回 true = 认领了请求；false = 不是我的（交给链上下一个）。
+ */
+export async function handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody } = {}) {
+  const p = url.pathname;
+  if (p !== '/api/preset/sim-prompt' && !p.startsWith('/api/preset/sim-prompt/')) return false;
+  if (req.method === 'GET' && p === '/api/preset/sim-prompt') { await presetSim.handleGetPrompt({ url, sendJson }); return true; }
+  if (req.method === 'POST' && p === '/api/preset/sim-prompt') { await presetSim.handleSavePrompt({ readBody, sendJson }); return true; }
+  if (req.method === 'GET' && p === '/api/preset/sim-prompt/backups') { await presetSim.handleListBackups({ url, sendJson }); return true; }
+  if (req.method === 'POST' && p === '/api/preset/sim-prompt/restore') { await presetSim.handleRestore({ readBody, sendJson }); return true; }
+  return false;
+}

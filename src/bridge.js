@@ -91,7 +91,7 @@ import { createModeHandler } from './api/mode.js';
 import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { handleExtraRoutes } from './api/console-extra-routes.js';
-import { createPresetSimHandlers } from './api/preset-sim.js';
+import { createPresetSimHandlers, handlePresetSimRoutes } from './api/preset-sim.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -3979,6 +3979,7 @@ async function main() {
       // 按**同样的顺序**串起来；路由表还留了 exact/param/prefix 三个入口，后续把
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
+        .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
         .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
         .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay).chain(handleDeadLetter)
         .chain(handleStickers).chain(handleTokens);
@@ -4052,22 +4053,6 @@ async function main() {
         // 9 条路由：/api/role, /api/role-mode, /api/roles*, /api/roles/{content,limit,create,update,rename,delete}
 
         // ── 仿真提示词（一代 / 二代各自的预设内置提示词）──────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/preset/sim-prompt') {
-      await presetSim.handleGetPrompt({ url, sendJson });
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/preset/sim-prompt') {
-      await presetSim.handleSavePrompt({ readBody, sendJson });
-      return;
-    }
-    if (req.method === 'GET' && url.pathname === '/api/preset/sim-prompt/backups') {
-      await presetSim.handleListBackups({ url, sendJson });
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/preset/sim-prompt/restore') {
-      await presetSim.handleRestore({ readBody, sendJson });
-      return;
-    }
 
     // ── 黑话库管理 ──────────────────────────────────────────────────────
         // ── 黑话系统（已迁出到 src/api/slang.js）────────────────────────────────

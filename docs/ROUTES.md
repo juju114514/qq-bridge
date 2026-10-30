@@ -4,7 +4,7 @@
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
 - 已搬进模块：**109** 条（24 个文件）
-- 仍在 bridge 内联：**46** 条（波次 4 目标是 0）
+- 仍在 bridge 内联：**42** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（4 条）
 
@@ -235,53 +235,49 @@
 | GET | `/api/whitelist` | createWhitelistHandler |
 | POST | `/api/whitelist` | createWhitelistHandler |
 
-## src/bridge.js 内联（46 条，待迁移）
+## src/bridge.js 内联（42 条，待迁移）
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| GET | `/` | L4011 |
-| GET | `/api/status` | L4022 |
-| GET | `/api/presets` | L4028 |
-| POST | `/api/mode` | L4037 |
-| GET | `/api/preset/sim-prompt` | L4055 |
-| POST | `/api/preset/sim-prompt` | L4059 |
-| GET | `/api/preset/sim-prompt/backups` | L4063 |
-| POST | `/api/preset/sim-prompt/restore` | L4067 |
-| GET | `/api/pending` | L4084 |
-| ANY | `/api/whitelist` | L4099 |
-| GET | `/api/dsh/model` | L4109 |
-| POST | `/api/dsh/effort` | L4113 |
-| ANY | `/api/security` | L4119 |
-| POST | `/api/console/token` | L4132 |
-| POST | `/api/test-send` | L4138 |
-| POST | `/api/console/notify-ai` | L4147 |
-| POST | `/api/socialV2/config` | L4164 |
-| POST | `/api/socialV2/activity` | L4172 |
-| GET | `/api/socialV2/state` | L4190 |
-| GET | `/api/socialV2/prompt` | L4209 |
-| POST | `/api/socialV2/song` | L4239 |
-| POST | `/api/voice/send` | L4301 |
-| POST | `/api/send/voice` | L4301 |
-| POST | `/api/socialV2/sticker-list` | L4319 |
-| POST | `/api/socialV2/wait` | L4349 |
-| ANY | `/api/tokens/summary` | L4357 |
-| ANY | `/api/tokens/` | L4357 |
-| ANY | `/api/socialV2/message-detail` | L4365 |
-| ANY | `/api/socialV2/forward-message` | L4365 |
-| POST | `/api/socialV2/forward-media` | L4375 |
-| GET | `/api/socialV2/active-members` | L4394 |
-| POST | `/api/socialV2/people-note` | L4418 |
-| GET | `/api/socialV2/group-members` | L4429 |
-| POST | `/api/socialV2/slang/submit` | L4435 |
-| POST | `/api/authorize/read` | L4440 |
-| GET | `/api/images/message` | L4447 |
-| GET | `/api/socialV2/tools` | L4455 |
-| GET | `/api/socialV2/video-cookies` | L4475 |
-| POST | `/api/socialV2/video-link` | L4482 |
-| GET | `/api/socialV2/video` | L4494 |
-| POST | `/api/inject` | L4500 |
-| POST | `/api/send/group` | L4508 |
-| POST | `/api/send/private` | L4508 |
-| POST | `/api/send/reply` | L4508 |
-| POST | `/api/workspace/reset` | L4514 |
-| POST | `/api/restart` | L4520 |
+| GET | `/` | L4012 |
+| GET | `/api/status` | L4023 |
+| GET | `/api/presets` | L4029 |
+| POST | `/api/mode` | L4038 |
+| GET | `/api/pending` | L4069 |
+| ANY | `/api/whitelist` | L4084 |
+| GET | `/api/dsh/model` | L4094 |
+| POST | `/api/dsh/effort` | L4098 |
+| ANY | `/api/security` | L4104 |
+| POST | `/api/console/token` | L4117 |
+| POST | `/api/test-send` | L4123 |
+| POST | `/api/console/notify-ai` | L4132 |
+| POST | `/api/socialV2/config` | L4149 |
+| POST | `/api/socialV2/activity` | L4157 |
+| GET | `/api/socialV2/state` | L4175 |
+| GET | `/api/socialV2/prompt` | L4194 |
+| POST | `/api/socialV2/song` | L4224 |
+| POST | `/api/voice/send` | L4286 |
+| POST | `/api/send/voice` | L4286 |
+| POST | `/api/socialV2/sticker-list` | L4304 |
+| POST | `/api/socialV2/wait` | L4334 |
+| ANY | `/api/tokens/summary` | L4342 |
+| ANY | `/api/tokens/` | L4342 |
+| ANY | `/api/socialV2/message-detail` | L4350 |
+| ANY | `/api/socialV2/forward-message` | L4350 |
+| POST | `/api/socialV2/forward-media` | L4360 |
+| GET | `/api/socialV2/active-members` | L4379 |
+| POST | `/api/socialV2/people-note` | L4403 |
+| GET | `/api/socialV2/group-members` | L4414 |
+| POST | `/api/socialV2/slang/submit` | L4420 |
+| POST | `/api/authorize/read` | L4425 |
+| GET | `/api/images/message` | L4432 |
+| GET | `/api/socialV2/tools` | L4440 |
+| GET | `/api/socialV2/video-cookies` | L4460 |
+| POST | `/api/socialV2/video-link` | L4467 |
+| GET | `/api/socialV2/video` | L4479 |
+| POST | `/api/inject` | L4485 |
+| POST | `/api/send/group` | L4493 |
+| POST | `/api/send/private` | L4493 |
+| POST | `/api/send/reply` | L4493 |
+| POST | `/api/workspace/reset` | L4499 |
+| POST | `/api/restart` | L4505 |
