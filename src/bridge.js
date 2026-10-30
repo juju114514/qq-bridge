@@ -4033,6 +4033,13 @@ async function main() {
             getState: () => state, getDshReady: () => dshReady, readRoleState, getSocialV2State,
             ensureSession, social, deliverPrompt, appendActivity
           }
+          ,
+          log, createWhitelistHandler, createSecurityHandler, handleImages,
+          cfgGet: () => cfg, rootDir: ROOT, pathModule: path, crypto, stateDir: STATE_DIR,
+          getStateDirHardened: () => stateDirHardened,
+          setStateDirHardened: (v) => { stateDirHardened = v; },
+          manualDirCommand, hardenStateDirAcl,
+          readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies
         }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
         .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
@@ -4122,30 +4129,10 @@ async function main() {
         // 回归测试：scripts/test-session-reset.mjs（10 项）
         // ── 挂起审批 / 提问 ───────────────────────────────────────────────────
         // ── 白名单可视化编辑（写 config.json + 热更新内存） ───────────────────
-        if (url.pathname === '/api/whitelist') {
-          await createWhitelistHandler({
-            sendJson, readBody, log,
-            getCfg: () => cfg, rootDir: ROOT, path,
-            readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies
-          })(req, url);
-          return;
-        }
 
         // ── DSH 模型与思考强度 ───────────────────────────────────────────────
 
     // ── 安全拦截通知设置 ─────────────────────────────────────────────────
-        if (url.pathname === '/api/security') {
-          await createSecurityHandler({
-            sendJson, readBody, log,
-            getCfg: () => cfg, rootDir: ROOT, path, crypto,
-            stateDir: STATE_DIR,
-            getStateDirHardened: () => stateDirHardened,
-            setStateDirHardened: (v) => { stateDirHardened = v; },
-            manualDirCommand, hardenStateDirAcl,
-            readConfigObject, atomicWriteJson
-          })(req, url);
-          return;
-        }
         // ── 控制台访问令牌（可手动修改/生成随机） ─────────────────────────────
 
     // ── 测试发送消息（强制走白名单校验） ───────────────────────────────────
@@ -4316,10 +4303,6 @@ async function main() {
 
     // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
         // ── 图片/表情查询端点（已迁出到 src/api/images.js） ──────────────────
-        if (req.method === 'GET' && url.pathname === '/api/images/message') {
-          await handleImages(req, url);
-          return;
-        }
 
         // 工具可见性自检（只读）：回答「模型为什么没有 qq_open_video」这类问题。
         // 真实案例（2026-10-28）：对方 AI 断言"作者没把工具放进清单"，实际是
