@@ -19,7 +19,8 @@ export async function handleConsoleMiscRoutes(req, url, deps = {}) {
     createWhitelistHandler, createSecurityHandler, handleImages,
     cfgGet, rootDir, pathModule, crypto, stateDir,
     getStateDirHardened, setStateDirHardened, manualDirCommand, hardenStateDirAcl,
-    readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies
+    readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies,
+    res, writeHtml, fs, api, unwrap, handleStatus, createModeHandler, modeDeps, handleInject
   } = deps;
 
   // GET /api/pending —— 待回答的提问 / 待审批的工具调用
@@ -90,6 +91,52 @@ export async function handleConsoleMiscRoutes(req, url, deps = {}) {
   // GET /api/images/message —— 取某条消息里的图片（终端处理器，自己写响应）
   if (req.method === 'GET' && p === '/api/images/message') {
     await handleImages(req, url);
+    return true;
+  }
+
+
+  // GET / —— 控制台首页（静态文件，缺失时给一句人话）
+  if (req.method === 'GET' && p === '/') {
+    try {
+      writeHtml(res, fs.readFileSync(pathModule.join(rootDir, 'public', 'console.html'), 'utf8'));
+    } catch {
+      writeHtml(res, '控制台页面缺失：qq-bridge/public/console.html');
+    }
+    return true;
+  }
+
+  // GET /api/status —— 运行状态（已迁到 src/api/status.js，这里只做分派）
+  if (req.method === 'GET' && p === '/api/status') {
+    handleStatus(req);
+    return true;
+  }
+
+  // GET /api/presets —— DSH 的 agent 预设列表
+  if (req.method === 'GET' && p === '/api/presets') {
+    let presets = [];
+    try {
+      const { presets: list } = unwrap(await api.agentPresets.list({}), 'agentPreset.list');
+      presets = list.map((x) => ({ id: x.id, trust: x.trust ?? 'system' }));
+    } catch {}
+    sendJson({ presets });
+    return true;
+  }
+
+  // POST /api/mode —— 切换运行模式（会清理/重建定时器与会话策略）
+  if (req.method === 'POST' && p === '/api/mode') {
+    await createModeHandler(modeDeps)(req, url);
+    return true;
+  }
+
+  // POST /api/authorize/read —— 读取授权状态（只读语义，POST 只是沿用老契约）
+  if (req.method === 'POST' && p === '/api/authorize/read') {
+    await getConsoleOps().handleAuthorizeRead({ readBody, sendJson });
+    return true;
+  }
+
+  // POST /api/inject —— 外部注入一条 prompt（测试/联调用）
+  if (req.method === 'POST' && p === '/api/inject') {
+    await handleInject(req, url);
     return true;
   }
 

@@ -4040,6 +4040,19 @@ async function main() {
           setStateDirHardened: (v) => { stateDirHardened = v; },
           manualDirCommand, hardenStateDirAcl,
           readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies
+          ,
+          res, writeHtml, fs, api, unwrap, handleStatus, handleInject, createModeHandler,
+          modeDeps: {
+            sendJson, readBody, log,
+            normalizeModeInput, VALID_MODES,
+            readJsonSafe, atomicWriteJson, path, stateDir: STATE_DIR,
+            api, unwrap,
+            getMode: () => currentMode, setMode: (v) => { currentMode = v; },
+            setLastMode: (v) => { lastMode = v; },
+            setClosedAgentPreset: (v) => { closedAgentPreset = v; },
+            cleanupSocialForModeChange, clearAllSocialV2Timers, drainAllPromptQueues,
+            reconcileSessionPolicies, socialV2, setupSleepTimerV2, scheduleProactiveCheckV2
+          }
         }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
         .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
@@ -4071,46 +4084,9 @@ async function main() {
       }
 
       try {
-        if (req.method === 'GET' && url.pathname === '/') {
-          try {
-            writeHtml(res, fs.readFileSync(path.join(ROOT, 'public', 'console.html'), 'utf8'));
-          } catch {
-            writeHtml(res, '控制台页面缺失：qq-bridge/public/console.html');
-          }
-          return;
-        }
         // 域分派：一个 handler 认领即停止（顺序与拆分前完全一致）
         if (await domainRouter.dispatch(req, url)) return;
 
-        if (req.method === 'GET' && url.pathname === '/api/status') {
-          // 已迁出到 src/api/status.js（阶段 3 第 1 组样板）。
-          // 依赖显式注入 —— 不再靠本函数的闭包；行为与迁移前逐字段一致。
-          handleStatus(req);
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/presets') {
-          let presets = [];
-          try {
-            const { presets: list } = unwrap(await api.agentPresets.list({}), 'agentPreset.list');
-            presets = list.map((p) => ({ id: p.id, trust: p.trust ?? 'system' }));
-          } catch {}
-          sendJson({ presets });
-          return;
-        }
-        if (req.method === 'POST' && url.pathname === '/api/mode') {
-          await createModeHandler({
-            sendJson, readBody, log,
-            normalizeModeInput, VALID_MODES,
-            readJsonSafe, atomicWriteJson, path, stateDir: STATE_DIR,
-            api, unwrap,
-            getMode: () => currentMode, setMode: (v) => { currentMode = v; },
-            setLastMode: (v) => { lastMode = v; },
-            setClosedAgentPreset: (v) => { closedAgentPreset = v; },
-            cleanupSocialForModeChange, clearAllSocialV2Timers, drainAllPromptQueues,
-            reconcileSessionPolicies, socialV2, setupSleepTimerV2, scheduleProactiveCheckV2
-          })(req, url);
-          return;
-        }
         // ── 人格管理（已迁出到 src/api/roles.js）──────────────────────────────
         // 9 条路由：/api/role, /api/role-mode, /api/roles*, /api/roles/{content,limit,create,update,rename,delete}
 
@@ -4296,10 +4272,6 @@ async function main() {
 
     // ── 二代黑话学习（reserved2）：AI 查询/提交黑话候选 ─────────────────
 
-    if (req.method === 'POST' && url.pathname === '/api/authorize/read') {
-      await getConsoleOps().handleAuthorizeRead({ readBody, sendJson });
-      return;
-    }
 
     // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
         // ── 图片/表情查询端点（已迁出到 src/api/images.js） ──────────────────
@@ -4318,10 +4290,6 @@ async function main() {
         // 单独开一个路径只是为了让 MCP 工具名和语义对得上。
 
         // ── 外部触发入口（webhook / cron → 机器人） ──────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/inject') {
-          await handleInject(req, url);
-          return;
-        }
 
         // ── 统一发送端点（MCP 旧发送工具也走这里） ───────────────────────────
         // ── 统一发送端点（已迁出到 src/api/send.js）──────────────────────────────

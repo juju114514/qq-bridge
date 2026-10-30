@@ -153,7 +153,9 @@ await check('限流：超过 maxPerMinute 返回 429', async () => {
 await check('接线：bridge 注册 /api/inject，令牌存 state/inject-token', () => {
   const bridge = read('src/bridge.js');
   assert.match(bridge, /createInjectHandler/, '要创建 handler');
-  assert.match(bridge, /'\/api\/inject'/, '要注册路由');
+  // 路由判定已搬到 src/api/console-misc.js（波次 4）；bridge 必须仍把它接进派发链
+  assert.match(read('src/api/console-misc.js'), /'\/api\/inject'/, '要注册路由');
+  assert.match(bridge, /handleConsoleMiscRoutes\(req, url/, 'bridge 必须把杂项路由接进派发链');
   assert.match(bridge, /inject-token/, '令牌文件');
   assert.match(bridge, /makeInjectToken/, '首次启动生成');
   const cfg = JSON.parse(read('config.example.json'));

@@ -4,7 +4,7 @@
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
 - 已搬进模块：**109** 条（24 个文件）
-- 仍在 bridge 内联：**18** 条（波次 4 目标是 0）
+- 仍在 bridge 内联：**12** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（4 条）
 
@@ -235,25 +235,19 @@
 | GET | `/api/whitelist` | createWhitelistHandler |
 | POST | `/api/whitelist` | createWhitelistHandler |
 
-## src/bridge.js 内联（18 条，待迁移）
+## src/bridge.js 内联（12 条，待迁移）
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| GET | `/` | L4074 |
-| GET | `/api/status` | L4085 |
-| GET | `/api/presets` | L4091 |
-| POST | `/api/mode` | L4100 |
-| POST | `/api/socialV2/song` | L4163 |
-| POST | `/api/voice/send` | L4225 |
-| POST | `/api/send/voice` | L4225 |
-| POST | `/api/socialV2/sticker-list` | L4243 |
-| POST | `/api/socialV2/wait` | L4273 |
-| ANY | `/api/tokens/summary` | L4281 |
-| ANY | `/api/tokens/` | L4281 |
-| POST | `/api/authorize/read` | L4299 |
-| POST | `/api/inject` | L4321 |
-| POST | `/api/send/group` | L4329 |
-| POST | `/api/send/private` | L4329 |
-| POST | `/api/send/reply` | L4329 |
-| POST | `/api/workspace/reset` | L4335 |
-| POST | `/api/restart` | L4341 |
+| POST | `/api/socialV2/song` | L4139 |
+| POST | `/api/voice/send` | L4201 |
+| POST | `/api/send/voice` | L4201 |
+| POST | `/api/socialV2/sticker-list` | L4219 |
+| POST | `/api/socialV2/wait` | L4249 |
+| ANY | `/api/tokens/summary` | L4257 |
+| ANY | `/api/tokens/` | L4257 |
+| POST | `/api/send/group` | L4297 |
+| POST | `/api/send/private` | L4297 |
+| POST | `/api/send/reply` | L4297 |
+| POST | `/api/workspace/reset` | L4303 |
+| POST | `/api/restart` | L4309 |
