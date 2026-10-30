@@ -140,7 +140,7 @@ sudo systemctl restart qq-bridge
 
 ## 八、相关
 
-- 症状总表：[TROUBLESHOOTING.md](../TROUBLESHOOTING.md) 的 **E.8**
-- 唤醒配置怎么调：[TROUBLESHOOTING.md](../TROUBLESHOOTING.md) 的 **E4**（睡死）/ **E5**（限流）
-- DSH 侧断连：[TROUBLESHOOTING.md](../TROUBLESHOOTING.md) 的 **C1/C2**
+- 症状总表：[TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) 的 **E.8**
+- 唤醒配置怎么调：[TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) 的 **E4**（睡死）/ **E5**（限流）
+- DSH 侧断连：[TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) 的 **C1/C2**
 - 一键体检：`node scripts/preflight.mjs`

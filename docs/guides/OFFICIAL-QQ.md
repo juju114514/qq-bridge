@@ -2,7 +2,7 @@
 
 > 这份文档回答三件事：**官方通道能给什么**、**和 SnowLuma 那条腿怎么并存**、**现在接好到哪一步**。
 > 相关：[VIDEO-SOURCES.md](VIDEO-SOURCES.md)（视频来源策略）、[FRESH-INSTALL.md](FRESH-INSTALL.md)（安装）、
-> [../TROUBLESHOOTING.md](../TROUBLESHOOTING.md)（报错排查）。
+> [../TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)（报错排查）。
 
 ---
 
@@ -123,6 +123,12 @@ node scripts\official-probe.mjs --seconds 120
 3. 消息里的 <@!id> 要清掉再进模型
 4. 说"官方可用"之前，先跑 scripts\official-probe.mjs 拿到「收到 + 回复成功」两条证据
 5. 频道能力（tencent-channel-cli）是另一套东西，别混进来
+6. 「收到事件但不唤醒」→ 官方 @ 在**事件层**就被剥掉了，message 里没有 at 段；
+   唤醒判定必须认 __official.atBot（细节见 9.1①）
+7. 「白名单里有它，却报目标不在允许范围」→ 守卫里 Number.isFinite(id) 对**字符串 id 恒为真**，
+   压根没走到白名单（9.1⑤）。openid 是字符串，这类判断全都要先判类型
+8. 「模型说没有 qq_* 工具」→ 九成是 DSH 的 MCP 注入被改名/没重启（9.2），
+   不是工具没实现：工具清单是**启动快照**，改完必须重启 DSH 并新建会话
 ```
 
 ## 八、主动消息（A 手动 / B 定时）

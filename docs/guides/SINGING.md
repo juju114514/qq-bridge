@@ -292,6 +292,6 @@ RVC 转换 45 秒歌约 50 秒；人声分离（demucs）45 秒歌约 **172 秒*
 ## 相关文档
 
 - 语音/点歌的完整环境说明（音色表、语音库、ffprobe 补丁）：本机 `launcher\TTS-音色说明.md`
-- 语音工具在仓库里的边界：[COMPAT.md](../COMPAT.md)「平台能力表」（非 Windows 不支持语音）
-- 语音发送链路上的坑：[TROUBLESHOOTING.md](../TROUBLESHOOTING.md) 的 **H2 / H6 / J3**
-- 消息出口必须过护栏（含语音）：[RULES.md](../RULES.md) 设计不变量 **L8**
+- 语音工具在仓库里的边界：[COMPAT.md](../../COMPAT.md)「平台能力表」（非 Windows 不支持语音）
+- 语音发送链路上的坑：[TROUBLESHOOTING.md](../../TROUBLESHOOTING.md) 的 **H2 / H6 / J3**
+- 消息出口必须过护栏（含语音）：[RULES.md](../../RULES.md) 设计不变量 **L8**

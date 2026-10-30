@@ -64,7 +64,7 @@
 7) 各功能抽测                          → 表情库同步、语音（仅 Windows）、拍一拍
 ```
 
-任一步失败，先看 `logs/bridge.log`，再看 [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)。
+任一步失败，先看 `logs/bridge.log`，再看 [TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)。
 
 ## 六、从 Windows 换到 Linux 时额外注意
 

@@ -188,6 +188,8 @@ const tests = [
   'test-domains.mjs',
   // 公开 issue 的最小回归（#110 缓存 / #114 定时器 / #115 日志）。
   'test-issue-fixes-1030.mjs',
+  // 文档链接守卫：本地文件必须存在（锚点只警告，slug 规则难精确复刻）。
+  'check-md-links.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

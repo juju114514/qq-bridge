@@ -1,7 +1,7 @@
 # 升级指南（按版本看该做什么）
 
-> 已经装过的用户看这份；第一次装请看 [QUICKSTART.md](QUICKSTART.md)。
-> 每次升级的**用户可见变化**在 [CHANGELOG.md](CHANGELOG.md)。
+> 已经装过的用户看这份；第一次装请看 QUICKSTART.md。
+> 每次升级的**用户可见变化**在 CHANGELOG.md。
 
 ---
 
@@ -72,7 +72,7 @@ Copy-Item D:\qq-bridge\config.json "$env:TEMP\config-backup-$ts.json"
 
 ### 0.2.1-r1 及更早
 
-- 0.2.1 是基线版本号，之前的变更见 [CHANGELOG.md](CHANGELOG.md) 各日期条目。
+- 0.2.1 是基线版本号，之前的变更见 CHANGELOG.md 各日期条目。
 - 从更早版本升上来时，**唯一需要留意的**是 `config.example.json` 新增过的段：
   拿它和自己的 `config.json` 对比一次（`diff`/并排看），把缺的段补上即可，
   不补也能跑（代码里都有默认值），只是少一些可调项。

@@ -47,6 +47,7 @@
 | 能发不能收（发得出去，收不到消息） | D5、运维指南 §17 |
 | 群里 @ 了不回 | E.0、官方通道见 [OFFICIAL-QQ 第九节](docs/guides/OFFICIAL-QQ.md#九排错官方通道) |
 | 日志里**没有** `[official]` 前缀 | 说明不是官方通道那条腿 → E |
+| 模型说「我这边没有 qq_* 工具」 | 多半是 DSH 的 MCP 注入被关/改期未重启 → [OFFICIAL-QQ 9.2](docs/guides/OFFICIAL-QQ.md#92-官方会话里模型说我这边没有-qq_-工具) |
 | `msg_seq` / 「消息被去重」 | [OFFICIAL-MEDIA 坑 3](docs/guides/OFFICIAL-MEDIA.md) |
 | 「主动消息失败/无权限」 | [OFFICIAL-MEDIA 坑 4](docs/guides/OFFICIAL-MEDIA.md) |
 | `paused: true` / 只回管理员 | E2 |
@@ -1487,7 +1488,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\kaspersky-diagnose.ps1
 | 偶发证书错误（`self signed certificate`） | 「加密连接扫描」解密 | 受信任地址加 `127.0.0.1`，或关掉该功能 |
 | 语音/视频处理被拦或极慢 | ffmpeg 被误判 | 排除 ffmpeg/ffprobe |
 | 弹「程序行为可疑」 | 系统监视器/入侵防御 | 把 node.exe 加受信任 |
-| **卡巴免费版根本找不到排除项** | 免费版不提供该功能 | 见 [docs/guides/KASPERSKY.md](docs/guides/KASPERSKY.md#️-重要前提kaspersky-免费版没有排除项)：升级 / 换 Defender / 取消自动删除 |
+| **卡巴免费版根本找不到排除项** | 免费版不提供该功能 | 见 [docs/guides/KASPERSKY.md](docs/guides/KASPERSKY.md)：升级 / 换 Defender / 取消自动删除 |
 
 ### R4. 命令行能做什么、不能做什么
 

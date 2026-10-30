@@ -41,13 +41,13 @@ node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能�
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| 没装 Node | `找不到 node` / `node : 无法将"node"项识别为` | [TROUBLESHOOTING A1](../TROUBLESHOOTING.md#a1-找不到-node请先装-nodejs-22-lts) | ✅ |
-| Node 版本太低 | 启动即 `WebSocket is not defined` | [A2](../TROUBLESHOOTING.md#a2-node-版本太低v18x需要--22130) | ✅ |
+| 没装 Node | `找不到 node` / `node : 无法将"node"项识别为` | [TROUBLESHOOTING A1](../../TROUBLESHOOTING.md#a1-找不到-node请先装-nodejs-22-lts) | ✅ |
+| Node 版本太低 | 启动即 `WebSocket is not defined` | [A2](../../TROUBLESHOOTING.md#a2-node-版本太低v18x需要--22130) | ✅ |
 | **装了 Node 却没有 npm** | `npm : 无法将"npm"项识别为`（精简版/绿色版 Node 常见） | 见下方「本次新增」 | ❌→✅ |
 | **PowerShell 执行策略禁止脚本** | `无法加载文件 …start-bridge.ps1，因为在此系统上禁止运行脚本` | 见下方「本次新增」 | ❌→✅ |
-| 系统时间不对 | 连 DSH 401 / 签名校验失败，报错完全不指向时间 | [N2](../TROUBLESHOOTING.md#n2-系统时间不对最容易忽略的坑) | ✅ |
-| 设了全局代理 | 本机 `127.0.0.1` 的请求被代理走，全连不上 | [N3](../TROUBLESHOOTING.md#n3-设置了代理桥接连不上本机服务) | ✅ |
-| 杀软拦 PowerShell / 拦 node 子进程 | 语音合成失败、脚本被杀 | [R1–R6](../TROUBLESHOOTING.md#r1-自动诊断先跑这个) | ✅ |
+| 系统时间不对 | 连 DSH 401 / 签名校验失败，报错完全不指向时间 | [N2](../../TROUBLESHOOTING.md#n2-系统时间不对最容易忽略的坑) | ✅ |
+| 设了全局代理 | 本机 `127.0.0.1` 的请求被代理走，全连不上 | [N3](../../TROUBLESHOOTING.md#n3-设置了代理桥接连不上本机服务) | ✅ |
+| 杀软拦 PowerShell / 拦 node 子进程 | 语音合成失败、脚本被杀 | [R1–R6](../../TROUBLESHOOTING.md#r1-自动诊断先跑这个) | ✅ |
 | 仓库放在中文/空格路径 | 部分脚本路径解析失败、`.bat` 里路径被代码页吃掉 | 见下方「本次新增」 | ⚠️→✅ |
 | 路径太长（Windows 260 限制） | `ENAMETOOLONG` / 文件写不进去 | 迁移文档提到换机器；无专门条目 | ⚠️ |
 
@@ -55,31 +55,31 @@ node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能�
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| 用 zip 下载而不是 clone | 没有 `.git`，`check-versions.ps1` 显示版本未知（**不阻塞运行**） | [J0](../TROUBLESHOOTING.md#j0-你的仓库版本和别人上游朋友不一样) | ✅ |
-| clone 到 OneDrive 同步目录 | state/ 被同步进程锁住、日志写入失败 | [B4](../TROUBLESHOOTING.md#b4-日志目录不可写eperm--eacces) | ⚠️ |
+| 用 zip 下载而不是 clone | 没有 `.git`，`check-versions.ps1` 显示版本未知（**不阻塞运行**） | [J0](../../TROUBLESHOOTING.md#j0-你的仓库版本和别人上游朋友不一样) | ✅ |
+| clone 到 OneDrive 同步目录 | state/ 被同步进程锁住、日志写入失败 | [B4](../../TROUBLESHOOTING.md#b4-日志目录不可写eperm--eacces) | ⚠️ |
 | 目录权限受管（公司电脑） | 创建 `state/` 失败 | B4 | ✅ |
 
 ## 阶段 2：装依赖
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| `npm install` 卡住/超时 | 长时间无输出 | [A3](../TROUBLESHOOTING.md#a3-npm-install-卡住或超时) | ✅ |
-| 装完启动报 `Cannot find package 'js-yaml'` | 依赖没装全 | [A4](../TROUBLESHOOTING.md#a4-err_module_not_found-cannot-find-package-js-yaml) | ✅ |
+| `npm install` 卡住/超时 | 长时间无输出 | [A3](../../TROUBLESHOOTING.md#a3-npm-install-卡住或超时) | ✅ |
+| 装完启动报 `Cannot find package 'js-yaml'` | 依赖没装全 | [A4](../../TROUBLESHOOTING.md#a4-err_module_not_found-cannot-find-package-js-yaml) | ✅ |
 | **看到 postinstall 输出一行提示，以为报错** | `[qq-bridge] 依赖已就绪（不再修补任何第三方包）` | 见下方「本次新增」 | ❌→✅ |
-| **`npm install` 在 postinstall 阶段报 SyntaxError** | `npm ERR! code ELIFECYCLE` + `Invalid or unexpected token`（package.json 内联脚本坏了） | [TROUBLESHOOTING A5b](../TROUBLESHOOTING.md#a5b-npm-install-末尾打印-qq-bridge-依赖已就绪不再修补任何第三方包)；这是仓库自身的 bug，已用 `test-packaging` 钉住 | ✅ 2026-10-27 |
+| **`npm install` 在 postinstall 阶段报 SyntaxError** | `npm ERR! code ELIFECYCLE` + `Invalid or unexpected token`（package.json 内联脚本坏了） | [TROUBLESHOOTING A5b](../../TROUBLESHOOTING.md#a5b-npm-install-末尾打印-qq-bridge-依赖已就绪不再修补任何第三方包)；这是仓库自身的 bug，已用 `test-packaging` 钉住 | ✅ 2026-10-27 |
 | npm 镜像/证书问题 | `SELF_SIGNED_CERT_IN_CHAIN` | 归入 A3（网络类） | ⚠️ |
-| `npm audit` 报漏洞 | 一堆 advisory | [P6](../TROUBLESHOOTING.md#p6-依赖漏洞npm-audit) | ✅ |
+| `npm audit` 报漏洞 | 一堆 advisory | [P6](../../TROUBLESHOOTING.md#p6-依赖漏洞npm-audit) | ✅ |
 
 ## 阶段 3：配置 `config.json`
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| 没有 `config.json` | 桥接启动即退出，提示缺配置 | `preflight` FAIL + [README 安装与配置](../README.md#安装与配置) | ✅ |
-| 手工改出 BOM/语法错 | `Unexpected UTF-8 BOM` / JSON 解析失败 | [A7](../TROUBLESHOOTING.md#a7-configjson-解析失败unexpected-utf-8-bom) | ✅ |
-| 忘填 `ownerQQ` | 审批/管理命令/closed-agent 全不可用（**不报错**） | [G1](../TROUBLESHOOTING.md#g1-管理命令仅管理员可用) | ✅ |
-| 白名单为空 | 一条消息都不回（**不报错**） | [E3](../TROUBLESHOOTING.md#e3-白名单没命中) | ✅ |
-| SnowLuma 两个端口填成同一个 | 工具报 HTTP 426 | [D1](../TROUBLESHOOTING.md#d1-日志刷-snowluma-错误snowluma-websocket-closed-before-opening) | ✅ |
-| `dsh.baseUrl` 端口写错 | `dshReady=false`，群里不回 | [C1](../TROUBLESHOOTING.md#c1-控制台-dshreadyfalse) | ✅ |
+| 没有 `config.json` | 桥接启动即退出，提示缺配置 | `preflight` FAIL + [README「装起来」](../../README.md#装起来) | ✅ |
+| 手工改出 BOM/语法错 | `Unexpected UTF-8 BOM` / JSON 解析失败 | [A7](../../TROUBLESHOOTING.md#a7-configjson-解析失败unexpected-utf-8-bom) | ✅ |
+| 忘填 `ownerQQ` | 审批/管理命令/closed-agent 全不可用（**不报错**） | [G1](../../TROUBLESHOOTING.md#g1-管理命令仅管理员可用) | ✅ |
+| 白名单为空 | 一条消息都不回（**不报错**） | [E3](../../TROUBLESHOOTING.md#e3-白名单没命中) | ✅ |
+| SnowLuma 两个端口填成同一个 | 工具报 HTTP 426 | [D1](../../TROUBLESHOOTING.md#d1-日志刷-snowluma-错误snowluma-websocket-closed-before-opening) | ✅ |
+| `dsh.baseUrl` 端口写错 | `dshReady=false`，群里不回 | [C1](../../TROUBLESHOOTING.md#c1-控制台-dshreadyfalse) | ✅ |
 
 ## 阶段 4：装两个外部依赖（DSH + SnowLuma）
 
@@ -87,39 +87,39 @@ node scripts/preflight.mjs        # 不依赖 node_modules，装依赖前就能�
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| 没装 DSH | 桥接一直 `dshReady=false` | [C1](../TROUBLESHOOTING.md#c1-控制台-dshreadyfalse) + [DSH_SETUP](DSH_SETUP.md) | ✅ |
-| DSH 装了但没登录 | 连 DSH 401 | [N1](../TROUBLESHOOTING.md#n1-桥接连-dsh-一直-401unauthorized--invalid-session) | ✅ |
+| 没装 DSH | 桥接一直 `dshReady=false` | [C1](../../TROUBLESHOOTING.md#c1-控制台-dshreadyfalse) + [DSH_SETUP](DSH_SETUP.md) | ✅ |
+| DSH 装了但没登录 | 连 DSH 401 | [N1](../../TROUBLESHOOTING.md#n1-桥接连-dsh-一直-401unauthorized--invalid-session) | ✅ |
 | **DSH preset 没装** | 桥接连上了，但工具/模式不对、行为怪 | 见下方「本次新增」 | ❌→✅ |
-| MCP server 没挂上 | AI 没有任何 QQ 工具可用 | [O1](../TROUBLESHOOTING.md#o1-三个内置-mcp-server-起不来) | ✅ |
-| DSH 升级后提示词变量报错 | `unknown prompt variable "{{cwd}}"` | [C3](../TROUBLESHOOTING.md#c3-日志-unknown-prompt-variable-cwd-in-section-deploymentpersona-suffix) | ✅ |
-| 没装 SnowLuma | `SnowLuma 连接断开（code=1006）` 反复刷 | [D2](../TROUBLESHOOTING.md#d2-日志刷-snowluma-连接断开code1006重连中) | ✅ |
-| SnowLuma 装了没登录 | 自愈失败、账号不在线 | [D3](../TROUBLESHOOTING.md#d3--token-自愈失败error-连不上-onebot-http-apihttp1270013000) | ✅ |
-| QQ 小号被踢/换设备 | `The QQ connection changed` | [D4](../TROUBLESHOOTING.md#d4-the-qq-connection-changed-please-restart-qq-and-try-again) | ✅ |
-| 新号被风控 | 发消息失败、账号异常 | [S3](../TROUBLESHOOTING.md#s3-机器人号被风控--封禁) | ✅ |
+| MCP server 没挂上 | AI 没有任何 QQ 工具可用 | [O1](../../TROUBLESHOOTING.md#o1-三个内置-mcp-server-起不来) | ✅ |
+| DSH 升级后提示词变量报错 | `unknown prompt variable "{{cwd}}"` | [C3](../../TROUBLESHOOTING.md#c3-日志-unknown-prompt-variable-cwd-in-section-deploymentpersona-suffix) | ✅ |
+| 没装 SnowLuma | `SnowLuma 连接断开（code=1006）` 反复刷 | [D2](../../TROUBLESHOOTING.md#d2-日志刷-snowluma-连接断开code1006重连中) | ✅ |
+| SnowLuma 装了没登录 | 自愈失败、账号不在线 | [D3](../../TROUBLESHOOTING.md#d3--token-自愈失败error-连不上-onebot-http-apihttp1270013000) | ✅ |
+| QQ 小号被踢/换设备 | `The QQ connection changed` | [D4](../../TROUBLESHOOTING.md#d4-the-qq-connection-changed-please-restart-qq-and-try-again) | ✅ |
+| 新号被风控 | 发消息失败、账号异常 | [S3](../../TROUBLESHOOTING.md#s3-机器人号被风控--封禁) | ✅ |
 
 ## 阶段 5：首次启动
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| 端口 3100 被占 | `EADDRINUSE` / 启动即退 2 | [B2](../TROUBLESHOOTING.md#b2-error-listen-eaddrinuse-1270013100) | ✅ |
-| 残留锁 | `检测到过期锁文件…删除后重试` | [B1](../TROUBLESHOOTING.md#b1-启动后立刻退出日志-检测到过期锁文件pid-不存在或为空删除后重试) | ✅ |
-| 双击窗口一闪而过 | 来不及看报错 | [B3](../TROUBLESHOOTING.md#b3-运行-start-bridgeps1-窗口一闪就没了) | ✅ |
-| **首连报一次 1006 就"好了"** | 以为故障，其实正常（token 自愈） | [D2](../TROUBLESHOOTING.md#d2-日志刷-snowluma-连接断开code1006重连中)（文中已注明首连正常） | ✅ |
-| `state/` 权限不足 | `EPERM` / `EACCES` | [B4](../TROUBLESHOOTING.md#b4-日志目录不可写eperm--eacces) | ✅ |
-| 控制台打不开/401 | 需要令牌 | [I1](../TROUBLESHOOTING.md#i1-打开-http1270013100-显示-未经授权--401) | ✅ |
+| 端口 3100 被占 | `EADDRINUSE` / 启动即退 2 | [B2](../../TROUBLESHOOTING.md#b2-error-listen-eaddrinuse-1270013100) | ✅ |
+| 残留锁 | `检测到过期锁文件…删除后重试` | [B1](../../TROUBLESHOOTING.md#b1-启动后立刻退出日志-检测到过期锁文件pid-不存在或为空删除后重试) | ✅ |
+| 双击窗口一闪而过 | 来不及看报错 | [B3](../../TROUBLESHOOTING.md#b3-运行-start-bridgeps1-窗口一闪就没了) | ✅ |
+| **首连报一次 1006 就"好了"** | 以为故障，其实正常（token 自愈） | [D2](../../TROUBLESHOOTING.md#d2-日志刷-snowluma-连接断开code1006重连中)（文中已注明首连正常） | ✅ |
+| `state/` 权限不足 | `EPERM` / `EACCES` | [B4](../../TROUBLESHOOTING.md#b4-日志目录不可写eperm--eacces) | ✅ |
+| 控制台打不开/401 | 需要令牌 | [I1](../../TROUBLESHOOTING.md#i1-打开-http1270013100-显示-未经授权--401) | ✅ |
 
 ## 阶段 6：首次对话
 
 | 可能遇到 | 现象 | 排查入口 | 覆盖 |
 | --- | --- | --- | --- |
-| **AI 处于暂停状态** | 连得上、一条不回（**不报错**） | [E.0](../TROUBLESHOOTING.md#e0-先查ai-是不是被暂停了2026-10-实测踩过最容易被忽略) | ✅ |
-| 模式不是 `reserved2` | 工具不可用 | [E.0b](../TROUBLESHOOTING.md#e0b-再查是不是模式白名单挡住了) | ✅ |
-| 白名单没放行 | 完全不响应 | [E3](../TROUBLESHOOTING.md#e3-白名单没命中) | ✅ |
-| 唤醒配置睡死 | 只有 @ 才理人 | [E4](../TROUBLESHOOTING.md#e4-唤醒配置把它自己睡死了) | ✅ |
-| **反复「会话繁忙」+ 一句不回** | 回合卡住，忙到 30 分钟租约到期 | [E.8](../TROUBLESHOOTING.md#e8-日志反复会话繁忙暂存唤醒原因ai-一句不回) + [SESSION-BUSY.md](SESSION-BUSY.md) | ✅ 2026-10-27 |
-| 被本地限流 | 日志 `限流` | [E5](../TROUBLESHOOTING.md#e5-消息发出去了但-ai-被限流) | ✅ |
-| 模型余额/额度 | 模型侧报错 | [E7](../TROUBLESHOOTING.md#e7-模型侧报错余额额度) + [O5](../TROUBLESHOOTING.md#o5-deepseek-平台级-429和本地限流是两回事) | ✅ |
-| 首次说话没弹人设菜单 | 直接默认人格 | [F1](../TROUBLESHOOTING.md#f1-第一次说话没弹选人设菜单) | ✅ |
+| **AI 处于暂停状态** | 连得上、一条不回（**不报错**） | [E.0](../../TROUBLESHOOTING.md#e0-先查ai-是不是被暂停了2026-10-实测踩过最容易被忽略) | ✅ |
+| 模式不是 `reserved2` | 工具不可用 | [E.0b](../../TROUBLESHOOTING.md#e0b-再查是不是模式白名单挡住了) | ✅ |
+| 白名单没放行 | 完全不响应 | [E3](../../TROUBLESHOOTING.md#e3-白名单没命中) | ✅ |
+| 唤醒配置睡死 | 只有 @ 才理人 | [E4](../../TROUBLESHOOTING.md#e4-唤醒配置把它自己睡死了) | ✅ |
+| **反复「会话繁忙」+ 一句不回** | 回合卡住，忙到 30 分钟租约到期 | [E.8](../../TROUBLESHOOTING.md#e8-日志反复会话繁忙暂存唤醒原因ai-一句不回) + [SESSION-BUSY.md](SESSION-BUSY.md) | ✅ 2026-10-27 |
+| 被本地限流 | 日志 `限流` | [E5](../../TROUBLESHOOTING.md#e5-消息发出去了但-ai-被限流) | ✅ |
+| 模型余额/额度 | 模型侧报错 | [E7](../../TROUBLESHOOTING.md#e7-模型侧报错余额额度) + [O5](../../TROUBLESHOOTING.md#o5-deepseek-平台级-429和本地限流是两回事) | ✅ |
+| 首次说话没弹人设菜单 | 直接默认人格 | [F1](../../TROUBLESHOOTING.md#f1-第一次说话没弹选人设菜单) | ✅ |
 
 ---
 
