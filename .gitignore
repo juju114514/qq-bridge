@@ -25,3 +25,8 @@ _snowluma-catalog.json
 # 本仓库的包管理器口径是 npm（见 package-lock.json / README / CI）。
 # 谁本地用 pnpm 装了依赖，别把它的锁文件提交进来 —— 	est-packaging 会因此变红。
 pnpm-lock.yaml
+
+# 新手教程（docs/guides/BEGINNER.md）的截图：需要入库，否则 GitHub 上是死链。
+# 先放行目录、再放行内容，否则 git 不会往回加。
+!assets/beginner
+!assets/beginner/**
