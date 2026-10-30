@@ -27,7 +27,8 @@ function harness({ paused = false, bootstrapSent = true, trigger = null, kind = 
     appendMessage: (...args) => calls.appended.push(args),
     feedSlang: (...args) => calls.slang.push(args),
     scheduleWake: (k, why) => calls.wakes.push([k, why]),
-    evaluateTrigger: () => trigger,
+    // 判定返回**对象**（{ reason }）：字符串是旧契约，已在 2026-10-31 升级
+    evaluateTrigger: () => (trigger ? { reason: trigger } : null),
     appendActivity: (m) => calls.activity.push(m),
     trace: { step: (...a) => calls.steps.push(a), finish: (...a) => calls.finished.push(a) }
   };

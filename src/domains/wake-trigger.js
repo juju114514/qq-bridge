@@ -1,5 +1,7 @@
 // 「这条消息该不该叫醒我」—— 波次 2 的第一个域（唤醒判定）。
 //
+import { detectRedPacket } from './red-packet.js';
+
 // 这是整套社交行为的**入口闸门**：判错了只有两种后果，而且都不报错：
 //   · 该唤醒却没唤醒 → AI 一直不说话，像个死机器人
 //   · 不该唤醒却唤醒 → 每个群消息都烧一次 token
@@ -19,7 +21,9 @@
  * @param {boolean} [p.lockProbability] 锁定概率（忽略会话里的 probability）
  * @param {(text:string)=>boolean} [p.isDirectedAtAi] 判断"是不是在问我"
  * @param {() => number} [p.random]
- * @returns {string|null} 唤醒原因；null = 不唤醒
+ * @returns {{ reason: string, redPacket?: object }|null} 唤醒原因（null = 不唤醒）
+ *   返回值改成对象而不是字符串：红包要带数据（真假/留言），
+ *   以后再有'带上下文的原因'也不用改签名。
  */
 export function evaluateWakeTrigger({
   kind,
@@ -35,10 +39,15 @@ export function evaluateWakeTrigger({
   random = Math.random
 } = {}) {
   // 私聊一律唤醒（不用配触发器）
-  if (kind === 'private') return 'private';
+  if (kind === 'private') return { reason: 'private' };
+
+  // 群里有红包（真的假的都算）一律唤醒：**比 @ 还硬**，不参与频率限制。
+  // 为什么：发红包是群里最强的"都看这里"信号；判成不唤醒 = 全群都看到了、就你没反应。
+  const redPacket = detectRedPacket(event);
+  if (redPacket) return { reason: 'redPacket', redPacket };
 
   const tr = wakeConfig?.triggers ?? {};
-  if (tr.anyMessage) return 'anyMessage';
+  if (tr.anyMessage) return { reason: 'anyMessage' };
 
   if (tr.atMention) {
     const atSelf = Array.isArray(event?.message)
@@ -46,7 +55,7 @@ export function evaluateWakeTrigger({
     // 官方通道的事件里**没有 at 段**：@ 是网关自己剥掉的（GROUP_AT_MESSAGE_CREATE 这个事件名就代表"被 @"）。
     // 不认这个标记的话，官方群消息会被当成"没人叫我"，静默不回复 —— 真实踩过。
     const officialAt = event?.__official?.atBot === true;
-    if (atSelf || officialAt || quoteTargetIsSelf) return 'atMention';
+    if (atSelf || officialAt || quoteTargetIsSelf) return { reason: 'atMention' };
   }
 
   if (tr.nameMention && selfNickname) {
@@ -54,7 +63,7 @@ export function evaluateWakeTrigger({
     // 引用一条恰好提到机器人昵称的旧消息不该算"叫了名字"（那是被动触发的付费回合）。
     const lower = String(plainContent ?? '').toLowerCase();
     const nick = selfNickname.toLowerCase();
-    if (lower.includes('@' + nick) || lower.includes(nick)) return 'nameMention';
+    if (lower.includes('@' + nick) || lower.includes(nick)) return { reason: 'nameMention' };
   }
 
   if (Array.isArray(tr.keywords) && tr.keywords.length) {
@@ -64,20 +73,20 @@ export function evaluateWakeTrigger({
       if (!kwStr) continue;
       // 短英文/数字关键词（如 DS/R1）用词边界匹配，避免 ADS/BDSM/DSL 误触发。
       if (/^[a-z0-9]+$/.test(kwStr) && kwStr.length <= 4) {
-        if (new RegExp(`\\b${kwStr}\\b`, 'i').test(lower)) return `keyword:${kw}`;
+        if (new RegExp(`\\b${kwStr}\\b`, 'i').test(lower)) return { reason: `keyword:${kw}` };
       } else if (lower.includes(kwStr)) {
-        return `keyword:${kw}`;
+        return { reason: `keyword:${kw}` };
       }
     }
   }
 
-  if (tr.question && isDirectedAtAi(plainContent)) return 'question';
+  if (tr.question && isDirectedAtAi(plainContent)) return { reason: 'question' };
 
   if (Array.isArray(tr.speakerIds) && tr.speakerIds.length) {
     const speakerId = String(event?.user_id ?? event?.sender?.user_id ?? '');
     if (speakerId && tr.speakerIds.some((id) => String(id) === speakerId)) {
       const senderLabel = event?.sender?.card || event?.sender?.nickname || speakerId;
-      return `speaker:${senderLabel}`;
+      return { reason: `speaker:${senderLabel}` };
     }
   }
 
@@ -85,11 +94,11 @@ export function evaluateWakeTrigger({
   if (Array.isArray(alwaysKeywords) && alwaysKeywords.length) {
     const text = String(plainContent || textContent || '');
     const kw = alwaysKeywords.find((k) => k && text.includes(String(k)));
-    if (kw) return `always:${kw}`;
+    if (kw) return { reason: `always:${kw}` };
   }
 
   // 随机插话：lockProbability=true 时一律忽略（AI 会把自己的 probability 改回 0.05，这里兜底）
-  if (!lockProbability && Number(tr.probability) > 0 && random() < Number(tr.probability)) return 'probability';
+  if (!lockProbability && Number(tr.probability) > 0 && random() < Number(tr.probability)) return { reason: 'probability' };
 
   return null;
 }

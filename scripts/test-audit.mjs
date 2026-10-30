@@ -232,6 +232,8 @@ const tests = [
   'test-incoming-social.mjs',
   // 路由清单守卫：模块导出 vs 派发链双向对账 + 墓碑检测（借鉴同源分叉 AI-group-friends）
   'check-route-inventory.mjs',
+  // 红包识别（移植自同源分叉）：真/假判据、兜底文案、群风格提示。
+  'test-red-packet.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

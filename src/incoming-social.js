@@ -52,7 +52,9 @@ export function runSocialIncomingStage(ctx, deps) {
     return { handled: true, action: 'bootstrap', reason: 'bootstrap' };
   }
 
-  const reason = evaluateTrigger(key, st, event, kind, textContent, plainContent, quoteTargetIsSelf);
+  // 判定的返回值是**对象**（{ reason, redPacket? }）：红包这种"带数据的原因"要能传下去
+  const verdict = evaluateTrigger(key, st, event, kind, textContent, plainContent, quoteTargetIsSelf);
+  const reason = verdict?.reason ?? null;
   trace.step(traceRec, '唤醒', reason ? '命中' : '未命中', reason ? String(reason) : '概率/条件未满足');
   trace.finish(traceRec, reason ? `已唤醒（${reason}），稍后进模型` : '已入未读，未唤醒');
   if (reason) scheduleWake(key, reason);
