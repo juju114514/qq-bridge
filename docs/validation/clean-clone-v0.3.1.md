@@ -7,7 +7,7 @@
 ## 一、克隆结果
 
 ```powershell
-git clone <repo> D:\QQBot\temp\clean-v031
+git clone <repo> <临时目录>\clean-v031
 ```
 
 | 检查 | 结果 |

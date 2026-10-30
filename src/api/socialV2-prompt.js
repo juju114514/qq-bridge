@@ -94,7 +94,7 @@ export function createSocialV2PromptHandler(deps = {}) {
                 userId: selfUserId || null,
                 line: selfIdentityTextV2().trim() || null
               },
-              role: { name: roleState.role ?? null, hint: currentMode === 'reserved2' ? currentRoleHintV2() : currentRoleHint() },
+              role: { name: roleState.role ?? null, hint: currentMode === 'reserved2' ? currentRoleHintV2(key) : currentRoleHint() },
               recommended: cfg.socialV2?.provideRecommendations === false ? null : {
                 wake: cfg.socialV2?.wake ?? {},
                 send: cfg.socialV2?.send ?? {},

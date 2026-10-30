@@ -239,5 +239,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4192 |
-| ANY | `/api/tokens/` | L4192 |
+| ANY | `/api/tokens/summary` | L4196 |
+| ANY | `/api/tokens/` | L4196 |

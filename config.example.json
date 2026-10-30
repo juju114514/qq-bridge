@@ -329,7 +329,8 @@
       "_说明": "私聊准入：只接好友私聊，临时会话一律拒（网关不稳）。新装默认关闭，确认要接私聊再开"
     },
     "quietHours": null,
-    "_quietHours说明": "静默时段 [开始, 结束]，例如 [23, 8] = 23:00~次日 08:00；null 关闭。静默期间消息照常记录但不唤醒模型（admin/bootstrap 除外）"
+    "_quietHours说明": "静默时段 [开始, 结束]，例如 [23, 8] = 23:00~次日 08:00；null 关闭。静默期间消息照常记录但不唤醒模型（admin/bootstrap 除外）",
+    "roleInjectEvery": 1
   },
   "webSearch": {
     "provider": "auto",

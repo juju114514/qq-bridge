@@ -94,6 +94,7 @@ import { handleExtraRoutes } from './api/console-extra-routes.js';
 import { createPresetSimHandlers, handlePresetSimRoutes } from './api/preset-sim.js';
 import { handleConsoleMiscRoutes } from './api/console-misc.js';
 import { handleSocialV2ExtraRoutes } from './api/socialV2-extra.js';
+import { createRoleCadence } from './domains/role-cadence.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -848,6 +849,9 @@ let modelCatalogInFlight = null;
 let modelSelectionEpoch = 0;
 // DeepSeek provider 明确支持的取值（见 dsh-llm-deepseek：其它值会抛 UNSUPPORTED_REASONING_EFFORT）。
 // 'off' 虽然合法（关闭思考），但 QQ 聊天助手依赖思考，控制台不提供该档。
+// 角色卡注入节奏（默认 every=1 即每轮全量；配 socialV2.roleInjectEvery 才生效）。
+// 放模块级是为了不依赖 main() 内部声明顺序（与 modelSelectionEpoch 同理，避免 TDZ）。
+const roleCadence = createRoleCadence({ every: 1 });
 const REASONING_EFFORT_OPTIONS = ['low', 'high', 'max'];
 const REASONING_EFFORT_DEFAULT = 'max';
 function normalizeReasoningEffort(value) {
@@ -7149,8 +7153,21 @@ async function main() {
   }
 
   function currentRoleHintV2(key) {
+    // 角色卡「按节奏注入」：默认每轮全量（老行为）；配了 socialV2.roleInjectEvery=N 之后，
+    // 首次/换卡全量，其后每 N 轮一次 —— 每轮能省约 10K tokens（角色卡占提示词 71%）。
+    // 只在提示词层面省，服务端的权限判定不受影响。
+    const roleEvery = Math.max(1, Number(cfg.socialV2?.roleInjectEvery) || 1);
+    if (roleEvery > 1) {
+      const roleId = String(readRoleState()?.role ?? '');
+      if (!roleCadence.shouldInjectFull(String(key ?? ''), roleId, roleEvery)) {
+        return `（本轮不重读完整角色卡；人格仍是「${roleId || '默认'}」，保持之前的语气与底线。）`;
+      }
+    }
     // 先按 〔二代〕/〔一代〕 标记筛小节；下面的逐行过滤只是给「没标记的老卡片」兜底。
-    const raw = roleHintForMode('v2', key);
+    // 注意：这里**故意不传 key** —— key 只用于上面的注入节奏计数。
+    // 传了会让 roleRawContent(key) 走"按会话解析角色卡"的分支，改变既有行为
+    // （快照比对里 group:659013538 的 role.hint 立刻变了）。要做按会话角色是另一件事。
+    const raw = roleHintForMode('v2');
     if (!raw) return '';
     // 一代仿真模式专用指令整行过滤，避免污染二代工具协议。
     // 用 role-card.js 导出的那份（文件顶部已 import）：这里原先又抄了一份同源正则，
