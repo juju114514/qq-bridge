@@ -1778,6 +1778,7 @@ button:active:not(:disabled) {
       <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
         <button data-view="diagnostics" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>诊断与健康</button>
         <button data-view="people" class="nav-item"><span class="nav-icon" aria-hidden="true">☺</span>人物库</button>
+        <button data-view="scheduler" class="nav-item"><span class="nav-icon" aria-hidden="true">◷</span>定时任务</button>
     </nav>
     <div class="sidebar-bottom"><span class="local-dot"></span>本地控制台<small>QQ ↔ DeepSeek Harness</small></div>
   </aside>
@@ -2420,7 +2421,48 @@ button:active:not(:disabled) {
         </div>
       </details>
     </section>
-<section id="section-people" data-page="people" class="card span-all">
+<section id="section-scheduler" data-page="scheduler" class="card span-all">
+        <h2>定时任务</h2>
+        <div class="meta">到点发消息。只能是白名单里的群或好友 —— 定时任务不给陌生人发消息。
+          数据存在 <code>state/scheduler.json</code>。</div>
+        <div class="row" style="margin-top:10px">
+          <button id="schedRefresh" class="primary">刷新</button>
+          <span id="schedStat" class="meta"></span>
+        </div>
+        <div id="schedBody" style="margin-top:12px"><div class="meta">正在读取…</div></div>
+
+        <h3 style="margin-top:20px">新建任务</h3>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="schedName" placeholder="任务名（如：早报）" style="width:180px">
+          <select id="schedKind" style="width:150px">
+            <option value="text">发固定文字</option>
+            <option value="ai">叫 AI 来说</option>
+          </select>
+          <select id="schedType" style="width:130px">
+            <option value="daily">每天</option>
+            <option value="weekly">每周</option>
+            <option value="workdays">工作日</option>
+            <option value="once">一次性</option>
+            <option value="everyNDays">每隔 N 天</option>
+          </select>
+          <input type="text" id="schedTimes" placeholder="时间 HH:mm（多个用逗号）" style="width:180px">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="schedDate" placeholder="一次性/每隔N天 需要：YYYY-MM-DD" style="width:200px">
+          <input type="number" id="schedEvery" placeholder="每隔几天" style="width:110px" min="1">
+          <input type="text" id="schedWeekdays" placeholder="每周几（1=周一，逗号分隔）" style="width:210px">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="schedTargets" placeholder="发送对象（key，逗号分隔，见上方可选列表）" style="flex:1">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="schedText" placeholder="要发的内容（kind=ai 时写：让 AI 做什么）" style="flex:1">
+          <button id="schedPreview">预览</button>
+          <button id="schedCreate" class="primary">创建</button>
+        </div>
+        <div id="schedPreviewBox" class="meta" style="margin-top:8px"></div>
+      </section>
+      <section id="section-people" data-page="people" class="card span-all">
         <h2>人物库</h2>
         <div class="meta">身份只认 QQ 号（改群名片不会断成两个人）；关系档位由「消息数 + 活跃天数」决定。
           笔记默认写到当前会话作用域，写错可单条删除。</div>
@@ -4469,7 +4511,8 @@ const consolePages = {
   operations: ['调试与运维', '让桥接，始终井然有序。', '测试消息、引导 AI，或维护桥接进程与会话工作区。'],
   reference: ['工具参考', '每一种能力，都清晰可见。', '查看桥接提供给 DSH 的 MCP 工具与用途。'],
   diagnostics: ['诊断与健康', '先看证据，再改代码。', '桥接健康一屏看完；每条消息为什么没回、卡在哪一步，都在这里。'],
-  people: ['人物库', '它认识谁，记得什么。', '按关系档位查看群友/好友，编辑或删掉关于他的笔记。']
+  people: ['人物库', '它认识谁，记得什么。', '按关系档位查看群友/好友，编辑或删掉关于他的笔记。'],
+  scheduler: ['定时任务', '到点就说，不用你记。', '按天/周/月定时发固定消息，或叫 AI 到点说一句。']
 };
 let currentConsolePage = 'overview';
 let toastTimer;
@@ -4480,6 +4523,115 @@ function showConsoleToast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.hidden = true; }, 4200);
 }
+// ── 定时任务 ──────────────────────────────────────────────────────
+// 后端：/api/scheduler*（引擎在 src/scheduler/，从同源分叉移植）
+// 交互原则：所有写操作都给出明确的结果提示；删除要二次确认（不可逆）。
+let schedCache = null;
+
+function escSched(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function schedTimeText(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString(); } catch { return '—'; }
+}
+
+function renderScheduler(d) {
+  const body = document.getElementById('schedBody');
+  if (!body) return;
+  if (!d || d.ok === false) {
+    body.innerHTML = `<div class="meta" style="color:#c33">读取失败：${escSched(d?.error || '未知错误')}</div>`;
+    return;
+  }
+  schedCache = d;
+  const tasks = d.tasks || [];
+  const stat = document.getElementById('schedStat');
+  if (stat) stat.textContent = `共 ${tasks.length} 个任务 · 总开关 ${d.settings?.enabled ? '开' : '关'} · ${d.settings?.timezone || ''}`;
+  const targetOpts = (d.targets || []).map((t) => `${t.key}（${t.label}）`).join(' · ');
+  body.innerHTML = `
+    <div class="meta">可选发送对象：${escSched(targetOpts) || '（无）'}</div>
+    <table style="margin-top:8px">
+      <tr><th>#</th><th>名称</th><th>规则</th><th>内容</th><th>对象</th><th>下次</th><th>状态</th><th>操作</th></tr>
+      ${tasks.length ? tasks.map((x) => `<tr>
+        <td>${x.id}</td>
+        <td>${escSched(x.name)}</td>
+        <td>${escSched(x.scheduleText || '')}</td>
+        <td>${escSched(x.kind === 'ai' ? '叫 AI 说' : (x.text || '').slice(0, 20))}</td>
+        <td>${escSched((x.targets || []).join(', '))}</td>
+        <td>${schedTimeText(x.nextAt)}</td>
+        <td>${x.enabled ? '✅' : '⏸'}${x.lastResult ? ` · ${escSched(x.lastResult)}` : ''}</td>
+        <td>
+          <button data-sched-run="${x.id}">跑一次</button>
+          <button data-sched-toggle="${x.id}" data-on="${x.enabled ? '0' : '1'}">${x.enabled ? '停用' : '启用'}</button>
+          <button data-sched-del="${x.id}">删</button>
+        </td>
+      </tr>`).join('') : '<tr><td colspan="8" class="meta">还没有任务</td></tr>'}
+    </table>`;
+
+  body.querySelectorAll('[data-sched-run]').forEach((b) => b.addEventListener('click', async () => {
+    try { await api(`/api/scheduler/tasks/${b.dataset.schedRun}/run`, 'POST', {}); showConsoleToast('已执行'); loadScheduler(); }
+    catch (e) { showConsoleToast(`执行失败：${e?.message || e}`); }
+  }));
+  body.querySelectorAll('[data-sched-toggle]').forEach((b) => b.addEventListener('click', async () => {
+    const on = b.dataset.on === '1';
+    try {
+      await api(`/api/scheduler/tasks/${b.dataset.schedToggle}/${on ? 'enable' : 'disable'}`, 'POST', {});
+      showConsoleToast(on ? '已启用' : '已停用'); loadScheduler();
+    } catch (e) { showConsoleToast(`操作失败：${e?.message || e}`); }
+  }));
+  body.querySelectorAll('[data-sched-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('删除后不可恢复，确定？')) return;
+    try { await api(`/api/scheduler/tasks/${b.dataset.schedDel}`, 'DELETE'); showConsoleToast('已删除'); loadScheduler(); }
+    catch (e) { showConsoleToast(`删除失败：${e?.message || e}`); }
+  }));
+}
+
+function readSchedForm() {
+  const times = (document.getElementById('schedTimes')?.value || '')
+    .split(',').map((x) => x.trim()).filter(Boolean);
+  const type = document.getElementById('schedType')?.value || 'daily';
+  const schedule = { type, times };
+  if (type === 'once') { schedule.date = document.getElementById('schedDate')?.value.trim(); schedule.time = times[0] || ''; }
+  if (type === 'weekly') schedule.weekdays = (document.getElementById('schedWeekdays')?.value || '').split(',').map((x) => Number(x.trim())).filter(Boolean);
+  if (type === 'everyNDays') { schedule.every = Number(document.getElementById('schedEvery')?.value) || 1; schedule.startDate = document.getElementById('schedDate')?.value.trim(); }
+  const kind = document.getElementById('schedKind')?.value || 'text';
+  const content = document.getElementById('schedText')?.value || '';
+  return {
+    name: document.getElementById('schedName')?.value.trim() || '未命名任务',
+    kind,
+    ...(kind === 'ai' ? { instruction: content } : { text: content }),
+    targets: (document.getElementById('schedTargets')?.value || '').split(',').map((x) => x.trim()).filter(Boolean),
+    schedule
+  };
+}
+
+async function loadScheduler() {
+  const body = document.getElementById('schedBody');
+  if (body && !schedCache) body.innerHTML = '<div class="meta">正在读取…</div>';
+  try { renderScheduler(await api('/api/scheduler')); }
+  catch (e) { if (body) body.innerHTML = `<div class="meta" style="color:#c33">读取失败：${escSched(e?.message || e)}</div>`; }
+}
+
+document.getElementById('schedRefresh')?.addEventListener('click', () => loadScheduler());
+document.getElementById('schedPreview')?.addEventListener('click', async () => {
+  const box = document.getElementById('schedPreviewBox');
+  if (box) box.textContent = '正在计算…';
+  try {
+    const d = await api('/api/scheduler/preview', 'POST', readSchedForm());
+    const next = (d.next || []).map((x) => schedTimeText(x.at)).join(' · ');
+    if (box) box.textContent = next ? `接下来：${next}` : (d.error || '算不出下一次执行时间，检查规则');
+  } catch (e) { if (box) box.textContent = `预览失败：${e?.message || e}`; }
+});
+document.getElementById('schedCreate')?.addEventListener('click', async () => {
+  try {
+    await api('/api/scheduler/tasks', 'POST', readSchedForm());
+    showConsoleToast('已创建');
+    document.getElementById('schedPreviewBox').textContent = '';
+    loadScheduler();
+  } catch (e) { showConsoleToast(`创建失败：${e?.message || e}`); }
+});
+
 // ── 人物库 ────────────────────────────────────────────────────────
 // 后端：GET /api/socialV2/people（列表）+ POST /api/socialV2/people-note（add/list/clear）
 // 刻意不做"批量删人"——删除是不可逆操作，放在 QQ 里用命令更安全。
@@ -4691,6 +4843,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'social-v2' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
   if (page === 'diagnostics' && typeof loadDiagnostics === 'function') loadDiagnostics();
   if (page === 'people' && typeof loadPeople === 'function') loadPeople();
+  if (page === 'scheduler' && typeof loadScheduler === 'function') loadScheduler();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
