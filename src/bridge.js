@@ -92,6 +92,7 @@ import { createConsoleDshHandlers } from './api/console-dsh.js';
 import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { handleExtraRoutes } from './api/console-extra-routes.js';
 import { createPresetSimHandlers, handlePresetSimRoutes } from './api/preset-sim.js';
+import { handleConsoleMiscRoutes } from './api/console-misc.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -3979,6 +3980,14 @@ async function main() {
       // 按**同样的顺序**串起来；路由表还留了 exact/param/prefix 三个入口，后续把
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
+        .chain((req, url) => handleConsoleMiscRoutes(req, url, {
+          pending, consoleDsh, getConsoleOps, createConsoleNotifyHandler, sendJson, readBody,
+          notifyDeps: {
+            sendJson, readBody, log, modeAllowed, allowed, getCfg: () => cfg, getMode: () => currentMode,
+            getState: () => state, getDshReady: () => dshReady, readRoleState, getSocialV2State,
+            ensureSession, social, deliverPrompt, appendActivity
+          }
+        }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
         .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
         .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay).chain(handleDeadLetter)
@@ -4066,20 +4075,6 @@ async function main() {
         // reset 是高危路径：清 ~30 个 Map 后**最后**才停/归档 DSH 会话。
         // 回归测试：scripts/test-session-reset.mjs（10 项）
         // ── 挂起审批 / 提问 ───────────────────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/pending') {
-          const list = [];
-          for (const [key, p] of pending.entries()) {
-            list.push({
-              key,
-              kind: p.kind,
-              sessionId: p.sessionId,
-              ...(p.kind === 'approval' ? { toolName: p.toolName, reason: p.reason, approvalId: p.approvalId } : {}),
-              ...(p.kind === 'question' ? { questions: p.questions } : {})
-            });
-          }
-          sendJson({ pending: list });
-          return;
-        }
         // ── 白名单可视化编辑（写 config.json + 热更新内存） ───────────────────
         if (url.pathname === '/api/whitelist') {
           await createWhitelistHandler({
@@ -4091,14 +4086,6 @@ async function main() {
         }
 
         // ── DSH 模型与思考强度 ───────────────────────────────────────────────
-        if (req.method === 'GET' && url.pathname === '/api/dsh/model') {
-      await consoleDsh.handleModel({ sendJson, readBody });
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/dsh/effort') {
-      await consoleDsh.handleEffort({ sendJson, readBody });
-      return;
-    }
 
     // ── 安全拦截通知设置 ─────────────────────────────────────────────────
         if (url.pathname === '/api/security') {
@@ -4114,30 +4101,13 @@ async function main() {
           return;
         }
         // ── 控制台访问令牌（可手动修改/生成随机） ─────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/console/token') {
-      await getConsoleOps().handleToken({ readBody, sendJson });
-      return;
-    }
 
     // ── 测试发送消息（强制走白名单校验） ───────────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/test-send') {
-      await getConsoleOps().handleTestSend({ readBody, sendJson });
-      return;
-    }
 
     // ── 一代仿真社交引擎（已迁出到 src/api/social.js）──────────────────────
         // POST /api/social/state、GET /api/social、POST /api/social、POST /api/social/flush
 
         // ── 后台控制端引导：向指定会话的 DSH agent 投递提醒 ──────────────────
-        if (req.method === 'POST' && url.pathname === '/api/console/notify-ai') {
-          await createConsoleNotifyHandler({
-            sendJson, readBody, log, modeAllowed, allowed,
-            getCfg: () => cfg, getMode: () => currentMode,
-            getState: () => state, getDshReady: () => dshReady,
-            readRoleState, getSocialV2State, ensureSession, social, deliverPrompt, appendActivity
-          })(req, url);
-          return;
-        }
         // ── 二代仿真模式（reserved2）内部 Agent API ─────────────────────────
         // ── socialV2 只读端点（A 批，已迁出到 src/api/socialV2-read.js）──────────
         // config / activity / tool-log / feedback / states / my-recent / memory / slang-query
