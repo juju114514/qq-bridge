@@ -5804,15 +5804,31 @@ async function main() {
     const model = String(cfg.dsh?.model || 'deepseek-flash');
     const effort = String(cfg.dsh?.reasoningEffort || REASONING_EFFORT_DEFAULT);
     let lastError = null;
+    // 非 DeepSeek provider 的"思考强度"词表不一样，甚至没有这个字段：
+    //   · amazon.nova-lite-v1:0 / qwen-flash 这类模型**不支持** reasoningEffort，
+    //     DSH 会直接回 session/model-unavailable: ... does not support reasoning effort "low"；
+    //   · 支持的那些（nova-2-lite / claude-haiku / gpt-oss）词表是 off/minimal/low/medium/high，
+    //     没有我们的 max。
+    // 以前这里只会把同一个请求重试两次，等于必然失败、会话永远用默认模型（静默降级）。
+    // 现在的策略：第一次照配置发；如果报"不支持该思考强度"，**不带该字段**再试一次。
+    let omitEffort = false;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const result = unwrap(await api.sessions.selectModel({ sessionId, provider, model, reasoningEffort: effort }), 'session.selectModel');
+        const payload = { sessionId, provider, model };
+        if (!omitEffort) payload.reasoningEffort = effort;
+        const result = unwrap(await api.sessions.selectModel(payload), 'session.selectModel');
         modelAppliedSessions.set(sessionId, modelSelectionEpoch);
         log(`已设置会话模型 ${sessionId} -> ${result.selected.provider}/${result.selected.model} (${result.selected.reasoningEffort ?? '默认'})`);
         return 'applied';
       } catch (error) {
         lastError = error;
-        log(`设置会话模型失败 ${sessionId}（第 ${attempt}/2 次）: ${error?.message ?? error}`);
+        const msg = String(error?.message ?? error ?? '');
+        log(`设置会话模型失败 ${sessionId}（第 ${attempt}/2 次）: ${msg}`);
+        if (!omitEffort && /reasoning effort/i.test(msg)) {
+          omitEffort = true;
+          log(`   ↳ ${provider}/${model} 不支持思考强度「${effort}」，改为不带该字段重试`);
+          continue;
+        }
         if (attempt < 2) await sleep(1000);
       }
     }

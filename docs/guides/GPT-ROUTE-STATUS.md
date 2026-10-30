@@ -1,70 +1,72 @@
-# GPT / OpenAI 通道现状（2026-10-31 实测）
+# 非 DeepSeek 通道现状（2026-10-31 实测）
 
-## 一、结论先行
+## 〇、结论先行（已跑通）
 
 | 步骤 | 结果 |
 | --- | --- |
-| Key 鉴权（`GET /v1/models`） | ✅ **有效**，可见 **128 个模型** |
-| 文本补全（`POST /v1/chat/completions`） | ❌ **HTTP 429 `credit_balance_exhausted`** |
+| OpenAI 官方 key | ❌ 鉴权有效但 `429 credit_balance_exhausted`（无余额，且无法充值） |
+| **千问 dashscope** | ✅ **端到端跑通**：`qwen-flash` 补全 200、函数调用返回 `tool_calls`、经桥接 → DSH → 回复正常 |
+| amazon-bedrock | ⚠️ provider 已注册、模型可选（193 个），但 key 不是 Bedrock 格式（`Invalid API Key format: Must start with pre-defined prefix`） |
 | 我们的 DSH 版本 | **`0.2.1-rc.2`**（`runtime.json` 的 `desktopVersion`，与 `compat.json` 的 `testedWith.dsh` 一致） |
-| DSH 是否支持 openai provider | ✅ 支持（见第三节的 asar 证据） |
 
-**一句话**：卡点不在代码、不在配置、不在版本 —— **是账户余额为 0**。
+**修掉的真问题**：`ensureChatModel` 以前只会把"设置模型"原样重试两次。
+遇到**不声明 reasoning 档位**的模型（`qwen-flash`、`amazon.nova-lite-v1:0`）必然失败，
+于是**静默退回默认模型** —— 用户只看到"回复不像那个模型"，日志里两行 `selectModel failed`。
+现在改成：报"不支持思考强度"时**去掉该字段**重试一次（DeepSeek 路径完全不变）。
 
-## 二、怎么自己复验（一条命令）
+## 一、怎么复验
 
 ```powershell
-node scripts/gpt-smoke.mjs          # 只查鉴权（免费）
-node scripts/gpt-smoke.mjs --chat   # 再发一次 5 token 的补全（验额度与模型）
+# 只查鉴权（免费）
+node scripts/gpt-smoke.mjs --base https://dashscope.aliyuncs.com/compatible-mode/v1 --model qwen-flash
+# 再发一次 5 token 的补全（验额度与模型）
+node scripts/gpt-smoke.mjs --base https://dashscope.aliyuncs.com/compatible-mode/v1 --model qwen-flash --chat
 ```
 
-输出三分法（脚本刻意把失败原因分开）：
+## 二、DSH 侧怎么加（实测通过的步骤）
 
-| 输出 | 含义 | 该做什么 |
-| --- | --- | --- |
-| `✓ 鉴权 OK：可见 N 个模型` | key 有效 | 继续 |
-| `✗ 额度不足：HTTP 429 credit_balance_exhausted` | key 有效、**没钱** | 充值，或换兼容网关 |
-| `✗ 模型不可用` | 模型 id 不对 | 从脚本打印的候选里换 |
+设置 → 模型 → **添加模型提供商** → **自定义模型 API**：
 
-Key 来源（按优先级）：`--key` → `$env:OPENAI_API_KEY` → `state/openai-key.txt`（**已 gitignore**）。
-
-## 三、DSH 0.2.1-rc.2 的 provider 能力（从 app.asar 里读出来的证据）
-
-```
-AGENT_METHODS = {
-  providers_list: "providers/list",
-  providers_set:  "providers/set",      // { providerId, apiType: "openai", baseUrl }
-  providers_disable: "providers/disable",
-  ...
-}
-```
-
-另外 asar 里还有 `azure-openai-config.js` / `azure-openai-responses.js`，
-以及设置界面里的 `CustomProviderCard`（注释原文：*"declares a provider pi-ai does not ship —
-an OpenAI-compatible gateway, a self-hosted server, or a provider newer than the installed catalog"*）。
-
-**所以「加一个 OpenAI / 兼容网关 provider」是 DSH 自带能力，不需要改桥接代码。**
-
-## 四、我们这边的适配到底做了什么
-
-| 位置 | 内容 |
+| 字段 | 值 |
 | --- | --- |
-| `src/bridge.js` | `provider` / `model` 原样透传；非 `deepseek-official` 时启动打三条警告（只验证过官方 / 工具·多模态·人格未验证） |
-| `src/config.js` | 不设白名单，自定义 provider 值直接透传 |
-| 本节 | 把"已验证/未验证"的边界写清楚 |
+| Provider ID | `dashscope`（小写字母开头） |
+| 显示名称 | 任意，如 `阿里百炼（千问）` |
+| API 地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| API 协议 | `OpenAI Chat Completions` |
+| API 密钥 | 千问的 `sk-…` |
+| 模型目录 | 至少一条：模型 ID `qwen-flash`（目录外 ID 也能直接发） |
 
-**没有针对 GPT 的特殊分支** —— 这是有意为之：一旦为某个厂商加分支，就会变成"每条路都只测过一半"。
+保存后 `session/modelCatalog` 会多出 `dashscope` 分组，桥接就能把 `dsh.provider=dashscope`
+和 `dsh.model=qwen-flash` 透传过去。
 
-## 五、充值之后要做的事（按顺序，别跳）
+## 三、桥接侧要改的只有两行配置
 
-1. `node scripts/gpt-smoke.mjs --chat` → 看到 `✓ 补全成功` 才算过第一步
-2. DSH → **Settings → Models** → 添加 provider：`apiType=openai`、`baseUrl=https://api.openai.com/v1`、粘 key
-3. 在模型选择器里选**脚本打印出的那个真实 model id**（别凭记忆写 `gpt-4o`，可能没有权限）
-4. 沙箱验证（**不要直接改真机**）：复制一份桥接目录、`consolePort=3199`、`dsh.provider=<新 provider id>`、`dsh.model=<上一步的 id>`，先只测**纯文本一问一答**
-5. 通过后再测工具调用 —— 这是最可能翻车的一环（`reserved2` 是"一切皆工具"模式，每轮 5~10 次工具调用）
-6. 最后才测图片输入
+```json
+"dsh": { "provider": "dashscope", "model": "qwen-flash" }
+```
 
-## 六、为什么不建议先动真机
+代码不需要任何 provider 分支 —— 这是刻意的：一旦为某个厂商加分支，就会变成"每条路都只测过一半"。
 
-真机现在跑的是 `deepseek-official / deepseek-flash / reasoningEffort=low`，
-一改 provider 就会影响正在使用的 QQ 会话。沙箱验证通过再切，回滚成本最低。
+## 四、验证方法（沙箱，不碰真机）
+
+```
+QQ 消息 → 桥接(3199 沙箱) → DSH → dashscope/qwen-flash → 回复
+```
+
+沙箱配置要点：`consolePort: 3199`、`snowluma.wsUrl: ""`、`official.enabled: false`
+（否则第二个桥接会连上同一个 SnowLuma / 抢官方实例锁，导致重复回复）。
+
+## 五、已知差异（诚实清单）
+
+| 项 | 状态 |
+| --- | --- |
+| 文本对话 | ✅ 已实测 |
+| 函数调用（单轮） | ✅ 已实测：`finish_reason: "tool_calls"`，参数正确 |
+| 工具调用（真实会话，每轮 5~10 次） | ⚠️ 未单独压测 |
+| 图片输入 | ⚠️ 未测（`qwen-flash` 是否支持视觉需另配 VL 模型） |
+| 人格/记忆注入 | ✅ 走同一套提示词，已随会话跑通 |
+
+## 六、Bedrock（如果以后拿到 `ABSK…`）
+
+模型目录里已有 `openai.gpt-5.x / 6-x`、`anthropic.claude-*`、`amazon.nova-*` 共 193 个。
+把 Bedrock 的**长时 API key（`ABSK` 开头）**填进那个 provider 即可，桥接侧同样只改两行配置。
