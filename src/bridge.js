@@ -45,6 +45,7 @@ import { decideNoAction } from './turn-guard.js';
 import { finalizeTurn } from './turn-finalize.js';
 import { decideReplyAction } from './turn-reply.js';
 import { decideWakeReminder } from './turn-wake.js';
+import { createWakeConfigDomain } from './domains/wake-config.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
@@ -6339,71 +6340,13 @@ async function main() {
   // 旧写法 `{...current.triggers, ...inputTriggers}` 会把模型传来的任意键原样并入、
   // 持久化、再由 qq_get_prompt 原样回给模型（每次请求都带着），等于给了一个
   // 「用 1MB 垃圾键把状态文件与每轮 prompt 撑大」的入口。
-  const WAKE_TRIGGER_KEYS = Object.freeze(['atMention', 'nameMention', 'speakerIds', 'keywords', 'question', 'poke', 'anyMessage', 'probability']);
-  function pickWakeTriggersV2(source, fallback = {}) {
-    const out = {};
-    const src = source && typeof source === 'object' ? source : {};
-    const fb = fallback && typeof fallback === 'object' ? fallback : {};
-    for (const name of WAKE_TRIGGER_KEYS) {
-      const value = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : fb[name];
-      if (value !== undefined) out[name] = value;
-    }
-    return out;
-  }
-
-  function defaultWakeConfigV2() {
-    const w = cfg.socialV2?.wake ?? {};
-    const defaultMode = w.defaultMode === 'active' ? 'active' : 'diving';
-    const defaultInfinite = w.recommendedDefaultInfinite !== false;
-    const recMin = Number(w.recommendedSleepMinMs) || 300000;
-    const recMax = Number(w.recommendedSleepMaxMs) || 7200000;
-    let finiteMs = recMin + Math.random() * Math.max(0, recMax - recMin);
-    const hardMin = Math.max(0, Number(w.sleepMinMs) || 0);
-    const hardMax = Number(w.sleepMaxMs) || 0;
-    if (hardMin > 0 && finiteMs < hardMin) finiteMs = hardMin;
-    if (hardMax > 0 && finiteMs > hardMax) finiteMs = hardMax;
-    return {
-      mode: defaultMode,
-      infinite: defaultInfinite,
-      sleepUntil: defaultInfinite ? null : new Date(Date.now() + Math.round(finiteMs)).toISOString(),
-      triggers: {
-        atMention: w.recommendedAtMention !== false,
-        nameMention: w.recommendedNameMention !== false,
-        speakerIds: [],
-        keywords: Array.isArray(w.recommendedKeywords) ? w.recommendedKeywords.map(String) : [],
-        question: w.recommendedQuestion !== false,
-        poke: w.recommendedPoke !== false,
-        anyMessage: defaultMode === 'active',
-        probability: Math.min(1, Math.max(0, Number(w.recommendedProbability) || 0))
-      },
-      batchWindowMs: Math.max(1000, Number(w.batchWindowMs) || 8000),
-      lastWakeAt: 0,
-      wakeCount: 0,
-      noActionCount: 0,
-      confirmedAt: 0,
-      confirmedBy: 'default'
-    };
-  }
-
-  // 把“仍使用默认唤醒配置”的会话刷新为当前推荐/默认参数。
-  // 只有 confirmedBy === 'default' 的会话才会被刷新；AI 或管理员显式设置过的（set_wake_config / mark_read）不会被覆盖。
-  function refreshDefaultWakeConfigV2(st) {
-    if (!st || !st.wakeConfig) return false;
-    if (st.wakeConfig.confirmedBy !== 'default') return false;
-    const def = defaultWakeConfigV2();
-    const old = st.wakeConfig;
-    st.wakeConfig = {
-      ...def,
-      lastWakeAt: old.lastWakeAt || 0,
-      wakeCount: old.wakeCount || 0,
-      noActionCount: old.noActionCount || 0,
-      confirmedAt: old.confirmedAt || 0,
-      confirmedBy: 'default'
-    };
-    return true;
-  }
-
-  // 保存推荐/默认参数后，把所有仍使用默认配置的会话同步到新默认值。
+  // 唤醒配置的默认值/刷新规则已搬到 src/domains/wake-config.js（波次 1）
+  const wakeConfigDomain = createWakeConfigDomain({ getCfg: () => cfg });
+  const WAKE_TRIGGER_KEYS = wakeConfigDomain.WAKE_TRIGGER_KEYS;
+  const pickWakeTriggersV2 = (source, fallback = {}) => wakeConfigDomain.pickTriggers(source, fallback);
+  const defaultWakeConfigV2 = () => wakeConfigDomain.defaultWakeConfig();
+  const refreshDefaultWakeConfigV2 = (st) => wakeConfigDomain.refreshDefault(st);
+  
   function refreshAllDefaultWakeConfigsV2() {
     let changed = false;
     for (const st of socialV2.conversations.values()) {

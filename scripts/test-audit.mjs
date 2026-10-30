@@ -208,6 +208,8 @@ const tests = [
   'test-turn-reply.mjs',
   // 防遗忘判定：settled / remind / reset 三条出口。
   'test-turn-wake.mjs',
+  // 唤醒配置域（波次 1 第一个搬出来的域）：默认值 / 硬边界 / 不覆盖显式设置。
+  'test-wake-config.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

@@ -46,6 +46,10 @@ import { createLearnerFrameHandler } from '../src/mux-learner.js';
 import { createMuxToolTracker } from '../src/mux-tools.js';
 import { createDecisionTrace } from '../src/decision-trace.js';
 import { createPeopleNoteHandler } from '../src/api/people-note.js';
+import { decideNoAction } from '../src/turn-guard.js';
+import { finalizeTurn } from '../src/turn-finalize.js';
+import { decideReplyAction } from '../src/turn-reply.js';
+import { decideWakeReminder } from '../src/turn-wake.js';
 import { createSessionRegistry } from '../src/session-registry.js';
 import * as stickerCurator from '../src/sticker-curator.js';
 // 配置加载已抽成模块：VM 里必须注入 createConfigLoader，否则 bridge 启动即 ReferenceError。
@@ -249,6 +253,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...stickerPending, ...privateAccess,
   ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
+    decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
   createSessionRegistry: (...args) => { registryRef = createSessionRegistry(...args); return registryRef; },
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,
@@ -287,6 +292,8 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   // HTTP 层（src/http/*.js）：响应/请求体/前导关/路由表。同样是"顶层 import 被剥掉，
   // 这里按导出名注入"，和 src/api 用同一个 loader（只是换个目录）。
   loadApiModules(context, { root, vm, fs, path, apiDir: 'src/http' });
+  // 领域层 src/domains/*.js（波次 1 起）：同样按导出名注入。
+  loadApiModules(context, { root, vm, fs, path, apiDir: 'src/domains' });
   // 纯函数模块 src/role-card.js：bridge.js 从它 import 了 parseRoleSections / roleCharStats /
   // parseRoleFrontMatter 等。之前这套 harness 一直没注入它 —— 只是没有测试走到「构造 roles
   // 分派器」那条路径，所以缺口是隐形的。一旦某条测试请求走到那里就会
