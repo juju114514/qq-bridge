@@ -10,7 +10,10 @@ export async function handleSocialV2ExtraRoutes(req, url, deps = {}) {
     createSocialV2InspectHandler, inspectDeps,
     getPeopleNoteHandler, getGroupMembersHandler, getSlangSubmitHandler,
     socialVideo, writeJson, readJsonBody, handleImages, res,
-    cfgGet, getSocialV2State, computeWakeSafety, gateAgent
+    cfgGet, getSocialV2State, computeWakeSafety, gateAgent,
+    createSocialV2ConfigHandler, createSocialV2PromptHandler, promptDeps,
+    readConfigObject, atomicWriteJson, refreshAllDefaultWakeConfigs,
+    rootDir, pathModule
   } = deps;
 
   // 单条消息详情 / 合并转发取件
@@ -114,6 +117,23 @@ export async function handleSocialV2ExtraRoutes(req, url, deps = {}) {
         ? '这三个工具会注册；如果模型看不到，多半是改完代码/开关后没重启 DSH（MCP 工具清单是启动快照）'
         : 'socialV2.tools.getImages=false ⇒ 图片/视频/链接三件套都不会注册（模型看不到、也不占 token）；要用来改回 true 并重启 DSH'
     });
+    return true;
+  }
+
+
+  // ── POST /api/socialV2/config —— 改 socialV2 配置（写 config.json + 热更新）──
+  if (req.method === 'POST' && p === '/api/socialV2/config') {
+    await createSocialV2ConfigHandler({
+      sendJson, readBody, log,
+      getCfg: () => cfgGet(), rootDir: rootDir, path: pathModule,
+      readConfigObject, atomicWriteJson, refreshAllDefaultWakeConfigs
+    })(req, url);
+    return true;
+  }
+
+  // ── GET /api/socialV2/prompt —— 模型看到的那份提示词（自检入口）──────────
+  if (req.method === 'GET' && p === '/api/socialV2/prompt') {
+    await createSocialV2PromptHandler(promptDeps)(req, url);
     return true;
   }
 

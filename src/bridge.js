@@ -4003,6 +4003,25 @@ async function main() {
             if (!v2ToolEnabled(toolName)) { sendJson({ ok: false, error: '工具未启用' }, 403); return false; }
             return true;
           }
+          ,
+          createSocialV2ConfigHandler, createSocialV2PromptHandler,
+          readConfigObject, atomicWriteJson, refreshAllDefaultWakeConfigs: refreshAllDefaultWakeConfigsV2,
+          rootDir: ROOT, pathModule: path,
+          promptDeps: {
+            sendJson,
+            agentTokenOk, v2SessionAllowed, v2ToolEnabled,
+            getCfg: () => cfg, getMode: () => currentMode, getSocialV2State,
+            getSelfDisplayName: () => selfDisplayName, getSelfUserId: () => selfUserId,
+            selfIdentityTextV2,
+            readRoleState, currentRoleHintV2, currentRoleHint,
+            replyTimingV2, computeWakeSafetyV2, formatMemoryV2, formatParticipationV2,
+            confirmedSlangListV2, getSlangEntries: () => slangEntries, buildSlangContext,
+            getStickerEntries: () => stickerEntries, buildStickerContext, buildStickerStrategyHint,
+            stickerEnabled, stickerCuratorEnabled, stickerScopeOf, stickerPending,
+            renderPendingHint, stickerHintFor, buildCuratorPrompt,
+            syncStickerLibrary, voiceLibrary, voiceCfg,
+            peopleHintFor: peopleHintForConversation
+          }
         }))
         .chain((req, url) => handleConsoleMiscRoutes(req, url, {
           pending, consoleDsh, getConsoleOps, createConsoleNotifyHandler, sendJson, readBody,
@@ -4140,14 +4159,6 @@ async function main() {
         // ── socialV2 语音合成（C 批安全子集，已迁出到 src/api/socialV2-send.js）──────
         // say / sing：spawn 外部 PowerShell 脚本，不经过 sendMessagesV2
 
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/config') {
-          await createSocialV2ConfigHandler({
-            sendJson, readBody, log,
-            getCfg: () => cfg, rootDir: ROOT, path,
-            readConfigObject, atomicWriteJson, refreshAllDefaultWakeConfigsV2
-          })(req, url);
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/activity') {
           const body = await readBody();
           const paused = body.paused === true;
@@ -4164,25 +4175,6 @@ async function main() {
           }
           saveSocialV2State();
           sendJson({ ok: true, paused: socialV2.paused });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/prompt') {
-          await createSocialV2PromptHandler({
-            sendJson,
-            agentTokenOk, v2SessionAllowed, v2ToolEnabled,
-            getCfg: () => cfg, getMode: () => currentMode, getSocialV2State,
-            getSelfDisplayName: () => selfDisplayName, getSelfUserId: () => selfUserId,
-            selfIdentityTextV2,
-            readRoleState, currentRoleHintV2, currentRoleHint,
-            replyTimingV2, computeWakeSafetyV2, formatMemoryV2, formatParticipationV2,
-            confirmedSlangListV2, getSlangEntries: () => slangEntries, buildSlangContext,
-            getStickerEntries: () => stickerEntries, buildStickerContext, buildStickerStrategyHint,
-            stickerEnabled, stickerCuratorEnabled, stickerScopeOf, stickerPending,
-            renderPendingHint, stickerHintFor, buildCuratorPrompt,
-            syncStickerLibrary, voiceLibrary, voiceCfg
-          ,
-      peopleHintFor: peopleHintForConversation
-})(req, url);
           return;
         }
         // 操作者预写的「会话初始提示词」：控制台专用（AI 既读不到也改不了 —— adminOnlyV2Paths）。
