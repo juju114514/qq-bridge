@@ -200,6 +200,8 @@ const tests = [
   'test-remind-command.mjs',
   // 回合收尾的无行动计数：turn/start 缺失 / 静默回合 / 阈值重置。
   'test-turn-guard.mjs',
+  // 回合帧形状与生命周期（chunk 忽略 / 交错回合 / 无 start 的 end）。
+  'test-turn-frames.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

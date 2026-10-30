@@ -9930,9 +9930,10 @@ function selfCheckSnapshot() {
     }
     const ended = collector ? collector.push(event) : null;
     if (ended) {
-      // 回合正常收尾：collector 立刻释放。v2TurnStartAt 留给调用方（无行动判定要用它），
-      // 调用方在 `if (ended)` 分支里用完再删。
-      collectors.delete(sessionId);
+      // 回合正常收尾：**只有 collector 里没有其它未结束的 turn 时才释放**。
+      // 曾经无条件 delete：一个会话里若出现交错回合（上一轮异常未收尾 + 新一轮），
+      // 结束其中一个就把整个 collector 扔掉 → 另一个回合的 turn/end 拿不到文本，回复被吞。
+      if (!collector?.size?.()) collectors.delete(sessionId);
     } else if (event?.type === 'turn/end' && (!collector || collector.size?.() === 0)) {
       collectors.delete(sessionId);
       v2TurnStartAt.delete(sessionId);
