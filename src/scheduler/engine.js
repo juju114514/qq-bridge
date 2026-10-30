@@ -16,6 +16,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { atomicWriteJson } from '../atomic-write.js';
 import crypto from 'node:crypto';
 import { normalizeSchedule, nextOccurrence, previewOccurrences, describeSchedule, seededRandom } from './schedule.js';
 import { isValidTimeZone, zonedParts, dateKey, parseTime, describeInstant } from './time.js';
@@ -130,10 +131,8 @@ export function createScheduler({ file, deliver, validateTarget, ownerKey, holid
   }
   function save() {
     if (!writable) return;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(tmp, file);
+    // 原子写走唯一实现：唯一临时名 + 失败清理 + Windows EPERM 退避重试
+    atomicWriteJson(file, data);
   }
 
   const settings = () => data.settings;

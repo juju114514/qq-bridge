@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { atomicWriteJson } from './atomic-write.js';
 
 export const BEAT_INTERVAL_MS = 30_000;
 export const STALE_MS = 90_000;
@@ -33,10 +34,8 @@ export function readLock(file) {
 }
 
 export function writeLock(file, info) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(info, null, 1) + '\n', 'utf8');
-  fs.renameSync(tmp, file);
+  // 原子写走唯一实现：固定 .tmp 名 + 无失败清理 = 并发下会互相覆盖临时文件
+  atomicWriteJson(file, info);
 }
 
 /**

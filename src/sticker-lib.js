@@ -13,6 +13,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { atomicWriteJson } from './atomic-write.js';
 import crypto from 'node:crypto';
 import { truncateText } from './md-to-plain.js';
 
@@ -104,17 +105,9 @@ export function loadStickerStore(file) {
 
 export function saveStickerStore(file, entries) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-  // 失败时必须自己清掉临时文件（对齐 saveSlang 的写法）：写盘中途报错（磁盘满、杀软占用）
-  // 会在 state/ 里永久留下 stickers.json.<pid>.<hex>.tmp —— 名字带随机串，没人会再去清理它，
-  // 而且下次排查"表情库为什么不对"时这些残留文件会让人以为写入成功了。
-  try {
-    fs.writeFileSync(tmp, JSON.stringify(entries, null, 2), { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(tmp, file);
-  } catch (error) {
-    try { fs.unlinkSync(tmp); } catch {}
-    throw error;
-  }
+  // 原子写走唯一实现：唯一临时名 + 失败自动清理 + Windows EPERM 退避重试
+  //（历史上这里自己写 tmp+rename：随机名残留没人清、固定名会被并发覆盖）
+  atomicWriteJson(file, entries);
 }
 
 // 把 SnowLuma 返回的 QQ 收藏表情详情合并进本地库。

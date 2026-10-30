@@ -47,6 +47,7 @@ import { createMuxToolTracker } from '../src/mux-tools.js';
 import { createDecisionTrace } from '../src/decision-trace.js';
 import { createPeopleNoteHandler } from '../src/api/people-note.js';
 import { createRuntime } from '../src/runtime.js';
+import { atomicWriteJson, atomicWriteText, renameWithRetry } from '../src/atomic-write.js';
 import { capturePendingStickers, rememberMessageMedia } from '../src/incoming-media.js';
 import { runSocialIncomingStage } from '../src/incoming-social.js';
 import * as quietHours from '../src/quiet-hours.js';
@@ -259,6 +260,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
     createRuntime,
+    atomicWriteJson, atomicWriteText, renameWithRetry,
     capturePendingStickers, rememberMessageMedia,
     runSocialIncomingStage,
   createSessionRegistry: (...args) => { registryRef = createSessionRegistry(...args); return registryRef; },

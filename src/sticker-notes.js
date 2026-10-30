@@ -8,6 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { atomicWriteJson } from './atomic-write.js';
 
 export const STICKER_NOTE_STATUS = Object.freeze({
   PENDING: 'pending',     // 刚识别，还没用过
@@ -44,9 +45,7 @@ export function loadStickerNotes(file) {
 export function saveStickerNotes(file, store) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const trimmed = { version: 1, notes: (store.notes || []).slice(-STICKER_NOTE_MAX) };
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(trimmed, null, 1) + '\n', 'utf8');
-  fs.renameSync(tmp, file);
+  atomicWriteJson(file, trimmed);
 }
 
 /** 一张图一条笔记；同 id 覆盖（更新含义/分数/状态）。 */

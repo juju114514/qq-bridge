@@ -42,6 +42,7 @@ import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { decideNoAction } from './turn-guard.js';
+import { atomicWriteJson, atomicWriteText, renameWithRetry } from './atomic-write.js';
 import { finalizeTurn } from './turn-finalize.js';
 import { decideReplyAction } from './turn-reply.js';
 import { decideWakeReminder } from './turn-wake.js';
@@ -303,53 +304,8 @@ function readConfigObject(file) {
   return parsed;
 }
 
-/**
- * 原子替换：`fs.renameSync` 覆盖一个「正被别人打开」的目标，在 Windows 上会抛 EPERM
- * （Defender / 编辑器 / 资源管理器预览 / 云同步都可能在这个窗口里碰它）。
- * 实测本机可复现。这里退避重试几次；实在不行才抛，让调用方决定怎么提示。
- */
-function renameWithRetry(from, to, attempts = 4) {
-  let lastError;
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      fs.renameSync(from, to);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (error?.code !== 'EPERM' && error?.code !== 'EBUSY' && error?.code !== 'EACCES') throw error;
-      // 同步忙等一小会儿：调用点大多在启动/收尾路径，不值得为它改成异步。
-      try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (i + 1)); } catch {}
-    }
-  }
-  throw lastError;
-}
-
-// 原子写 JSON 文件：先写唯一临时文件再 rename，避免进程中断写坏配置，也避免固定临时名被并发/符号链接攻击利用。
-function atomicWriteJson(file, obj) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-  try {
-    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-    renameWithRetry(tmp, file);
-  } catch (error) {
-    // 失败时别把随机名临时文件留在 state/ 里当垃圾。
-    try { fs.unlinkSync(tmp); } catch {}
-    throw error;
-  }
-}
-
-// 原子写文本文件。
-function atomicWriteText(file, text) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-  try {
-    fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
-    renameWithRetry(tmp, file);
-  } catch (error) {
-    try { fs.unlinkSync(tmp); } catch {}
-    throw error;
-  }
-}
+// 原子写（renameWithRetry / atomicWriteJson / atomicWriteText）已搬到 src/atomic-write.js：
+// 全仓唯一实现，由 scripts/check-atomic-write.mjs 守着（除它之外不许出现 renameSync / 写 .tmp）。
 
 // 控制台鉴权 token：未配置时自动生成并持久化到 state/console-token，避免默认无鉴权。
 function loadOrCreateConsoleToken() {
@@ -1225,6 +1181,7 @@ function createCappedLogger(file, maxLines) {
       if (lines > maxLines) {
         // 轮转：当前文件改名为 .1（覆盖上一个备份），新文件从零开始。
         try {
+          // guard-allow: renameSync 日志轮转（旧文件改名 .1，不是原子写）
           fs.renameSync(file, `${file}.1`);
         } catch {
           // 改名失败（被占用等）就退化成截断，保证文件不会无限增长。
@@ -2940,11 +2897,8 @@ async function main() {
       queuePersistTimer = null;
       try {
         const payload = serializeQueue(queued.entries());
-        fs.mkdirSync(path.dirname(QUEUE_FILE), { recursive: true });
-        const tmp = `${QUEUE_FILE}.tmp`;
-        // 先写 .tmp 再 rename：写一半被打断也不会留下坏掉的队列文件
-        fs.writeFileSync(tmp, JSON.stringify(payload, null, 1) + '\n', 'utf8');
-        fs.renameSync(tmp, QUEUE_FILE);
+        // 原子写交给唯一实现（唯一临时名 + EPERM 退避重试）；写一半被打断不会留下坏队列文件
+        atomicWriteJson(QUEUE_FILE, payload);
         queuePersistFailLogged = '';
       } catch (error) {
         const msg = String(error?.message ?? error);

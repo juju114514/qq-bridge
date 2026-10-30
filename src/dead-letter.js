@@ -20,6 +20,7 @@ export function appendDropped(file, entry, { maxBytes = DEFAULT_MAX_BYTES, now =
     fs.mkdirSync(path.dirname(file), { recursive: true });
     // 轮转：超过上限就把当前文件挪成 .1（覆盖旧的 .1）
     try {
+      // guard-allow: renameSync 死信轮转（改名 .1，不是原子写）
       if (fs.statSync(file).size > maxBytes) fs.renameSync(file, `${file}.1`);
     } catch { /* 文件不存在时忽略 */ }
     const line = JSON.stringify({

@@ -234,6 +234,8 @@ const tests = [
   'check-route-inventory.mjs',
   // 红包识别（移植自同源分叉）：真/假判据、兜底文案、群风格提示。
   'test-red-packet.mjs',
+  // 原子写唯一实现守卫（renameSync / 写 .tmp 只允许出现在 src/atomic-write.js，例外需 guard-allow）
+  'check-atomic-write.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

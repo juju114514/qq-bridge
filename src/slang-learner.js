@@ -10,6 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { atomicWriteJson } from './atomic-write.js';
 import crypto from 'node:crypto';
 import { truncateText } from './md-to-plain.js';
 
@@ -145,14 +146,7 @@ export function saveSlang(file, entries, { max = SLANG_MAX_ENTRIES } = {}) {
     max
   );
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-  try {
-    fs.writeFileSync(tmp, JSON.stringify(capped, null, 2), { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(tmp, file);
-  } catch (error) {
-    try { fs.unlinkSync(tmp); } catch {}
-    throw error;
-  }
+  atomicWriteJson(file, capped);
   return { entries: capped, dropped };
 }
 

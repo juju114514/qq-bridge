@@ -25,6 +25,7 @@
 // 行数超过上限时按内存态重写（自动去重 + 丢弃被覆盖的旧采样）。
 import fs from 'node:fs';
 import path from 'node:path';
+import { atomicWriteText } from './atomic-write.js';
 import {
   DEFAULT_PRICE_TABLE,
   ZERO_BUCKETS,
@@ -294,9 +295,8 @@ export function createTokenLedger({
     }
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      const tmp = `${file}.${process.pid}.${Math.random().toString(16).slice(2, 10)}.tmp`;
-      fs.writeFileSync(tmp, out.map((r) => `${JSON.stringify(r)}\n`).join(''), { encoding: 'utf8', mode: 0o600 });
-      fs.renameSync(tmp, file);
+      // 原子写走唯一实现（JSONL 是文本，不做 JSON 美化）
+      atomicWriteText(file, out.map((r) => `${JSON.stringify(r)}\n`).join(''));
       journalLines = out.length;
       evictedDirty = false;
       lastCompactedAt = now();

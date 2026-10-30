@@ -31,6 +31,7 @@ export const MIGRATIONS = {
       raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
     } catch (error) {
       const quarantine = `${file}.corrupt-${Date.now()}`;
+      // guard-allow: renameSync 损坏文件隔离（改名 .corrupt-<ts>，不是原子写）
       try { fs.renameSync(file, quarantine); } catch { /* 改名失败就算了，下面照样返回 */ }
       log?.(`⚠️ [schema] social-v2.json 解析失败，已隔离到 ${path.basename(quarantine)}（${error?.message ?? error}）`);
       return;
