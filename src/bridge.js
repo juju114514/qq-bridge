@@ -93,6 +93,7 @@ import { createConsoleOpsHandlers } from './api/console-ops.js';
 import { handleExtraRoutes } from './api/console-extra-routes.js';
 import { createPresetSimHandlers, handlePresetSimRoutes } from './api/preset-sim.js';
 import { handleConsoleMiscRoutes } from './api/console-misc.js';
+import { handleSocialV2ExtraRoutes } from './api/socialV2-extra.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -3980,6 +3981,16 @@ async function main() {
       // 按**同样的顺序**串起来；路由表还留了 exact/param/prefix 三个入口，后续把
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
+        .chain((req, url) => handleSocialV2ExtraRoutes(req, url, {
+          sendJson, readBody, res, writeJson, readJsonBody, handleImages, socialVideo,
+          createSocialV2InspectHandler, getPeopleNoteHandler, getGroupMembersHandler, getSlangSubmitHandler,
+          inspectDeps: {
+            sendJson, log, agentTokenOk, v2SessionAllowed, v2ToolEnabled, modeAllowed,
+            getCfg: () => cfg, getMode: () => currentMode,
+            getSocialV2State, resolveReplyInfo, formatForwardResponse, seenForwardIds,
+            get bot() { return bot; }
+          }
+        }))
         .chain((req, url) => handleConsoleMiscRoutes(req, url, {
           pending, consoleDsh, getConsoleOps, createConsoleNotifyHandler, sendJson, readBody,
           notifyDeps: {
@@ -4317,16 +4328,6 @@ async function main() {
         }
         // ── 工具调用日志 ─────────────────────────────────────────────────────
         // ── 反馈 / 自己消息 / 消息详情 / 活跃成员 ────────────────────────────
-        if (url.pathname === '/api/socialV2/message-detail' || url.pathname === '/api/socialV2/forward-message') {
-          await createSocialV2InspectHandler({
-          sendJson, log,
-          agentTokenOk, v2SessionAllowed, v2ToolEnabled, modeAllowed,
-          getCfg: () => cfg, getMode: () => currentMode,
-          getSocialV2State, resolveReplyInfo, formatForwardResponse, seenForwardIds,
-          get bot() { return bot; }
-          })(req, url);
-          return;
-        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/forward-media') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
@@ -4370,10 +4371,6 @@ async function main() {
           sendJson({ ok: true, key, members });
           return;
         }
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/people-note') {
-          await getPeopleNoteHandler().handle({ req, sendJson, readBody });
-          return;
-        }
 
         if (await handleExtraRoutes({
           req, url, sendJson, readBody,
@@ -4381,16 +4378,8 @@ async function main() {
   deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, sendToQQ, onebotSend, allowed, resolveMode: () => currentMode })
         })) return;
 
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {
-      await getGroupMembersHandler().handle({ req, url, sendJson });
-      return;
-    }
 
     // ── 二代黑话学习（reserved2）：AI 查询/提交黑话候选 ─────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/slang/submit') {
-      await getSlangSubmitHandler().handle({ req, sendJson, readBody });
-      return;
-    }
 
     if (req.method === 'POST' && url.pathname === '/api/authorize/read') {
       await getConsoleOps().handleAuthorizeRead({ readBody, sendJson });
@@ -4427,29 +4416,13 @@ async function main() {
         }
 
         // cookie 体检（只读）：抖音能不能取到流取决于这份 cookies.txt 是否还新鲜
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/video-cookies') {
-      await socialVideo.handleCookies({ writeJson: (obj, status = 200) => writeJson(res, obj, status) });
-      return;
-    }
 
     // 视频**链接**（B站/抖音）：模型把用户贴的链接交过来，桥接用 yt-dlp 下载前 N 秒再分析。
         // 与消息附件那条路分开：这条不依赖 QQ 媒体段，但要过站点白名单。
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/video-link') {
-      await socialVideo.handleLink({
-        req,
-        writeJson: (obj, status = 200) => writeJson(res, obj, status),
-        readJsonBody
-      });
-      return;
-    }
 
     // 视频走同一个处理器：findMessageMedia 现在也会带出 kind:'video'，
         // 处理器内部按 mode（storyboard/transcript）决定交付形态。
         // 单独开一个路径只是为了让 MCP 工具名和语义对得上。
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/video') {
-          await handleImages(req, url);
-          return;
-        }
 
         // ── 外部触发入口（webhook / cron → 机器人） ──────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/inject') {

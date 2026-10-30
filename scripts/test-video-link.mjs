@@ -132,8 +132,11 @@ check('站点表可裁剪（sites 参数），且 id 与中文名对得上', () 
 
 // ── 3. 接线 ───────────────────────────────────────────────────────────────
 check('bridge：有 /api/socialV2/video-link，且白名单/yt-dlp 都先判', () => {
+  // 路由判定已搬到 src/api/socialV2-extra.js（波次 4）；同时确认 bridge 真的把它接进了派发链
   const bridge = read('src/bridge.js');
-  assert.match(bridge, /'\/api\/socialV2\/video-link'/);
+  const extra = read('src/api/socialV2-extra.js');
+  assert.match(extra, /'\/api\/socialV2\/video-link'/);
+  assert.match(bridge, /handleSocialV2ExtraRoutes\(req, url/, 'bridge 必须把 socialV2 薄委托路由接进派发链');
   assert.match(bridge, /isAllowedVideoUrl\(/, '路由里必须先过白名单');
   assert.match(bridge, /ytDlpAvailable\(/, 'yt-dlp 不可用要给出可读原因');
   assert.match(bridge, /async function videoLinkToModelParts/);

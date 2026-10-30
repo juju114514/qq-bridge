@@ -222,7 +222,8 @@ check('bridge：抖音成功时预告 cookie 老化，并有体检端点', () =>
   const bridge = read('src/bridge.js');
   assert.match(bridge, /cookieHealth\(videoLinkConfig\(\)\.cookiesPath\)/, '抖音成功分支要体检');
   assert.match(bridge, /cookie-aging/, '只对"将过期/部分过期"预告，不是每次都喊');
-  assert.match(bridge, /'\/api\/socialV2\/video-cookies'/, '要有只读体检端点');
+  // 路由判定已搬到 src/api/socialV2-extra.js（波次 4）
+  assert.match(read('src/api/socialV2-extra.js'), /'\/api\/socialV2\/video-cookies'/, '要有只读体检端点');
   assert.match(bridge, /describeRemaining/, '端点要给出"还能用多久"');
 });
 

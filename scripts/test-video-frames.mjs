@@ -111,7 +111,9 @@ await check('bridge：video 段入库 + 走"故事板 + 转写" + ASR 不可用�
   assert.match(bridge, /safeDownloadToFile/, '视频必须流式下载（不能整段进内存）');
   assert.match(bridge, /probeVideo/, '必须先探时长再抽帧');
   assert.match(bridge, /没有声音转写/, 'ASR 不可用时要写出原因，而不是静默丢');
-  assert.match(bridge, /\/api\/socialV2\/video/, '要有独立端点');
+  // 端点的路径判定已搬到 src/api/socialV2-extra.js（波次 4）；bridge 侧只留派发链挂载
+  assert.match(read('src/api/socialV2-extra.js'), /\/api\/socialV2\/video/, '要有独立端点');
+  assert.match(bridge, /handleSocialV2ExtraRoutes\(req, url/, 'bridge 必须把它接进派发链');
 });
 
 await check('OCR/ASR 这类旁路服务都"只探测、不代启动"', () => {
