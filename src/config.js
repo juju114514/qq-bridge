@@ -33,6 +33,18 @@ export function createConfigLoader(deps = {}) {
     'pricing', 'security', 'slang', 'social', 'socialV2', 'paths', 'role', 'gateway'
   ]);
 
+  // 端口校验：接受 1-65535 的整数（数字或纯数字字符串）；其它一律抛错。
+  // 返回 undefined 表示"没配"，交给下一级兜底。
+  function validatePort(value, label) {
+    if (value === undefined || value === null || value === '') return undefined;
+    const num = typeof value === 'number' ? value : Number(String(value).trim());
+    // 0 是合法值：表示"让系统分配随机端口"（测试与容器健康检查都靠它）。
+    if (!Number.isInteger(num) || num < 0 || num > 65535) {
+      throw new Error(`${label} 无效：${JSON.stringify(value)} —— 必须是 0（随机端口）或 1~65535 的整数端口（例如 3100）`);
+    }
+    return num;
+  }
+
   return function loadConfig(p) {
 
   const file = readJsonSafe(p, null, true);
@@ -88,7 +100,13 @@ export function createConfigLoader(deps = {}) {
     sendDelayMs: file.sendDelayMs ?? 300,
     questionTimeoutMs: file.questionTimeoutMs ?? 5 * 60 * 1000,
     // 端口也可用环境变量覆盖：容器里端口映射改了，这里必须跟着改（否则 Host 校验/健康检查全对不上）
-    consolePort: file.consolePort ?? (Number(process.env.QQB_CONSOLE_PORT) || 3100),
+    // 端口必须校验：脏环境里 consolePort 写成 "abc" / 99999 / -1 时，以前会一路传到
+    // http.listen() 变成 `listen EACCES: permission denied abc` —— 桥接照常在跑，
+    // 但控制台永远是打不开的，而日志里只有一句莫名其妙的 EACCES。
+    // 现在在加载阶段就拦住，并说清楚「是哪个字段、允许什么范围」。
+    consolePort: validatePort(file.consolePort, 'config.json 的 consolePort')
+      ?? validatePort(process.env.QQB_CONSOLE_PORT, '环境变量 QQB_CONSOLE_PORT')
+      ?? 3100,
     // 控制台监听地址：默认只绑回环。**容器里必须改成 0.0.0.0**，否则宿主机端口映射进不来。
     consoleHost: file.consoleHost ?? process.env.QQB_CONSOLE_HOST ?? '127.0.0.1',
     // 外部触发（webhook/cron）：独立令牌，只能注入消息，不能改配置
