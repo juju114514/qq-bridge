@@ -4096,8 +4096,6 @@ async function main() {
         }
         // ── 人格管理（已迁出到 src/api/roles.js）──────────────────────────────
         // 9 条路由：/api/role, /api/role-mode, /api/roles*, /api/roles/{content,limit,create,update,rename,delete}
-        if (url.pathname === '/api/role' || url.pathname.startsWith('/api/role')) {
-        }
 
         // ── 仿真提示词（一代 / 二代各自的预设内置提示词）──────────────────────
         if (req.method === 'GET' && url.pathname === '/api/preset/sim-prompt') {
@@ -4121,8 +4119,6 @@ async function main() {
         // ── 黑话系统（已迁出到 src/api/slang.js）────────────────────────────────
         // 14 条路由命中：/api/slang, /clear, /batch-{delete,confirm,reject},
         // /api/slang/:id (PATCH/DELETE), /:id/{confirm,reject}, /extract, /research, /config
-        if (url.pathname === '/api/slang' || url.pathname.startsWith('/api/slang/')) {
-        }
 
         // ── 会话查看 ──────────────────────────────────────────────────────────
         // ── 会话列表（已迁出到 src/api/sessions.js；只读）──────────────────────
@@ -4130,8 +4126,6 @@ async function main() {
         // ── 会话（列表 + 重置，已迁出到 src/api/sessions.js）────────────────────
         // reset 是高危路径：清 ~30 个 Map 后**最后**才停/归档 DSH 会话。
         // 回归测试：scripts/test-session-reset.mjs（10 项）
-        if (url.pathname === '/api/sessions' || url.pathname === '/api/session/reset') {
-        }
         // ── 挂起审批 / 提问 ───────────────────────────────────────────────────
         if (req.method === 'GET' && url.pathname === '/api/pending') {
           const list = [];
@@ -4194,8 +4188,6 @@ async function main() {
 
     // ── 一代仿真社交引擎（已迁出到 src/api/social.js）──────────────────────
         // POST /api/social/state、GET /api/social、POST /api/social、POST /api/social/flush
-        if (url.pathname === '/api/social' || url.pathname === '/api/social/state' || url.pathname === '/api/social/flush') {
-        }
 
         // ── 后台控制端引导：向指定会话的 DSH agent 投递提醒 ──────────────────
         if (req.method === 'POST' && url.pathname === '/api/console/notify-ai') {
@@ -4210,19 +4202,10 @@ async function main() {
         // ── 二代仿真模式（reserved2）内部 Agent API ─────────────────────────
         // ── socialV2 只读端点（A 批，已迁出到 src/api/socialV2-read.js）──────────
         // config / activity / tool-log / feedback / states / my-recent / memory / slang-query
-        if (req.method === 'GET') {
-        }
         // ── socialV2 写入端点（B 批之一，已迁出到 src/api/socialV2-write.js）──────
         // mark-read / check-send / tool-log-clear / feedback-clear / record-sent
-        if (req.method === 'POST' || url.pathname === '/api/socialV2/initial-prompt') {
-        }
         // ── socialV2 语音合成（C 批安全子集，已迁出到 src/api/socialV2-send.js）──────
         // say / sing：spawn 外部 PowerShell 脚本，不经过 sendMessagesV2
-        if (req.method === 'POST' || url.pathname === '/api/socialV2/sticker-image') {
-        }
-        // ── socialV2 空间/攻略（C3a，已迁出到 src/api/socialV2-qzone.js）──────────
-        if (req.method === 'POST') {
-        }
 
         if (req.method === 'POST' && url.pathname === '/api/socialV2/config') {
           await createSocialV2ConfigHandler({
@@ -4407,9 +4390,6 @@ async function main() {
           return;
         }
         // 管理端表情库接口（控制台）
-        // ── 表情库（已迁出到 src/api/stickers.js）────────────────────────────────
-        if (url.pathname === '/api/stickers' || url.pathname.startsWith('/api/stickers/')) {
-        }
 
         // ── socialV2 长轮询等待（D 批，已迁出到 src/api/socialV2-wait.js）─────────
         if (req.method === 'POST' && url.pathname === '/api/socialV2/wait') {

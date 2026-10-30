@@ -230,6 +230,8 @@ const tests = [
   'test-incoming-media.mjs',
   // 进线社交阶段：先入库 / 暂停 / bootstrap / 触发器 / 黑话只喂群聊。
   'test-incoming-social.mjs',
+  // 路由清单守卫：模块导出 vs 派发链双向对账 + 墓碑检测（借鉴同源分叉 AI-group-friends）
+  'check-route-inventory.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

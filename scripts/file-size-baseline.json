@@ -42,7 +42,7 @@
     "src/api/workspace-reset.js": 105,
     "src/audio-transcribe.js": 86,
     "src/bili-enrich.js": 176,
-    "src/bridge.js": 10414,
+    "src/bridge.js": 10394,
     "src/config.js": 420,
     "src/conv-key.js": 49,
     "src/core/session-router.mjs": 624,
