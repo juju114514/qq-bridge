@@ -13,7 +13,9 @@ export async function handleSocialV2ExtraRoutes(req, url, deps = {}) {
     cfgGet, getSocialV2State, computeWakeSafety, gateAgent,
     createSocialV2ConfigHandler, createSocialV2PromptHandler, promptDeps,
     readConfigObject, atomicWriteJson, refreshAllDefaultWakeConfigs,
-    rootDir, pathModule
+    rootDir, pathModule,
+    socialV2, clearAllSocialV2Timers, setupSleepTimerV2, scheduleProactiveCheckV2,
+    saveSocialV2State, modeGet, fetchMediaData, log
   } = deps;
 
   // 单条消息详情 / 合并转发取件
@@ -134,6 +136,46 @@ export async function handleSocialV2ExtraRoutes(req, url, deps = {}) {
   // ── GET /api/socialV2/prompt —— 模型看到的那份提示词（自检入口）──────────
   if (req.method === 'GET' && p === '/api/socialV2/prompt') {
     await createSocialV2PromptHandler(promptDeps)(req, url);
+    return true;
+  }
+
+
+  // ── POST /api/socialV2/activity —— 暂停 / 恢复二代 AI（会停或重建全部定时器）──
+  if (req.method === 'POST' && p === '/api/socialV2/activity') {
+    const body = await readBody();
+    const paused = body.paused === true;
+    socialV2.paused = paused;
+    if (paused) {
+      clearAllSocialV2Timers();
+      log('控制台：二代 AI 已暂停（唤醒/等待任务已停止）');
+    } else {
+      log('控制台：二代 AI 已恢复');
+      for (const key of socialV2.conversations.keys()) {
+        setupSleepTimerV2(key);
+        scheduleProactiveCheckV2(key);
+      }
+    }
+    saveSocialV2State();
+    sendJson({ ok: true, paused: socialV2.paused });
+    return true;
+  }
+
+  // ── POST /api/socialV2/forward-media —— 取合并转发里的图片 ─────────────────
+  if (req.method === 'POST' && p === '/api/socialV2/forward-media') {
+    const body = await readBody();
+    const key = String(body.key ?? '').trim();
+    const media = Array.isArray(body.media) ? body.media : [];
+    if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return true; }
+    if (!gateAgent(key, 'getForwardMsg')) return true;
+    if (modeGet() !== 'reserved2') { sendJson({ ok: false, error: '转发媒体读取仅 reserved2 模式可用' }, 403); return true; }
+    if (!media.length) { sendJson({ ok: true, key, media: [], images: [] }); return true; }
+    try {
+      const images = await fetchMediaData(media);
+      sendJson({ ok: true, key, media, images });
+    } catch (error) {
+      log(`转发媒体读取失败 ${key}:`, error?.message ?? error);
+      sendJson({ ok: false, error: `转发媒体读取失败：${error?.message ?? error}` }, 500);
+    }
     return true;
   }
 

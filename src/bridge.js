@@ -4022,6 +4022,9 @@ async function main() {
             syncStickerLibrary, voiceLibrary, voiceCfg,
             peopleHintFor: peopleHintForConversation
           }
+          ,
+          socialV2, clearAllSocialV2Timers, setupSleepTimerV2, scheduleProactiveCheckV2,
+          saveSocialV2State, modeGet: () => currentMode, fetchMediaData, log
         }))
         .chain((req, url) => handleConsoleMiscRoutes(req, url, {
           pending, consoleDsh, getConsoleOps, createConsoleNotifyHandler, sendJson, readBody,
@@ -4159,24 +4162,6 @@ async function main() {
         // ── socialV2 语音合成（C 批安全子集，已迁出到 src/api/socialV2-send.js）──────
         // say / sing：spawn 外部 PowerShell 脚本，不经过 sendMessagesV2
 
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/activity') {
-          const body = await readBody();
-          const paused = body.paused === true;
-          socialV2.paused = paused;
-          if (paused) {
-            clearAllSocialV2Timers();
-            log('控制台：二代 AI 已暂停（唤醒/等待任务已停止）');
-          } else {
-            log('控制台：二代 AI 已恢复');
-            for (const key of socialV2.conversations.keys()) {
-            setupSleepTimerV2(key);
-            scheduleProactiveCheckV2(key);
-          }
-          }
-          saveSocialV2State();
-          sendJson({ ok: true, paused: socialV2.paused });
-          return;
-        }
         // 操作者预写的「会话初始提示词」：控制台专用（AI 既读不到也改不了 —— adminOnlyV2Paths）。
         // 内容只在该会话**首次唤醒**（bootstrap）时注入一次，见 buildWakePromptV2。
                 // ── 游戏攻略（合并转发卡片 / 模板直出 / 缓存） ──────────────────
@@ -4314,25 +4299,6 @@ async function main() {
         }
         // ── 工具调用日志 ─────────────────────────────────────────────────────
         // ── 反馈 / 自己消息 / 消息详情 / 活跃成员 ────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/forward-media') {
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const media = Array.isArray(body.media) ? body.media : [];
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('getForwardMsg')) { sendJson({ ok: false, error: '工具未启用：qq_get_forward_msg' }, 403); return; }
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '转发媒体读取仅 reserved2 模式可用' }, 403); return; }
-          if (!media.length) { sendJson({ ok: true, key, media: [], images: [] }); return; }
-          try {
-            const images = await fetchMediaData(media);
-            sendJson({ ok: true, key, media, images });
-          } catch (error) {
-            log(`转发媒体读取失败 ${key}:`, error?.message ?? error);
-            sendJson({ ok: false, error: `转发媒体读取失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
 
         if (await handleExtraRoutes({
           req, url, sendJson, readBody,

@@ -31,7 +31,7 @@ const PATH_RE = /pathname\s*(?:===|!==)\s*'([^']+)'|pathname\.startsWith\(\s*'([
 
 // 内联路由预算（棘轮）：bridge.js 里还没搬进派发链的 `url.pathname` 判断条数。
 // 波次 4 的目标是把它降到 0；在那之前**只能减不能增** —— 新端点必须写进 src/api/*.js 并接链。
-const INLINE_ROUTE_BUDGET = 19;
+const INLINE_ROUTE_BUDGET = 17;
 
 /** 每个 api 模块：导出名 + 它判定的 (method, path) 集合 */
 function scanApiModule(file) {
