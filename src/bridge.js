@@ -10079,44 +10079,20 @@ function selfCheckSnapshot() {
               replayPendingWakeReasonsV2(key);
               if (ended.reason.kind === 'completed' && ended.text.trim()) {
                 const plain = mdToPlain(ended.text);
-                // 纯 Markdown/空白输出按“无文本”处理，避免后续 planSocialTimeline 拿空串崩溃。
-                if (!plain.trim()) {
-                  log(`agent 回复为空（仅格式/空白）(${key})`);
+                // 要不要发：空 / 静默标记 / 工具已发送 都不发（判定已拆到 src/turn-reply.js）
+                const decision = decideReplyAction({ kind: 'completed', text: plain, sendToolSucceeded, isSilent: isSilentMarker(plain) });
+                if (decision.action === 'skip') {
+                  const why = decision.reason === 'empty' ? `agent 回复为空（仅格式/空白）(${key})`
+                    : decision.reason === 'silent' ? `社交模式：AI 选择静默（${SILENT_MARKER}）(${key})`
+                    : `工具已发送消息，跳过自动转发 (${key})`;
+                  log(why);
                   if (isFarewell) {
                     const st = socialState(key);
                     if (st.phase === 'exiting') {
                       st.phase = 'idle';
                       st.activeDeadlineAt = 0;
                       st.activeExitAt = 0;
-                      log(`社交模式：${key} 空退场回合，回到观望`);
-                    }
-                  }
-                  continue;
-                }
-                // 社交模式静默标记：AI 主动选择“潜水/不接话”，不发送到 QQ
-                if (isSilentMarker(plain)) {
-                  log(`社交模式：AI 选择静默（${SILENT_MARKER}）(${key})`);
-                  if (isFarewell) {
-                    const st = socialState(key);
-                    if (st.phase === 'exiting') {
-                      st.phase = 'idle';
-                      st.activeDeadlineAt = 0;
-                      st.activeExitAt = 0;
-                      log(`社交模式：${key} 退场选择静默，回到观望`);
-                    }
-                  }
-                  continue;
-                }
-                // 本回合已经通过 MCP 发送工具成功发出消息：跳过自动转发，避免重复发送。
-                if (sendToolSucceeded) {
-                  log(`工具已发送消息，跳过自动转发 (${key})`);
-                  if (isFarewell) {
-                    const st = socialState(key);
-                    if (st.phase === 'exiting') {
-                      st.phase = 'idle';
-                      st.activeDeadlineAt = 0;
-                      st.activeExitAt = 0;
-                      log(`社交模式：${key} 工具发送后退场完成，回到观望`);
+                      log(`社交模式：${key} 退场回合无有效回复，回到观望`);
                     }
                   }
                   continue;

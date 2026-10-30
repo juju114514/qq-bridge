@@ -204,6 +204,8 @@ const tests = [
   'test-turn-frames.mjs',
   // 回合收尾记账：退场标记 / 静默队列 / 超时回收。
   'test-turn-finalize.mjs',
+  // 回合收尾要不要发：空 / 静默标记 / 工具已发送。
+  'test-turn-reply.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
