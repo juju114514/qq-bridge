@@ -63,7 +63,7 @@
 ## 五、下次开工第一条命令
 
 ```powershell
-git -C D:\QQBot-open\qq-bridge log --oneline HEAD..upstream/main |
+git -C D:\qq-bridge log --oneline HEAD..upstream/main |
   Select-String 'security|绑定|幂等|分链'
 ```
 

@@ -163,6 +163,9 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 | **部署** | Windows 一键脚本；**Docker**（`docker compose up -d`，容器内可跑官方通道）—— [DOCKER.md](docs/guides/DOCKER.md) |
 | **模型** | `deepseek-official`（✅ 已测试）｜`openai` / GPT 等兼容 provider（⚠️ **已接入、未测试**，见 [MODELS.md](docs/guides/MODELS.md)） |
 
+> **第一次用？** 别看 README，先看 [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)
+> —— 零基础八步，每步都写了「你应该看到什么 / 没看到怎么办」。
+
 ## 版本怎么看
 
 > **以 `git tag` 和 [CHANGELOG.md](CHANGELOG.md) 为准** —— GitHub 的 Releases 页只是里程碑，

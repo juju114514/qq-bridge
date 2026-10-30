@@ -27,6 +27,7 @@
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
+| [guides/BEGINNER.md](guides/BEGINNER.md) | **零基础八步**：从空电脑到「她在群里回话」。每步三件事——做什么 / 应该看到什么 / 没看到怎么办；含常见卡点速查表与术语小抄 | ✅ 2026-10-31 |
 | [guides/FRESH-INSTALL.md](guides/FRESH-INSTALL.md) | **全新机器安装**（入口：Windows `.\scripts\first-run.ps1` / Linux `./deploy/first-run.sh`，或 `node scripts/preflight.mjs` 只体检）：按阶段（系统准备→取代码→装依赖→配置→装 DSH/SnowLuma→首次启动→首次对话）列出会踩的坑，每条标「有没有对应排查」；含本次补的 4 个缺口（没有 npm / PowerShell 执行策略 / preset 没装 / postinstall 提示不是错误）。入口命令 `node scripts/preflight.mjs` | ✅ 2026-10-27 |
 | [guides/INJECT.md](guides/INJECT.md) | **外部触发入口**：webhook/cron 推机器人（独立令牌、白名单、限流、prompt\|say 两种模式） | ✅ 2026-10-29 |
 | [../QUICKSTART.md](../QUICKSTART.md) | **一页版快速开始**：体检 → 三条路线 → 验证 → 卡住了怎么办 | ✅ 2026-10-29 |
