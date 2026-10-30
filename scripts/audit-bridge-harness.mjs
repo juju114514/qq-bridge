@@ -48,6 +48,7 @@ import { createDecisionTrace } from '../src/decision-trace.js';
 import { createPeopleNoteHandler } from '../src/api/people-note.js';
 import { createRuntime } from '../src/runtime.js';
 import { capturePendingStickers, rememberMessageMedia } from '../src/incoming-media.js';
+import { runSocialIncomingStage } from '../src/incoming-social.js';
 import * as quietHours from '../src/quiet-hours.js';
 import { decideNoAction } from '../src/turn-guard.js';
 import { finalizeTurn } from '../src/turn-finalize.js';
@@ -259,6 +260,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
     createRuntime,
     capturePendingStickers, rememberMessageMedia,
+    runSocialIncomingStage,
   createSessionRegistry: (...args) => { registryRef = createSessionRegistry(...args); return registryRef; },
     // 桥接的出图出口会调归一化（体积/动图抽帧）：VM 里必须能拿到这几个函数。
     normalizeImageForModel: mediaNormalize.normalizeImageForModel,

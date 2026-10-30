@@ -100,6 +100,7 @@ import { createSessionRegistry } from './session-registry.js';
 import { createSessionResetter } from './session-reset.js';
 import { createIncomingGuards } from './incoming-guards.js';
 import { capturePendingStickers, rememberMessageMedia } from './incoming-media.js';
+import { runSocialIncomingStage } from './incoming-social.js';
 import { buildSelfCheckReport } from './selfcheck.js';
 import { createToolProbe, parseYtDlpVersion } from './tool-version.js';
 import { createIncomingCommands } from './incoming-commands.js';
@@ -9213,36 +9214,27 @@ function selfCheckSnapshot() {
     }
 
     // 二代仿真模式（reserved2）：唤醒调度
+    // 社交阶段已拆到 src/incoming-social.js（波次 3）：先入库 → 暂停判定 → bootstrap/触发器 → 排唤醒
     if (currentMode === 'reserved2') {
       setRoleNeedTagsFromText(`${textContent ?? ''}\n${plainContent ?? ''}`);
       // 话题标签只在这轮用：2 分钟后自动清掉，避免一次聊到唱歌就永久多注入 3000 字
       clearTimeout(roleNeedTagTimer);
       roleNeedTagTimer = setTimeout(() => clearRoleNeedTags(), 120000);
       roleNeedTagTimer.unref?.();
-      const sender = kind === 'group' ? cleanSenderName(event.sender?.card || event.sender?.nickname, event.user_id) : '私聊';
-      appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, event.message_id ?? event.msg_id ?? null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []));
-      // 二代同样收集群聊黑话学习素材（AI 自主提交之外，桥接仍自动提取高频陌生词）
-      if (kind === 'group') feedSlangWindow(key, sender, plainContent);
-      if (socialV2.paused) {
-        appendActivity(`${key} [reserved2] AI 已暂停，消息仅入库不唤醒：${textContent.slice(0, 80)}`);
-        decisionTrace.step(traceRec, '唤醒', '已暂停');
-        decisionTrace.finish(traceRec, 'AI 已暂停，消息只入库');
-        return;
-      }
-      const st = getSocialV2State(key);
-      if (!st.bootstrapSent) {
-        st.bootstrapSent = true;
-        saveSocialV2State();
-        scheduleWakeV2(key, 'bootstrap');
-      } else {
-        const reason = evaluateWakeTriggerV2(key, st, event, kind, textContent, plainContent, quoteTargetIsSelf);
-        decisionTrace.step(traceRec, '唤醒', reason ? '命中' : '未命中', reason ? String(reason) : '概率/条件未满足');
-        decisionTrace.finish(traceRec, reason ? `已唤醒（${reason}），稍后进模型` : '已入未读，未唤醒');
-        if (reason) {
-          scheduleWakeV2(key, reason);
+      runSocialIncomingStage(
+        { key, kind, event, textContent, plainContent, quoteTargetIsSelf, isOwner, traceRec },
+        {
+          paused: socialV2.paused,
+          getState: getSocialV2State,
+          saveState: saveSocialV2State,
+          appendMessage: appendSocialV2Message,
+          feedSlang: feedSlangWindow,
+          scheduleWake: scheduleWakeV2,
+          evaluateTrigger: evaluateWakeTriggerV2,
+          appendActivity,
+          trace: decisionTrace
         }
-      }
-      appendActivity(`${key} [reserved2] 消息已入未读：${textContent.slice(0, 80)}`);
+      );
       return;
     }
 

@@ -228,6 +228,8 @@ const tests = [
   'test-incoming-pipeline.mjs',
   // 进线媒体阶段：表情入队上限 / 失败静默 / 媒体引用有界且按会话隔离。
   'test-incoming-media.mjs',
+  // 进线社交阶段：先入库 / 暂停 / bootstrap / 触发器 / 黑话只喂群聊。
+  'test-incoming-social.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
