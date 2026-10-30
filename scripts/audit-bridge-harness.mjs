@@ -242,6 +242,10 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     // 锁文件探测用（bridge.js 顶层的 consolePortInUse）；
     // 固定桩掉：测试不应该真去 netstat 宿主机。
     execFileSync: () => '',
+    // 点歌/语音会 spawn powershell —— 测试里绝不该真起进程；给一个只负责"不报错"的桩。
+    // 缺了它，VM 里 `spawnFn: spawn` 会抛 ReferenceError，**每个控制台请求都 500**（真实踩过）。
+    spawn: () => ({ on() {}, once() {}, unref() {}, kill() {} }),
+    spawnSync: () => ({ status: 0, stdout: '', stderr: '' }),
     // process 桩要带 env：voice-core / bridge 会读 process.env.FFMPEG_PATH、FFPROBE_PATH 等。
     // 之前只给 pid/platform/kill/exit，导致 `process.env.FFMPEG_PATH` 直接抛 TypeError。
     process: { pid: process.pid, cwd: () => process.cwd(), platform: process.platform, kill: process.kill, env: {}, exit: (code) => { throw new Error('unexpected exit ' + code); } },

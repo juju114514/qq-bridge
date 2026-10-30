@@ -126,12 +126,13 @@ console.log('## qq-bridge 语音系统：路由与开关');
   for (const route of ["'/api/voice/send'", "'/api/send/voice'", "'/api/socialV2/send-voice'", "'/api/voice/list'", "'/api/socialV2/voices'"]) {
     ok(bridgeAll.includes(route), `路由 ${route}`);
   }
-  ok(/v2ToolEnabled\('sendVoice'\)/.test(bridge), 'AI 路由受 tools.sendVoice 开关控制');
-  ok(/voiceBudgetCheck/.test(bridge) && /voiceBudgetCommit/.test(bridge), '语音额度：检查与记账分离');
-  ok(/assertOutboundAuditOk/.test(bridge), '语音文件名审计存在');
-  ok(/verifyVoiceMessageSent/.test(bridge), '发送后回读校验存在');
-  ok(/shouldBlockSilentReply\(key\)/.test(bridge), 'AI 语音尊重静默模式');
-  ok(/allowAbsolutePath/.test(bridge), 'AI 绝对路径受配置约束');
+  // 断言改在合并源（bridge + src/api/*.js）上：这些判定已随波次 4 搬进模块
+  ok(/v2ToolEnabled\('sendVoice'\)/.test(bridgeAll), 'AI 路由受 tools.sendVoice 开关控制');
+  ok(/voiceBudgetCheck/.test(bridgeAll) && /voiceBudgetCommit/.test(bridgeAll), '语音额度：检查与记账分离');
+  ok(/assertOutboundAuditOk/.test(bridgeAll), '语音文件名审计存在');
+  ok(/verifyVoiceMessageSent/.test(bridgeAll), '发送后回读校验存在');
+  ok(/shouldBlockSilentReply\(key\)/.test(bridgeAll), 'AI 语音尊重静默模式');
+  ok(/allowAbsolutePath/.test(bridgeAll), 'AI 绝对路径受配置约束');
   // 操作者通道不应被 AI 开关挡住（否则默认关闭时你自己也发不了）
   const opSection = bridge.slice(bridge.indexOf("url.pathname === '/api/voice/send' || url.pathname === '/api/send/voice'"), bridge.indexOf("'/api/socialV2/send-voice'"));
   ok(!/if \(!voice\.enabled\)/.test(opSection), '操作者通道不被 voice.enabled 挡住（默认关闭时仍可手动试发）');

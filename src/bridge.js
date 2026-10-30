@@ -4025,6 +4025,14 @@ async function main() {
           ,
           socialV2, clearAllSocialV2Timers, setupSleepTimerV2, scheduleProactiveCheckV2,
           saveSocialV2State, modeGet: () => currentMode, fetchMediaData, log
+          ,
+          agentTokenOk, v2SessionAllowed, v2ToolEnabled, shouldBlockSilentReply, handleV2Wait,
+          pathMod: path, fsMod: fs, osMod: os, spawnFn: spawn, resolveRuntimeDir, ensureDirSafe,
+          stickerEnabled, syncStickerLibrary, formatStickerList,
+          getStickerEntries: () => stickerEntries, getStickerSyncedAt: () => stickerSyncedAt,
+          stickerSyncNow: () => Date.now(),
+          lastForcedAgentStickerSyncGet: () => lastForcedAgentStickerSync,
+          setLastForcedAgentStickerSync: (v) => { lastForcedAgentStickerSync = v; }
         }))
         .chain((req, url) => handleConsoleMiscRoutes(req, url, {
           pending, consoleDsh, getConsoleOps, createConsoleNotifyHandler, sendJson, readBody,
@@ -4052,6 +4060,17 @@ async function main() {
             setClosedAgentPreset: (v) => { closedAgentPreset = v; },
             cleanupSocialForModeChange, clearAllSocialV2Timers, drainAllPromptQueues,
             reconcileSessionPolicies, socialV2, setupSleepTimerV2, scheduleProactiveCheckV2
+          }
+          ,
+          createVoiceSendHandler, handleSend, workspaceReset,
+          saveState, saveSocialV2State, releaseLock,
+          voiceSendDeps: {
+            sendJson, readBody, log,
+            voiceCfg, parseTargetKey, modeAllowed,
+            resolveVoicePathForOperator, resolveAudioProcessing,
+            inspectAudio, describeAudio, voiceBudgetCheck, voiceBudgetCommit, sendVoiceV2,
+            path, appendActivity, verifyVoiceMessageSent,
+            getCfg: () => cfg, getMode: () => currentMode
           }
         }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
@@ -4136,50 +4155,6 @@ async function main() {
         // ── 点赞（名片赞） ───────────────────────────────────────────
 
         // ── 点歌（网易云下载 + 截取 + 语音条） ──────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/song') {
-          const body = await readBody();
-          const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
-          const key = String(body.key ?? '').trim();
-          const name = String(body.name ?? '').trim().slice(0, 60);
-          const quality = String(body.quality ?? '').trim();
-          const full = body.full === true;
-          const seconds = full ? 300 : Math.max(10, Math.min(300, Number(body.seconds) || 40));
-          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (!name) { sendJson({ ok: false, error: 'name 不能为空（歌名/歌手）' }, 400); return; }
-          if (req.headers['x-agent-token']) {
-            if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-            if (!v2ToolEnabled('sendVoice')) { sendJson({ ok: false, error: '工具未启用：qq_song（需要开启语音工具）' }, 403); return; }
-            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          }
-          if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return; }
-          // 点歌同样依赖 powershell.exe（song.ps1 里还要 ffmpeg）：非 Windows 上直接说清楚，
-        // 别让用户对着 ENOENT 猜。
-        if (process.platform !== 'win32' && !process.env.QQBOT_SONG_SCRIPT) {
-          sendJson({ ok: false, error: `点歌依赖 Windows PowerShell（当前是 ${process.platform}）；设 QQBOT_SONG_SCRIPT 指向平台自带脚本可绕过` }, 400);
-          return true;
-        }
-        const songScript = process.env.QQBOT_SONG_SCRIPT || path.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1');
-          if (!fs.existsSync(songScript)) { sendJson({ ok: false, error: '点歌脚本不存在' }, 500); return; }
-          const nameFile = path.join(os.tmpdir(), `qq-song-${Date.now()}.txt`);
-          try { fs.writeFileSync(nameFile, name, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写歌名文件失败：${error?.message ?? error}` }, 500); return; }
-          let songLog = null;
-          try { songLog = fs.openSync(path.join(ensureDirSafe(resolveRuntimeDir('QQBOT_LOGS', 'logs', '')), 'song-child.log'), 'a'); } catch { songLog = null; }
-          const songStdio = songLog !== null ? ['ignore', songLog, songLog] : 'ignore';
-          try {
-            const songArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', songScript, '-NameFile', nameFile, '-Seconds', String(seconds), '-Target', key];
-            if (full) songArgs.push('-Full');
-            if (quality) songArgs.push('-Quality', quality);
-            const child = spawn('powershell.exe', songArgs, { windowsHide: true, stdio: songStdio });
-            child.on('exit', (code) => log(`[song] ${key} 结束 code=${code}（${name}｜${seconds}s）`));
-            child.on('error', (error) => log(`[song] ${key} 失败：${error?.message ?? error}`));
-            log(`[song] ${key} 开始点歌（${name}｜${seconds}s｜${quality || '普通'}）`);
-            sendJson({ ok: true, key, name, seconds, note: '正在下载并截取，约 10~20 秒后以语音条发出' });
-          } catch (error) {
-            sendJson({ ok: false, error: `启动点歌失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
 
         // ── 说话（TTS 现场合成语音条） ──────────────────────────────
 
@@ -4198,17 +4173,6 @@ async function main() {
         //
         // 与 /api/send/* 的 agent 通道分开：操作者可能不在任何 QQ 会话里，
         // 所以不套「会话/模式」闸门，但白名单 + 语音限流 + 文件名审计一个都不少。
-        if (req.method === 'POST' && (url.pathname === '/api/voice/send' || url.pathname === '/api/send/voice')) {
-          await createVoiceSendHandler({
-            sendJson, readBody, log,
-            voiceCfg, parseTargetKey, modeAllowed,
-            resolveVoicePathForOperator, resolveAudioProcessing,
-            inspectAudio, describeAudio, voiceBudgetCheck, voiceBudgetCommit, sendVoiceV2,
-      path, appendActivity, verifyVoiceMessageSent,
-            getCfg: () => cfg, getMode: () => currentMode
-          })(req, url);
-          return;
-        }
 
         // ── 语音发送（AI 通道：reserved2 + agent token，只能发自己那个会话） ────
 
@@ -4217,39 +4181,9 @@ async function main() {
         //   - 不带 agent token（控制台调试面板 / CLI）→ 只需控制台令牌，不需要 key。
         // 返回一律只有文件名/大小/时长，**不含绝对路径**（AI 侧防路径外泄，控制台侧由试发接口解析）。
 
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/sticker-list') {
-          if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return; }
-          const body = await readBody();
-          const key = String(body.key ?? '').trim();
-          const query = String(body.query ?? '').trim();
-          const maxCount = Math.max(1, Number(cfg.socialV2?.sticker?.maxListCount) || 100);
-          const count = Math.min(500, Math.max(1, Math.min(Number(body.count) || 48, maxCount)));
-          let force = body.refresh === true;
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('listStickers')) { sendJson({ ok: false, error: '工具未启用：qq_list_stickers' }, 403); return; }
-          // AI 强制刷新加最小间隔，避免反复调用 OneBot 表情接口造成限频/负载。
-          if (req.headers['x-agent-token'] && force) {
-            const now = Date.now();
-            if (now - lastForcedAgentStickerSync < 10000) force = false;
-            else lastForcedAgentStickerSync = now;
-          }
-          try {
-            const synced = await syncStickerLibrary(force);
-            const list = formatStickerList(synced?.entries ?? stickerEntries, query, count);
-            sendJson({ ok: true, key, ...list, syncedAt: synced?.syncedAt ?? stickerSyncedAt, fromCache: synced?.fromCache ?? false });
-          } catch (error) {
-            sendJson({ ok: false, error: `获取表情列表失败：${error?.message ?? error}` }, 500);
-          }
-          return;
-        }
         // 管理端表情库接口（控制台）
 
         // ── socialV2 长轮询等待（D 批，已迁出到 src/api/socialV2-wait.js）─────────
-        if (req.method === 'POST' && url.pathname === '/api/socialV2/wait') {
-          if (await handleV2Wait(req, res, url)) return;
-        }
 
         // ── Token 用量 / 花费（控制台专用） ──────────────────────────────────
         // 路径刻意不放在 /api/socialV2/ 下：那一整个前缀对持有 x-agent-token 的
@@ -4295,31 +4229,10 @@ async function main() {
         // ── 统一发送端点（MCP 旧发送工具也走这里） ───────────────────────────
         // ── 统一发送端点（已迁出到 src/api/send.js）──────────────────────────────
         // /api/send/{group,private,reply} 三端点合一
-        if (req.method === 'POST' && (url.pathname === '/api/send/group' || url.pathname === '/api/send/private' || url.pathname === '/api/send/reply')) {
-          await handleSend(req, url);
-          return;
-        }
 
         // ── 清除上下文 / 清空工作区 ──────────────────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/workspace/reset') {
-      await workspaceReset.resetAll({ sendJson });
-      return;
-    }
 
     // ── 重启桥接（守护模式下 5 秒后自动拉起） ──────────────────────────────
-        if (req.method === 'POST' && url.pathname === '/api/restart') {
-          sendJson({ ok: true, message: '正在重启桥接（若由守护窗口启动，5 秒后自动恢复）…' });
-          setTimeout(() => {
-            log('控制台：重启桥接');
-            // 退出前落盘：SIGINT/SIGTERM 的收尾路径会 saveState()/saveSocialV2State()，
-            // 而重启这条路径以前直接 process.exit，500ms 窗口内改动的唤醒配置/计数器会丢。
-            try { saveState(); } catch (error) { log('重启前保存会话映射失败:', error?.message ?? error); }
-            try { saveSocialV2State(); } catch (error) { log('重启前保存二代会话状态失败:', error?.message ?? error); }
-            releaseLock();
-            process.exit(0);
-          }, 500);
-          return;
-        }
         sendJson({ ok: false, error: 'not found' }, 404);
       } catch (error) {
         const status = Number(error?.statusCode) || 500;

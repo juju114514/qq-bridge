@@ -4,7 +4,7 @@
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
 - 已搬进模块：**109** 条（24 个文件）
-- 仍在 bridge 内联：**12** 条（波次 4 目标是 0）
+- 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（4 条）
 
@@ -235,19 +235,9 @@
 | GET | `/api/whitelist` | createWhitelistHandler |
 | POST | `/api/whitelist` | createWhitelistHandler |
 
-## src/bridge.js 内联（12 条，待迁移）
+## src/bridge.js 内联（2 条，待迁移）
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| POST | `/api/socialV2/song` | L4139 |
-| POST | `/api/voice/send` | L4201 |
-| POST | `/api/send/voice` | L4201 |
-| POST | `/api/socialV2/sticker-list` | L4220 |
-| POST | `/api/socialV2/wait` | L4250 |
-| ANY | `/api/tokens/summary` | L4258 |
-| ANY | `/api/tokens/` | L4258 |
-| POST | `/api/send/group` | L4298 |
-| POST | `/api/send/private` | L4298 |
-| POST | `/api/send/reply` | L4298 |
-| POST | `/api/workspace/reset` | L4304 |
-| POST | `/api/restart` | L4310 |
+| ANY | `/api/tokens/summary` | L4192 |
+| ANY | `/api/tokens/` | L4192 |

@@ -20,7 +20,9 @@ export async function handleConsoleMiscRoutes(req, url, deps = {}) {
     cfgGet, rootDir, pathModule, crypto, stateDir,
     getStateDirHardened, setStateDirHardened, manualDirCommand, hardenStateDirAcl,
     readConfigObject, atomicWriteJson, normalizeOwnerQQ, reconcileSessionPolicies,
-    res, writeHtml, fs, api, unwrap, handleStatus, createModeHandler, modeDeps, handleInject
+    res, writeHtml, fs, api, unwrap, handleStatus, createModeHandler, modeDeps, handleInject,
+    createVoiceSendHandler, voiceSendDeps, handleSend, workspaceReset,
+    saveState, saveSocialV2State, releaseLock, setTimeoutFn = setTimeout, exitFn = (code) => process.exit(code)
   } = deps;
 
   // GET /api/pending —— 待回答的提问 / 待审批的工具调用
@@ -137,6 +139,40 @@ export async function handleConsoleMiscRoutes(req, url, deps = {}) {
   // POST /api/inject —— 外部注入一条 prompt（测试/联调用）
   if (req.method === 'POST' && p === '/api/inject') {
     await handleInject(req, url);
+    return true;
+  }
+
+
+  // POST /api/voice/send · /api/send/voice —— 语音发送（操作者通道 / AI 通道分流在模块内部）
+  if (req.method === 'POST' && (p === '/api/voice/send' || p === '/api/send/voice')) {
+    await createVoiceSendHandler(voiceSendDeps)(req, url);
+    return true;
+  }
+
+  // POST /api/send/{group,private,reply} —— 统一发送端点（频率/引用/敏感词都在模块里）
+  if (req.method === 'POST' && (p === '/api/send/group' || p === '/api/send/private' || p === '/api/send/reply')) {
+    await handleSend(req, url);
+    return true;
+  }
+
+  // POST /api/workspace/reset —— 清空 DSH 工作区
+  if (req.method === 'POST' && p === '/api/workspace/reset') {
+    await workspaceReset.resetAll({ sendJson });
+    return true;
+  }
+
+  // POST /api/restart —— 重启桥接（先把状态落盘，再 releaseLock + exit）
+  if (req.method === 'POST' && p === '/api/restart') {
+    sendJson({ ok: true, message: '正在重启桥接（若由守护窗口启动，5 秒后自动恢复）…' });
+    setTimeoutFn(() => {
+      log('控制台：重启桥接');
+      // 退出前落盘：SIGINT/SIGTERM 的收尾路径会 saveState()/saveSocialV2State()，
+      // 而重启这条路径以前直接 process.exit，500ms 窗口内改动的唤醒配置/计数器会丢。
+      try { saveState(); } catch (error) { log('重启前保存会话映射失败:', error?.message ?? error); }
+      try { saveSocialV2State(); } catch (error) { log('重启前保存二代会话状态失败:', error?.message ?? error); }
+      releaseLock();
+      exitFn(0);
+    }, 500);
     return true;
   }
 

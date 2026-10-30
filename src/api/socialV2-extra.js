@@ -15,7 +15,11 @@ export async function handleSocialV2ExtraRoutes(req, url, deps = {}) {
     readConfigObject, atomicWriteJson, refreshAllDefaultWakeConfigs,
     rootDir, pathModule,
     socialV2, clearAllSocialV2Timers, setupSleepTimerV2, scheduleProactiveCheckV2,
-    saveSocialV2State, modeGet, fetchMediaData, log
+    saveSocialV2State, modeGet, fetchMediaData, log,
+    agentTokenOk, v2SessionAllowed, v2ToolEnabled, shouldBlockSilentReply, handleV2Wait,
+    pathMod, fsMod, osMod, spawnFn, resolveRuntimeDir, ensureDirSafe,
+    stickerEnabled, syncStickerLibrary, formatStickerList, getStickerEntries, getStickerSyncedAt,
+    stickerSyncNow, lastForcedAgentStickerSyncGet, setLastForcedAgentStickerSync
   } = deps;
 
   // 单条消息详情 / 合并转发取件
@@ -176,6 +180,87 @@ export async function handleSocialV2ExtraRoutes(req, url, deps = {}) {
       log(`转发媒体读取失败 ${key}:`, error?.message ?? error);
       sendJson({ ok: false, error: `转发媒体读取失败：${error?.message ?? error}` }, 500);
     }
+    return true;
+  }
+
+
+  // ── POST /api/socialV2/song —— 点歌（spawn PowerShell + ffmpeg，10~20s 后发语音条）──
+  if (req.method === 'POST' && p === '/api/socialV2/song') {
+    const body = await readBody();
+    const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
+    const key = String(body.key ?? '').trim();
+    const name = String(body.name ?? '').trim().slice(0, 60);
+    const quality = String(body.quality ?? '').trim();
+    const full = body.full === true;
+    const seconds = full ? 300 : Math.max(10, Math.min(300, Number(body.seconds) || 40));
+    if (modeGet() !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return true; }
+    if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return true; }
+    if (!name) { sendJson({ ok: false, error: 'name 不能为空（歌名/歌手）' }, 400); return true; }
+    if (req.headers['x-agent-token']) {
+      if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return true; }
+      if (!v2ToolEnabled('sendVoice')) { sendJson({ ok: false, error: '工具未启用：qq_song（需要开启语音工具）' }, 403); return true; }
+      if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
+    }
+    if (shouldBlockSilentReply(key)) { sendJson({ ok: false, error: '静默模式已开启，当前不允许发送' }, 403); return true; }
+    // 点歌同样依赖 powershell.exe（song.ps1 里还要 ffmpeg）：非 Windows 上直接说清楚，别让用户对着 ENOENT 猜。
+    if (process.platform !== 'win32' && !process.env.QQBOT_SONG_SCRIPT) {
+      sendJson({ ok: false, error: `点歌依赖 Windows PowerShell（当前是 ${process.platform}）；设 QQBOT_SONG_SCRIPT 可指定脚本路径` }, 501);
+      return true;
+    }
+    const songScript = process.env.QQBOT_SONG_SCRIPT || pathMod.join(resolveRuntimeDir('QQBOT_TOOLS', 'tools', ''), 'song.ps1');
+    if (!fsMod.existsSync(songScript)) { sendJson({ ok: false, error: '点歌脚本不存在' }, 500); return true; }
+    const nameFile = pathMod.join(osMod.tmpdir(), `qq-song-${Date.now()}.txt`);
+    try { fsMod.writeFileSync(nameFile, name, 'utf8'); } catch (error) { sendJson({ ok: false, error: `写歌名临时文件失败：${error?.message ?? error}` }, 500); return true; }
+    let songLog = null;
+    try { songLog = fsMod.openSync(pathMod.join(ensureDirSafe(resolveRuntimeDir('QQBOT_LOGS', 'logs', '')), 'song.log'), 'a'); } catch { songLog = null; }
+    const songStdio = songLog !== null ? ['ignore', songLog, songLog] : 'ignore';
+    try {
+      const songArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', songScript, '-NameFile', nameFile, '-Key', key, '-Seconds', String(seconds)];
+      if (full) songArgs.push('-Full');
+      if (quality) songArgs.push('-Quality', quality);
+      const child = spawnFn('powershell.exe', songArgs, { windowsHide: true, stdio: songStdio });
+      child.on('exit', (code) => log(`[song] ${key} 结束 code=${code}（${name}｜${seconds}s）`));
+      child.on('error', (error) => log(`[song] ${key} 失败：${error?.message ?? error}`));
+      log(`[song] ${key} 开始点歌（${name}｜${seconds}s｜${quality || '普通'}）`);
+      sendJson({ ok: true, key, name, seconds, note: '正在下载并截取，约 10~20 秒后以语音条发出' });
+    } catch (error) {
+      sendJson({ ok: false, error: `启动点歌失败：${error?.message ?? error}` }, 500);
+    }
+    return true;
+  }
+
+  // ── POST /api/socialV2/sticker-list —— 表情列表（AI 强制刷新有 10s 最小间隔）──
+  if (req.method === 'POST' && p === '/api/socialV2/sticker-list') {
+    if (!stickerEnabled()) { sendJson({ ok: false, error: '表情包体系已关闭' }, 403); return true; }
+    const body = await readBody();
+    const key = String(body.key ?? '').trim();
+    const query = String(body.query ?? '').trim();
+    const maxCount = Math.max(1, Number(cfgGet()?.socialV2?.sticker?.maxListCount) || 100);
+    const count = Math.min(500, Math.max(1, Math.min(Number(body.count) || 48, maxCount)));
+    let force = body.refresh === true;
+    if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return true; }
+    if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return true; }
+    if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
+    if (req.headers['x-agent-token'] && !v2ToolEnabled('listStickers')) { sendJson({ ok: false, error: '工具未启用：qq_list_stickers' }, 403); return true; }
+    // AI 强制刷新加最小间隔，避免反复调用 OneBot 表情接口造成限频/负载
+    if (req.headers['x-agent-token'] && force) {
+      const at = stickerSyncNow();
+      if (at - lastForcedAgentStickerSyncGet() < 10000) force = false;
+      else setLastForcedAgentStickerSync(at);
+    }
+    try {
+      const synced = await syncStickerLibrary(force);
+      const list = formatStickerList(synced?.entries ?? getStickerEntries(), query, count);
+      sendJson({ ok: true, key, ...list, syncedAt: synced?.syncedAt ?? getStickerSyncedAt(), fromCache: !force });
+    } catch (error) {
+      sendJson({ ok: false, error: `获取表情列表失败：${error?.message ?? error}` }, 500);
+    }
+    return true;
+  }
+
+  // ── POST /api/socialV2/wait —— 长轮询等待（终端处理器：自己写响应）────────
+  if (req.method === 'POST' && p === '/api/socialV2/wait') {
+    await handleV2Wait(req, res, url);
     return true;
   }
 
