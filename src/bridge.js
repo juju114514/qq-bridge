@@ -50,6 +50,7 @@ import { normalizeSpeakerIds, hasExplicitEnd, isSleepingConfig, computeWakeSafet
 import { saveSocialV2StateTo, loadSocialV2StateInto } from './domains/social-v2-store.js';
 import { evaluateWakeTrigger } from './domains/wake-trigger.js';
 import { setupSleepTimer } from './domains/sleep-timer.js';
+import { scheduleWake } from './domains/wake-schedule.js';
 import { createRuntime } from './runtime.js';
 import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
@@ -8661,60 +8662,25 @@ function rememberPersonInMessage(kind, id, event) {
   }
 }
 
+// 唤醒排程已搬到 src/domains/wake-schedule.js（波次 2）：四道闸门 + 合并窗口 + 繁忙暂存
 function scheduleWakeV2(key, reason) {
-    if (cfg.socialV2?.enabled === false) return;
-    if (socialV2.paused) return;
-    // 静默时段：只拦“自己去搭话”的唤醒（定时器/概率/@），管理员指令与引导照旧。
-    // 消息本身已在 handleIncoming 里记录，醒来后仍能看到这段时间发生了什么。
-    {
-      const range = quietRangeV2();
-      if (range && shouldSilenceWake(reason) && inQuietHours(Date.now(), range)) {
-        log(`[reserved2] 静默时段（${String(range[0]).padStart(2, '0')}:00~${String(range[1]).padStart(2, '0')}:00），跳过唤醒 ${key}（${reason}）`);
-        return;
-      }
-    }
-    if (!isSessionAllowedInCurrentMode(key)) {
-      log(`[reserved2] 跳过计划唤醒 ${key}（${reason}）：会话已不在当前模式允许范围内`);
-      return;
-    }
-    const st = getSocialV2State(key);
-    if (st.pendingWakeTimer) {
-      // 合并窗口内已有待发送唤醒：按优先级升级最终原因，避免先概率后 @ 却仍按概率唤醒。
-      const cur = st.pendingWakeReason || reason;
-      if (wakePriorityV2(reason) > wakePriorityV2(cur)) {
-        st.pendingWakeReason = reason;
-        log(`[reserved2] 合并窗口内升级唤醒原因 ${key}: ${cur} -> ${reason}`);
-      }
-      return;
-    }
-    if (isConversationBusyV2(key, st)) {
-      if (!Array.isArray(st.pendingWakeReasons)) st.pendingWakeReasons = [];
-      const seq = st.lastUnreadSeq || 0;
-      if (!st.pendingWakeReasons.some((r) => r && r.reason === reason && r.seq === seq)) {
-        st.pendingWakeReasons.push({ reason, seq });
-        // 有界队列：最多保留 20 条，防止消息洪峰下无限增长。
-        if (st.pendingWakeReasons.length > 20) st.pendingWakeReasons.splice(0, st.pendingWakeReasons.length - 20);
-      }
-      log(`[reserved2] 会话繁忙，暂存唤醒原因 ${key}（${reason}@seq${seq}，原因=${busyReasonV2(key, st)}）`);
-      return;
-    }
-    cancelReplyCheckV2(key); // 真实唤醒已接管，取消普通回复检查，避免 30s 后再补一刀
-    if (st.sleepTimer) {
-      clearTimeout(st.sleepTimer);
-      st.sleepTimer = null;
-    }
-    st.pendingWakeReason = reason;
-    const batchMs = Math.max(1000, Number(st.wakeConfig?.batchWindowMs) || 8000);
-    st.pendingWakeTimer = setTimeout(() => {
-      st.pendingWakeTimer = null;
-      const finalReason = st.pendingWakeReason || reason;
-      st.pendingWakeReason = null;
-      void sendWakePromptV2(key, finalReason).catch((error) => log(`[reserved2] 计划唤醒异常 ${key}:`, error?.message ?? error));
-    }, batchMs);
-    // 与其它 per-conversation 定时器保持一致：别让一个待唤醒定时器把进程钉住不退出。
-    st.pendingWakeTimer.unref?.();
-    log(`[reserved2] 计划唤醒 ${key}（${reason}），${Math.round(batchMs / 1000)}s 后发送`);
-  }
+  return scheduleWake({
+    key, reason,
+    enabled: cfg.socialV2?.enabled !== false,
+    paused: socialV2.paused,
+    quietRange: quietRangeV2(),
+    silenceWake: shouldSilenceWake,
+    inQuiet: inQuietHours,
+    allowed: isSessionAllowedInCurrentMode,
+    getState: getSocialV2State,
+    priorityOf: wakePriorityV2,
+    isBusy: isConversationBusyV2,
+    busyReason: busyReasonV2,
+    cancelReplyCheck: cancelReplyCheckV2,
+    onFire: (k, why) => { void sendWakePromptV2(k, why).catch((error) => log(`[reserved2] 计划唤醒异常 ${k}:`, error?.message ?? error)); },
+    log
+  });
+}
 
   /**
    * 回合结束后补发「繁忙期间暂存」的唤醒原因。

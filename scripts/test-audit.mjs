@@ -222,6 +222,8 @@ const tests = [
   'test-wake-trigger.mjs',
   // 有限潜水定时器：清旧 / 到期即醒 / 远未来分段续期 / 时钟跳变纠正。
   'test-sleep-timer.mjs',
+  // 唤醒排程：静默时段 / 合并窗口升级 / 繁忙暂存去重 / batchWindow 下限。
+  'test-wake-schedule.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

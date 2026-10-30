@@ -47,6 +47,7 @@ import { createMuxToolTracker } from '../src/mux-tools.js';
 import { createDecisionTrace } from '../src/decision-trace.js';
 import { createPeopleNoteHandler } from '../src/api/people-note.js';
 import { createRuntime } from '../src/runtime.js';
+import * as quietHours from '../src/quiet-hours.js';
 import { decideNoAction } from '../src/turn-guard.js';
 import { finalizeTurn } from '../src/turn-finalize.js';
 import { decideReplyAction } from '../src/turn-reply.js';
@@ -252,7 +253,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...stickerPending, ...privateAccess,
-  ...douyinResolve, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
+  ...douyinResolve, ...quietHours, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
     createRuntime,
