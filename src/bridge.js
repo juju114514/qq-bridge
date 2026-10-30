@@ -51,7 +51,7 @@ import { discoverDshBaseUrl } from './dsh-port.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
 import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ, markListed, setNote, removeNote, notesInScope, visibleNotes } from './people.js';
-import { CONV_KEY_RE, convId } from './conv-key.js';
+import { canonicalConvKey, CONV_KEY_RE, convId } from './conv-key.js';
 import { ensureStateSchema, SCHEMA_VERSION } from './state-schema.js';
 import { enrichBili, formatBiliEnrich } from './bili-enrich.js';
 import { appendDropped, summarizeDropped, readDropped, takeDropped } from './dead-letter.js';
@@ -1596,19 +1596,8 @@ function allowed(kind, id, cfg) {
   if (allowList.length > 0) return allowList.map(String).includes(s);
   return cfg.allowAllWhenEmpty;
 }
-
-// 二代会话 key 规范化：只接受 group:正整数 / private:正整数，并去掉前导零，避免同一会话出现多个别名。
-function canonicalV2Key(key) {
-  // 官方通道：group:official-<openid>。openid 不是数字，走 Number() 会变 NaN → 返回 null；
-  // 而调用方多半把 null 当"非法 key"直接丢弃，于是消息静默消失（真实踩过两次）。
-  const officialV2 = /^(group|private):(official-[A-Za-z0-9_-]+)$/.exec(String(key ?? '').trim());
-  if (officialV2) return `${officialV2[1]}:${officialV2[2]}`;
-  const m = /^(group|private):(\d+)$/.exec(String(key ?? '').trim());
-  if (!m) return null;
-  const id = Number(m[2]);
-  if (!Number.isSafeInteger(id) || id <= 0) return null;
-  return `${m[1]}:${id}`;
-}
+// 会话 key 规范化：与 src/conv-key.js 共用同一套解析（官方 openid 不能走 Number）
+const canonicalV2Key = canonicalConvKey;
 
 const APPROVE_WORDS = new Set(['通过', '同意', '允许', '批准', 'yes', 'y', 'approve', 'ok']);
 const REJECT_WORDS = new Set(['拒绝', '不同意', '不允许', '驳回', 'no', 'n', 'reject', 'deny']);

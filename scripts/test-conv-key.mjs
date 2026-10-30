@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-const { parseConvKey, convId, CONV_KEY_RE } = await import(new URL('../src/conv-key.js', import.meta.url).href);
+const { parseConvKey, convId, CONV_KEY_RE, canonicalConvKey } = await import(new URL('../src/conv-key.js', import.meta.url).href);
 
 let failures = 0;
 function check(name, fn) {
@@ -58,3 +58,26 @@ check('发送端点已改用共享解析（不再各自写数字正则）', () =
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
+
+// ── canonicalConvKey：会话 key 的唯一形式 ──────────────────────────────────
+// 这条规则防的是"同一个人两套记忆"：group:0123 与 group:123 若被当成两个会话，
+// 状态各自累积，AI 会记错上下文。
+check('canonicalConvKey：数字 id 去掉前导零', () => {
+  assert.equal(canonicalConvKey('group:0123'), 'group:123');
+  assert.equal(canonicalConvKey('private:0001'), 'private:1');
+});
+
+check('canonicalConvKey：官方 openid 原样保留（不能走 Number）', () => {
+  assert.equal(canonicalConvKey('private:official-AbC-123'), 'private:official-AbC-123');
+});
+
+check('canonicalConvKey：非法 key 返回 null', () => {
+  assert.equal(canonicalConvKey('group:abc'), null);
+  assert.equal(canonicalConvKey('group:0'), null);
+  assert.equal(canonicalConvKey(''), null);
+  assert.equal(canonicalConvKey(null), null);
+});
+
+check('canonicalConvKey：首尾空白被容忍', () => {
+  assert.equal(canonicalConvKey('  group:123  '), 'group:123');
+});

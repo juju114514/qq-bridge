@@ -33,3 +33,16 @@ export function parseConvKey(key) {
   if (typeof id === 'number' && !Number.isFinite(id)) return null;
   return { kind: m[1], id, official: isOfficialIdPart(m[2]) };
 }
+
+/**
+ * 把 key 规范化成"唯一形式"：数字 id 去掉前导零，官方 openid 原样保留。
+ * 非法返回 null。
+ *
+ * 为什么需要它：state/social-v2.json 按 key 存会话状态，
+ * `group:0123` 与 `group:123` 若被当成两个会话，就会出现"同一个人两套记忆"。
+ */
+export function canonicalConvKey(key) {
+  const parsed = parseConvKey(key);
+  if (!parsed) return null;
+  return `${parsed.kind}:${parsed.id}`;
+}
