@@ -13,7 +13,8 @@ export function createVoiceSendHandler(deps = {}) {
     sendJson, readBody, log,
     voiceCfg, parseTargetKey, modeAllowed,
     resolveVoicePathForOperator, resolveAudioProcessing,
-    inspectAudio, describeAudio, voiceBudgetCheck, sendVoiceV2,
+    inspectAudio, describeAudio, voiceBudgetCheck, voiceBudgetCommit, sendVoiceV2,
+    path, appendActivity, verifyVoiceMessageSent,
     getCfg, getMode
   } = deps;
 
