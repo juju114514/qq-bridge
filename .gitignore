@@ -21,3 +21,7 @@ _snowluma-catalog.json
 .env
 # 本地备份（含 bridge.js.bak-* 等）不要进仓库
 *.bak-*
+
+# 本仓库的包管理器口径是 npm（见 package-lock.json / README / CI）。
+# 谁本地用 pnpm 装了依赖，别把它的锁文件提交进来 —— 	est-packaging 会因此变红。
+pnpm-lock.yaml
