@@ -2,6 +2,48 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.3.1：波次 4 收官（bridge.js 11.2k → 10.0k）+ 三条外部模型路线验证
+
+> 升级方式见 [docs/UPGRADE.md](docs/UPGRADE.md)。**没有破坏性变更**；
+> 新增 1 个配置项（`socialV2.notifyAgentErrors`），其余行为不变。
+
+### 用户能感知的变化
+
+- **回复更快、更稳**：`bridge.js` 从 11,236 行降到 **10,050**，内联路由从 41 条降到 **1 条** ——
+  以后加接口只能写进 `src/api/*.js` 并接进派发链（有棘轮守着，不会再长回去）。
+- **技术报错不再刷屏**：新增 `socialV2.notifyAgentErrors`（默认 `true`）。
+  换成第三方模型时 `No API key` / `context overflow` 这类消息不再推到 QQ，只进日志。
+- **换模型不再静默失败**：非 DeepSeek 的 provider（如千问、Bedrock）若模型不支持"思考强度"，
+  桥接会自动去掉该字段重试一次，并在日志里写明原因 —— 以前是失败两次然后**静默退回默认模型**。
+- **`/api/voice/send` 修好了**：这个操作者通道此前一直是 500（三个依赖没注入），现在能正常发语音。
+
+### 修复
+
+- **角色卡不再写死管理员 QQ**：改用 `isOwner` 标记（号码由服务端校验）。
+  之前隐私脱敏把号码换成了占位值，导致机器人**不认老板** —— 这是一次真实的回退。
+- **`consolePort` 现在会校验**：写成 `"abc"` / `99999` 会在启动时直接报错并说清范围，
+  以前是 `listen EACCES` 之后控制台静默打不开。
+- **干净克隆 113 → 116 个测试套全绿**（新增：`check-privacy` / `test-config-dirty` /
+  `test-model-effort-fallback`）。
+
+### 外部模型路线（实测记录）
+
+| 路线 | 文本 | 工具调用 |
+| --- | --- | --- |
+| DeepSeek（默认） | ✅ | ✅ |
+| 千问 `qwen-max` | ✅ | ✅ |
+| 千问 `qwen-flash` / `qwen-plus` | ✅ | ❌ 工具参数传错 |
+| 暴喵网关（实际是小米 MiMo） | ✅ | ✅ 但窗口小、常空收尾 |
+
+细节见 [docs/guides/GPT-ROUTE-STATUS.md](docs/guides/GPT-ROUTE-STATUS.md)。
+**生产配置仍是 `deepseek-official / deepseek-flash`。**
+
+### 踩过的坑（写下来免得再踩）
+
+- 按**缩进**切代码 → 误删了相邻的 `/api/security` 整块；必须按大括号配平 + 复核 diff。
+- 按**命令行**过滤进程 → 误杀了真机；要按端口归属（3100 真机 / 3199 沙箱）。
+- 自定义 provider 不写 `contextWindow` → 一上来就 `context overflow`。
+- 中转站先问一句"你是哪个模型"再付钱。
 ## 2026-10-30 — 0.3.0：拆到 10.7k 行 + 三件新功能 + 十个测试护栏
 
 > 升级方式见 [docs/UPGRADE.md](docs/UPGRADE.md)。这一版**没有破坏性变更**，

@@ -163,6 +163,13 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 | **部署** | Windows 一键脚本；**Docker**（`docker compose up -d`，容器内可跑官方通道）—— [DOCKER.md](docs/guides/DOCKER.md) |
 | **模型** | `deepseek-official`（✅ 已测试）｜`openai` / GPT 等兼容 provider（⚠️ **已接入、未测试**，见 [MODELS.md](docs/guides/MODELS.md)） |
 
+## 版本怎么看
+
+> **以 `git tag` 和 [CHANGELOG.md](CHANGELOG.md) 为准** —— GitHub 的 Releases 页只是里程碑，
+> 可能落后于 `main`。当前：**v0.3.1**（2026-10-31）。
+>
+> 想知道两个版本之间改了什么：`git log v0.3.0..v0.3.1 --oneline`。
+
 ## 最近更新
 
 | 日期 | 内容 | 看这里 |
