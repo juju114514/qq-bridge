@@ -224,6 +224,8 @@ const tests = [
   'test-sleep-timer.mjs',
   // 唤醒排程：静默时段 / 合并窗口升级 / 繁忙暂存去重 / batchWindow 下限。
   'test-wake-schedule.mjs',
+  // 进线主流程端到端（波次 3 前置）：@ 唤醒 / 无权限群 / 只记未读 / 静默时段。
+  'test-incoming-pipeline.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
