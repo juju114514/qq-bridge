@@ -14,7 +14,8 @@ import { createDiagnosticsHandler } from './console-diagnostics.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
 
-// 定时任务引擎内部持有状态机 + 定时器，必须**单例**：每请求新建会重复挂定时器。
+// 定时任务路由：引擎单例由 src/scheduler/instance.js 统一提供
+// （控制台的 /api/scheduler 与 QQ 里的 /提醒 必须看到同一份任务）。
 let schedulerRoutes = null;
 
 export async function handleExtraRoutes(ctx = {}) {

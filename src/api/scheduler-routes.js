@@ -10,7 +10,7 @@
 //   onAiAsk(...)                     kind='ai' 时叫 AI 来说（由 bridge 的 deliverPrompt 实现）
 
 import path from 'node:path';
-import { createScheduler } from '../scheduler/engine.js';
+import { getSchedulerInstance } from '../scheduler/instance.js';
 
 export function createSchedulerRoutes(baseDeps = {}) {
   const {
@@ -40,37 +40,8 @@ export function createSchedulerRoutes(baseDeps = {}) {
     return allowed?.(m[1], Number(m[2]), cfg) ? '' : '目标不在白名单内（定时任务不给陌生人发消息）';
   }
 
-  function getScheduler() {
-    if (scheduler) return scheduler;
-    scheduler = createScheduler({
-      file: path.join(stateDir, 'scheduler.json'),
-      ownerKey,
-      validateTarget,
-      log,
-      deliverables: null,
-      // 引擎调用约定：deliver(task, target, { scheduledAt, manual })
-      //   kind='text' → 直接发固定文字
-      //   kind='ai'   → 把 instruction 交给模型，由它组织语言（走同一条 deliverPrompt）
-      deliver: async (task, target, meta) => {
-        try {
-          if (task?.kind === 'ai') {
-            const instruction = String(task.instruction ?? '').trim();
-            if (!instruction) return { ok: false, reason: 'empty' };
-            await deliverPrompt(target, `【定时任务：${task.name || '提醒'}】\n${instruction}`);
-            return { ok: true };
-          }
-          const text = String(task?.text ?? '').trim();
-          if (!text) return { ok: false, reason: 'empty' };
-          await deliverPrompt(target, text);
-          return { ok: true };
-        } catch (error) {
-          log(`定时任务投递失败 ${target}：${error?.message ?? error}`);
-          return { ok: false, reason: String(error?.message ?? error) };
-        }
-      }
-    });
-    return scheduler;
-  }
+  // 引擎单例在 src/scheduler/instance.js —— 控制台与 QQ 命令必须共用同一个实例
+  function getScheduler() { return getSchedulerInstance(baseDeps); }
 
   function targets() {
     const cfg = getCfg();

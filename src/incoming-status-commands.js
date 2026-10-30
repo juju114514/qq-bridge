@@ -7,12 +7,15 @@
 //
 // 语义：返回 true = 已处理；false = 不是这四个命令（继续交给 /reset 或 DSH 斜杠命令）。
 
+import { parseRemindCommand, formatTaskList, REMIND_HELP } from './scheduler/commands.js';
+import { getSchedulerInstance } from './scheduler/instance.js';
+
 export function createIncomingStatusCommands(deps = {}) {
   const {
     sendToQQ, readRoleState, writeRoleStateForKey,
     sanitizeRoleName, resolveRoleName, listRoles, roleName,
     allowed, getCfg, getState, getRoleState,
-    getSelfCheck, buildSelfCheckReport, getDecisionTrace
+    getSelfCheck, buildSelfCheckReport, getDecisionTrace, schedulerDeps
   } = deps;
 
   async function handleStatusCommands(ctx = {}) {
@@ -37,6 +40,42 @@ export function createIncomingStatusCommands(deps = {}) {
       }
       return true;
     }
+    // /提醒（/remind、/定时）—— **管理员限定**，桥接直接执行不经过模型。
+    // 支持 daily / once / in 30m / weekly / workdays / monthly / random；
+    // 内容前加 ai = 叫 AI 来说，否则发固定文字。默认只发给管理员自己的私聊。
+    const remind = /^[\/／](remind|提醒|定时)(\s|$)/i.test(String(plainContent ?? '').trim())
+      ? parseRemindCommand(String(plainContent ?? '').trim(), { now: Date.now(), tz: getCfg()?.scheduler?.timezone || 'Asia/Shanghai' })
+      : null;
+    if (remind) {
+      try {
+        if (remind.error) { await sendToQQ(key, remind.error); return true; }
+        if (remind.action === 'help') { await sendToQQ(key, REMIND_HELP); return true; }
+        const sched = getSchedulerInstance(schedulerDeps);
+        const ownerTarget = `private:${String(getCfg()?.ownerQQ ?? '').trim()}`;
+        if (remind.action === 'list') { await sendToQQ(key, formatTaskList(sched.listTasks())); return true; }
+        if (remind.action === 'delete') { sched.deleteTask(remind.id, { source: 'owner-command' }); await sendToQQ(key, `已删除任务 #${remind.id}`); return true; }
+        if (remind.action === 'enable' || remind.action === 'disable') {
+          sched.setEnabled(remind.id, remind.action === 'enable', { source: 'owner-command' });
+          await sendToQQ(key, `任务 #${remind.id} 已${remind.action === 'enable' ? '启用' : '停用'}`);
+          return true;
+        }
+        if (remind.action === 'run') {
+          const r = await sched.runNow(remind.id, { source: 'owner-command' });
+          await sendToQQ(key, r?.outcomes?.[0]?.ok === false ? '执行了，但投递失败（看日志）' : `已执行任务 #${remind.id}`);
+          return true;
+        }
+        if (remind.action === 'add') {
+          const task = sched.createTask({ ...remind.task, targets: [ownerTarget] }, { source: 'owner-command' });
+          await sendToQQ(key, `已建任务 #${task.id}：${task.scheduleText}\n只发给你自己；要发群请用控制台「定时任务」页。`);
+          return true;
+        }
+        await sendToQQ(key, REMIND_HELP);
+      } catch (error) {
+        await sendToQQ(key, `定时任务出错：${error?.message ?? error}`);
+      }
+      return true;
+    }
+
     // /诊断 [全部|#序号] —— **管理员限定**。
     // 回答"这条消息为什么没回我"：闸门/唤醒/投递 每一步的判定都在这。
     // 为什么值得一个命令：handleIncoming 里有 8 个提前 return 的点，以前全是沉默的。

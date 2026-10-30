@@ -4479,7 +4479,6 @@ async function main() {
           return;
         }
 
-        // 其余零散端点（诊断等）在 src/api/console-extra-routes.js：bridge 只保留这一次调用
         if (await handleExtraRoutes({
           req, url, sendJson, readBody,
           // 惰性：只在命中路由时求值（否则每请求一次，VM 注入不全时会 ReferenceError）
@@ -9235,6 +9234,7 @@ function selfCheckSnapshot() {
     allowed, getCfg: () => cfg, getState: () => state, getRoleState: () => readRoleState(),
     buildSelfCheckReport,
     getDecisionTrace: () => decisionTrace,
+    schedulerDeps: () => ({ stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, allowed, log }),
     getSelfCheck: () => selfCheckSnapshot(),
   }));
 
