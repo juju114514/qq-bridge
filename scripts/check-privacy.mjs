@@ -54,8 +54,11 @@ const FORBIDDEN_PATHS = [
   /D:\\QQBot\\temp/i
 ];
 
-// 令牌形态：32 位以上连续 hex（QQ token / agentToken / console-token 都长这样）
-const TOKEN_LIKE = /\b[0-9a-f]{32,}\b/i;
+// 令牌形态：
+//   · 32 位以上连续 hex（QQ token / agentToken / console-token 都长这样）
+//   · 各家 API key 的前缀（sk- / sk-proj- / AKIA / ghp_ …）—— 2026-10-31 加，
+//     因为 OpenAI key 是 base64 形态，光看 hex 抓不到
+const TOKEN_LIKE = /\b[0-9a-f]{32,}\b|\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bghp_[A-Za-z0-9]{30,}/i;
 
 // 允许"看起来像令牌"的白名单文件（例如测试夹具里显式构造的假 token）
 const TOKEN_ALLOW = [

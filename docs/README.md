@@ -41,6 +41,7 @@
 | [guides/SINGING.md](guides/SINGING.md) | **让 AI 唱歌**：四条链路（说话 / TTS 变调唱 / 点歌 / RVC 换声）各自能做什么、**模型运用顺序**（TTS 分词→变调→气口→拼接；RVC 六步训练）、踩坑总表（ffmpeg / PowerShell 编码 / 网络 / 显存 / 导出失败）、**诚实的测试状态**（TTS 与点歌已通，RVC 训练到 train、导出失败、无翻唱成品）、外部大纲 v9 里可借的六个音域指标与「RVC 换音色 + SVS 造音高」的分工结论 | ✅ 2026-10-27 |
 | [guides/SESSION-BUSY.md](guides/SESSION-BUSY.md) | **「会话繁忙，暂存唤醒原因」**：这行日志什么时候是正常背压、什么时候是回合卡住（AI 一句不回）。含机制（四个 busy 来源 + 回合租约/唤醒租约两道保险）、**逐行日志解释表**、正常 vs 卡住的判据、三档处置（等租约/切模式/重启）、根因清单与预防；配套 `node scripts/diag-session-busy.mjs` | ✅ 2026-10-27 |
 | [guides/MODELS.md](guides/MODELS.md) | **模型接入**：DeepSeek 官方（✅ 已测试）与 OpenAI / GPT 等兼容 provider（⚠️ **已接入但未测试**）。含架构（桥接只透传给 DSH）、接入步骤、**已知缺口表**（计价兜底估算 / 档位词表 / 工具协议 / 多模态 / 人格表现）、接入后的验证清单 | ✅ 2026-10-27 |
+| [guides/GPT-ROUTE-STATUS.md](guides/GPT-ROUTE-STATUS.md) | **GPT/OpenAI 通道现状**（2026-10-31 实测）：key 有效但额度 0 → `429 credit_balance_exhausted`；含 DSH 0.2.1-rc.2 的 provider 能力证据、`gpt-smoke.mjs` 用法、充值后的六步验证顺序 | ⛔ 当前被余额卡住 |
 | [guides/MIGRATION.md](guides/MIGRATION.md) | **换一台机器**：哪些能带走 / 哪些必须丢（`sessions.json` 的 sessionId、DPAPI 备份）、新机器必须重做的四件事（DSH 端口与凭据、预设、外部工具路径、白名单）、按顺序检错的七步 | ✅ 2026-10-27 |
 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) | **安全基线与威胁模型**：威胁主体、已实现的边界（准入/工具面/出站/控制台/落盘/网络）、已知残余风险、发布前回归清单、改动检查单 | ✅ **改动安全相关代码前必读**（2026-09-20 新增） |
 

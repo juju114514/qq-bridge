@@ -35,6 +35,12 @@ QQ ──► 桥接 ──► DSH（provider + model + reasoningEffort）──�
 
 ## 三、OpenAI / GPT（⚠️ 已接入，**未测试**）
 
+> **2026-10-31 实测更新**：拿到一个真实 key 试过 —— 鉴权通过（128 个模型可见），
+> 但**账户额度为 0**，补全返回 `429 credit_balance_exhausted`。
+> 也就是说"未测试"的原因已经定位到**钱**，而不是代码或版本。
+> 一键复验：`node scripts/gpt-smoke.mjs --chat`；完整结论见 [GPT-ROUTE-STATUS.md](GPT-ROUTE-STATUS.md)。
+
+
 代码路径完全一样（透传），所以"能接"，但以下这些**没有**验证过。请把它当
 "可能能用，出问题别意外"，而不是"支持 GPT"。
 
