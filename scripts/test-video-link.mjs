@@ -191,9 +191,11 @@ check('工具可见性可诊断：MCP 启动汇总 + /api/socialV2/tools 端点'
   assert.match(mcp, /工具注册完成：/, '启动时要打一行汇总（否则"关了哪个"是静默的）');
   assert.match(mcp, /按配置关闭（未注册/, '被关掉的工具要列出来');
   assert.match(mcp, /qq_open_video 未注册 ⇒/, '缺少视频工具时要给可操作的提示');
-  const bridge = read('src/bridge.js');
-  assert.match(bridge, /'\/api\/socialV2\/tools'/, '要有只读自检端点');
-  assert.match(bridge, /socialV2\.tools\.getImages=false/, '端点要解释 getImages=false 的后果');
+  // 路由与实现已搬到 src/api/socialV2-extra.js（波次 4）；bridge 只留派发链挂载
+  const extra = read('src/api/socialV2-extra.js');
+  assert.match(extra, /'\/api\/socialV2\/tools'/, '要有只读自检端点');
+  assert.match(extra, /socialV2\.tools\.getImages=false/, '端点要解释 getImages=false 的后果');
+  assert.match(read('src/bridge.js'), /handleSocialV2ExtraRoutes\(req, url/, 'bridge 必须接进派发链');
 });
 
 check('一条命令查工具可见性：diag-tools.mjs 存在、文档指向它、三种结论齐备', () => {

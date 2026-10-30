@@ -3990,6 +3990,19 @@ async function main() {
             getSocialV2State, resolveReplyInfo, formatForwardResponse, seenForwardIds,
             get bot() { return bot; }
           }
+          ,
+          cfgGet: () => cfg,
+          getSocialV2State,
+          computeWakeSafety: computeWakeSafetyV2,
+          // agent token 三重校验：token 对 → 会话在当前模式允许 → 工具开关打开
+          gateAgent: (key, toolName = 'socialState') => {
+            const token = req.headers['x-agent-token'];
+            if (!token) return true;
+            if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 不匹配' }, 403); return false; }
+            if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return false; }
+            if (!v2ToolEnabled(toolName)) { sendJson({ ok: false, error: '工具未启用' }, 403); return false; }
+            return true;
+          }
         }))
         .chain((req, url) => handleConsoleMiscRoutes(req, url, {
           pending, consoleDsh, getConsoleOps, createConsoleNotifyHandler, sendJson, readBody,
@@ -4151,25 +4164,6 @@ async function main() {
           }
           saveSocialV2State();
           sendJson({ ok: true, paused: socialV2.paused });
-          return;
-        }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/state') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('socialState')) { sendJson({ ok: false, error: '工具未启用：qq_social_state' }, 403); return; }
-          const st = getSocialV2State(key);
-          sendJson({
-            ok: true,
-            key,
-            wakeConfig: st.wakeConfig,
-            wakeSafety: computeWakeSafetyV2(st.wakeConfig),
-            unreadCount: st.unread.length,
-            recentCount: st.recentMessages.length,
-            lastWakeReason: st.lastWakeReason,
-            lastAiReplyAt: st.lastAiReplyAt
-          });
           return;
         }
         if (req.method === 'GET' && url.pathname === '/api/socialV2/prompt') {
@@ -4347,30 +4341,6 @@ async function main() {
           }
           return;
         }
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/active-members') {
-          const key = String(url.searchParams.get('key') ?? '').trim();
-          const limit = Math.min(20, Math.max(1, Number(url.searchParams.get('limit')) || 10));
-          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
-          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
-          if (req.headers['x-agent-token'] && !v2ToolEnabled('getActiveMembers')) { sendJson({ ok: false, error: '工具未启用：qq_get_active_members' }, 403); return; }
-          const st = getSocialV2State(key);
-          const map = new Map();
-          for (const m of st.recentMessages) {
-            if (!m || m.isSelf) continue;
-            const uid = m.userId ? String(m.userId) : '';
-            const key2 = uid || String(m.sender || '未知');
-            const cur = map.get(key2) || { sender: m.sender || key2, userId: uid || undefined, count: 0, lastTime: 0, isOwner: !!m.isOwner };
-            if (!cur.userId && uid) cur.userId = uid;
-            cur.count += 1;
-            if (m.time > cur.lastTime) cur.lastTime = m.time;
-            if (m.isOwner) cur.isOwner = true;
-            map.set(key2, cur);
-          }
-          const members = [...map.values()].sort((a, b) => b.count - a.count || b.lastTime - a.lastTime).slice(0, limit);
-          sendJson({ ok: true, key, members });
-          return;
-        }
 
         if (await handleExtraRoutes({
           req, url, sendJson, readBody,
@@ -4396,24 +4366,6 @@ async function main() {
         // 工具可见性自检（只读）：回答「模型为什么没有 qq_open_video」这类问题。
         // 真实案例（2026-10-28）：对方 AI 断言"作者没把工具放进清单"，实际是
         // `socialV2.tools.getImages=false`（一次关掉图片/视频/链接三件套），或者改完代码没重启 DSH。
-        if (req.method === 'GET' && url.pathname === '/api/socialV2/tools') {
-          const flags = cfg.socialV2?.tools ?? {};
-          const getImagesOn = flags.getImages !== false;
-          writeJson(res, {
-            ok: true,
-            getImages: getImagesOn,
-            tools: {
-              image: { name: 'qq_get_message_images', flag: 'getImages', registered: getImagesOn },
-              video: { name: 'qq_get_message_video', flag: 'getImages', registered: getImagesOn },
-              link: { name: 'qq_open_video', flag: 'getImages', registered: getImagesOn }
-            },
-            otherDisabled: Object.entries(flags).filter(([, v]) => v === false).map(([k]) => k),
-            hint: getImagesOn
-              ? '这三个工具会注册；如果模型看不到，多半是改完代码/开关后没重启 DSH（MCP 工具清单是启动快照）'
-              : 'socialV2.tools.getImages=false ⇒ 图片/视频/链接三件套都不会注册（模型看不到、也不占 token）；要用来改回 true 并重启 DSH'
-          });
-          return;
-        }
 
         // cookie 体检（只读）：抖音能不能取到流取决于这份 cookies.txt 是否还新鲜
 

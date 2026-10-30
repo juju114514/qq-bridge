@@ -4,7 +4,7 @@
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
 - 已搬进模块：**109** 条（24 个文件）
-- 仍在 bridge 内联：**28** 条（波次 4 目标是 0）
+- 仍在 bridge 内联：**25** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（4 条）
 
@@ -235,35 +235,32 @@
 | GET | `/api/whitelist` | createWhitelistHandler |
 | POST | `/api/whitelist` | createWhitelistHandler |
 
-## src/bridge.js 内联（28 条，待迁移）
+## src/bridge.js 内联（25 条，待迁移）
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| GET | `/` | L4032 |
-| GET | `/api/status` | L4043 |
-| GET | `/api/presets` | L4049 |
-| POST | `/api/mode` | L4058 |
-| ANY | `/api/whitelist` | L4090 |
-| ANY | `/api/security` | L4102 |
-| POST | `/api/socialV2/config` | L4130 |
-| POST | `/api/socialV2/activity` | L4138 |
-| GET | `/api/socialV2/state` | L4156 |
-| GET | `/api/socialV2/prompt` | L4175 |
-| POST | `/api/socialV2/song` | L4205 |
-| POST | `/api/voice/send` | L4267 |
-| POST | `/api/send/voice` | L4267 |
-| POST | `/api/socialV2/sticker-list` | L4285 |
-| POST | `/api/socialV2/wait` | L4315 |
-| ANY | `/api/tokens/summary` | L4323 |
-| ANY | `/api/tokens/` | L4323 |
-| POST | `/api/socialV2/forward-media` | L4331 |
-| GET | `/api/socialV2/active-members` | L4350 |
-| POST | `/api/authorize/read` | L4384 |
-| GET | `/api/images/message` | L4391 |
-| GET | `/api/socialV2/tools` | L4399 |
-| POST | `/api/inject` | L4428 |
-| POST | `/api/send/group` | L4436 |
-| POST | `/api/send/private` | L4436 |
-| POST | `/api/send/reply` | L4436 |
-| POST | `/api/workspace/reset` | L4442 |
-| POST | `/api/restart` | L4448 |
+| GET | `/` | L4045 |
+| GET | `/api/status` | L4056 |
+| GET | `/api/presets` | L4062 |
+| POST | `/api/mode` | L4071 |
+| ANY | `/api/whitelist` | L4103 |
+| ANY | `/api/security` | L4115 |
+| POST | `/api/socialV2/config` | L4143 |
+| POST | `/api/socialV2/activity` | L4151 |
+| GET | `/api/socialV2/prompt` | L4169 |
+| POST | `/api/socialV2/song` | L4199 |
+| POST | `/api/voice/send` | L4261 |
+| POST | `/api/send/voice` | L4261 |
+| POST | `/api/socialV2/sticker-list` | L4279 |
+| POST | `/api/socialV2/wait` | L4309 |
+| ANY | `/api/tokens/summary` | L4317 |
+| ANY | `/api/tokens/` | L4317 |
+| POST | `/api/socialV2/forward-media` | L4325 |
+| POST | `/api/authorize/read` | L4354 |
+| GET | `/api/images/message` | L4361 |
+| POST | `/api/inject` | L4380 |
+| POST | `/api/send/group` | L4388 |
+| POST | `/api/send/private` | L4388 |
+| POST | `/api/send/reply` | L4388 |
+| POST | `/api/workspace/reset` | L4394 |
+| POST | `/api/restart` | L4400 |
