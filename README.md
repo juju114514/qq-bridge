@@ -390,9 +390,11 @@ cd qq-bridge
 把 QQ 消息接入 DSH agent：QQ 好友/群发来的消息会变成 DSH 会话里的用户消息，agent 的回复（含提问、工具审批）会发回 QQ。
 
 <details>
-<summary>版本与 DSH 适配历史（点开看；当前 <code>v0.2.1-r1</code> / DSH <code>0.2.1-rc.2</code>）</summary>
+<summary>版本与 DSH 适配历史（点开看；本 fork 当前 <code>v0.4.72</code> / DSH <code>0.2.1-rc.2</code>）</summary>
 
-> ⚠️ **当前版本 `v0.2.1-r1`，适配 DSH 0.2.1-rc.2**（0.2.0-rc.2 亦兼容；两个版本上都逐项实测：`npm run verify:adaptation`）。
+> ⚠️ **本 fork 当前版本 `v0.4.72`**（以 `package.json` 为准），适配 **DSH `0.2.1-rc.2`**。
+> 下面这段是 **fork 之前**（上游 `Derpyu520/qq-bridge` 的 `v0.2.x` 线）的适配历史，保留作背景；
+> 本 fork 的改动看 [CHANGELOG.md](CHANGELOG.md) 与 [FORK.md](FORK.md)。
 > 鉴权用 `~/.dsh` 里持久化的浏览器会话签名密钥**离线铸造 Cookie** —— DSH 0.1.7 起进程启动 token
 > 只存在于内存、不再落盘，旧版「从 guard 日志里读 token」的方式已失效。agent preset 是 DSH 0.1.7 起的
 > `@deepseek-ai/dsh-agent-preset` Cordis 行（`~/.dsh/.agent-presets/` 目录机制已废）。协议代次

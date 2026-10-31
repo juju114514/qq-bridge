@@ -175,3 +175,76 @@ curl -H "X-Console-Token: $tok" http://127.0.0.1:3100/api/status
 - ❌ 不要替人填别人的 QQ 号 / token
 - ❌ 不要在没装 DSH 或 SnowLuma 的情况下声称「装好了」
 - ❌ 不要修改 `roles/` 里的角色卡去「测试」——用 `/role` 切换
+
+---
+
+## 9. 2026-11 之后的入口（这部分是本 fork 新增的）
+
+> 如果你拿到的是一份旧 README，下面是新增的东西；都用 `node` 直接跑，不需要额外依赖。
+
+### 9.1 启动器（最省事）
+
+```powershell
+node scripts\launcher.mjs           # 体检 + 菜单
+node scripts\launcher.mjs --check   # 只体检；退出码 0 = 没问题
+```
+
+体检会逐项告诉你：Node 版本 / `config.json` 能否解析 / `ownerQQ` 是否为空 / 白名单是否为空 /
+网关（3000·3001）是否在跑 / 网关界面（5099）是否在 / 桥接 `/health/detail` 是否 ready。
+
+### 9.2 网关没登录时怎么办（最常见的卡点）
+
+```
+[!] 网关界面在（5099），但 OneBot 没起来 —— 去 http://127.0.0.1:5099 扫码登录
+```
+
+这是**必须由人做**的动作。扫码后网关会监听 3000/3001，桥接**自动重连**（不用重启桥接）。
+
+### 9.3 官方通道（默认上锁，不要擅自打开）
+
+`config.official.enabled` 默认 `false`。仓库口径是 **上锁 + 未验证**（见 `LOCK.md`）。
+
+如果用户明确要求启用，先跑：
+
+```powershell
+node scripts\official-probe.mjs --seconds 120   # 成功会写 state/official-probe.json
+```
+
+再按 [docs/guides/OFFICIAL-TROUBLESHOOTING.md](docs/guides/OFFICIAL-TROUBLESHOOTING.md) 的 8 类报错对照排查。
+**注意**：官方通道的 owner 私聊需要**同时**出现在 `official.allow` 与 `allow.private`（两层白名单）。
+
+### 9.4 自更新（不要让 AI 自己重启服务）
+
+```powershell
+node scripts\update.mjs --check               # 只看版本
+node scripts\update.mjs --apply --dry-run     # 预演（不写文件）
+node scripts\update.mjs --apply --yes         # 备份 → 覆盖 → 由计划任务重启 → 健康检查 → 失败自动回滚
+```
+
+保护清单：`config.json` / `state/` / `node_modules/` / `.git/` / `data/` / `logs/` / `audio/` / `cookies*`。
+
+### 9.5 环境快照（升级 DSH 前后各跑一次）
+
+```powershell
+node scripts\snapshot-env.mjs            # 生成 docs/validation/env-snapshot-<日期>.md
+node scripts\snapshot-env.mjs --compare  # 与上一份 diff
+```
+
+### 9.6 插件形态（二选一，不要和常驻 bridge 同时开）
+
+```powershell
+dsh plugin add github:juju114514/qq-bridge#path:/plugin
+```
+
+装完看 `plugin.log` 有没有这两行：
+`已对 agent 应用工具白名单` / `agent 已建：preset=qq-chat-v2`。
+没有就是没生效——插件会给 agent 工具权限，**没白名单等于把机器交出去**。
+
+### 9.7 验收（三件事，缺一不可）
+
+```powershell
+node scripts\test-audit.mjs                        # 离线审计
+powershell -File scripts\verify-qq-bridge.ps1      # 真机 18 项
+Invoke-RestMethod http://127.0.0.1:3100/health/detail | Select version,ready
+```
+
