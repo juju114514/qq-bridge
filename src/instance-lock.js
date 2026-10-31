@@ -9,6 +9,7 @@
 //   · 心跳：持有者每 30 秒刷 beatAt；超过 90 秒没刷新视为残留，可被接管
 //   · 释放：正常退出删锁；被强杀留下的锁靠心跳过期回收
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -39,10 +40,15 @@ function withGuard(fs, guardFile, fn, { retries = 40, delayMs = 5, staleMs = 500
       finally { try { fs.rmSync(guardFile, { force: true }); } catch { /* ignore */ } }
     } catch (error) {
       if (String(error?.code ?? '') !== 'EEXIST') throw error;
-      // 残留 guard：持有者已死或写入卡住超过 5 秒
+      // 残留 guard（0.4.49.1）：mtime 超时**且**持有者 pid 已死，才允许强占。
+      // 旧实现只看 mtime —— 进程被系统冻结超过 5 秒就会被别人夺走临界区。
       try {
         const st = fs.statSync(guardFile);
-        if (Date.now() - st.mtimeMs > staleMs) { fs.rmSync(guardFile, { force: true }); continue; }
+        if (Date.now() - st.mtimeMs > staleMs) {
+          let holderPid = 0;
+          try { holderPid = Number(fs.readFileSync(guardFile, 'utf8')) || 0; } catch { holderPid = 0; }
+          if (!isPidAlive(holderPid)) { fs.rmSync(guardFile, { force: true }); continue; }
+        }
       } catch { /* 已被别人清掉，重试即可 */ }
       sleepSync(delayMs);
     }
@@ -60,7 +66,10 @@ export function readLock(file) {
       pid: Number(raw.pid) || 0,
       hostname: String(raw.hostname ?? ''),
       since: Number(raw.since) || 0,
-      beatAt: Number(raw.beatAt) || 0
+      beatAt: Number(raw.beatAt) || 0,
+      // generation token（0.4.49.1）：只有"当初写这条锁的人"能刷/删它。
+      // 只比 pid + instanceId 不够：两个进程可能同 instanceId，而 pid 会被复用。
+      token: String(raw.token ?? ''),
     };
   } catch {
     return null;
@@ -92,6 +101,7 @@ export function acquireInstanceLock(file, { instanceId = 'default', pid = proces
     }
     const info = {
       instanceId, pid, hostname: os.hostname(),
+      token: crypto.randomUUID(),
       since: cur?.instanceId === instanceId ? (cur.since || now) : now,
       beatAt: now,
     };
@@ -102,12 +112,17 @@ export function acquireInstanceLock(file, { instanceId = 'default', pid = proces
     return { ok: false, holder: { instanceId: '(并发认领中)', pid: 0, hostname: '', since: 0, beatAt: 0 } };
   }
   if (!decided.ok) return { ok: false, holder: decided.holder };
+  const token = decided.info.token;
   let timer = null;
+  // 0.4.49.1（R49-01）：心跳也在 guard 内做「读取身份 → 写入」，
+  // 且必须比对 token —— 否则 A 读到旧锁后停顿、B 接管、A 恢复再写，就会覆盖 B。
   const beat = () => {
     try {
-      const own = readLock(file);
-      // 只刷自己的锁：被别人接管后不能再把锁抢回来
-      if (own && own.instanceId === instanceId && own.pid === pid) writeLock(file, { ...own, beatAt: Date.now() });
+      withGuard(fsImpl, guardFile, () => {
+        const own = readLock(file);
+        if (!own || own.token !== token) return;   // 已被别人接管：绝不再刷
+        writeLock(file, { ...own, beatAt: Date.now() });
+      });
     } catch { /* ignore */ }
   };
   timer = setInterval(beat, BEAT_INTERVAL_MS);
@@ -116,9 +131,13 @@ export function acquireInstanceLock(file, { instanceId = 'default', pid = proces
     if (timer) clearInterval(timer);
     timer = null;
     try {
-      const own = readLock(file);
-      if (own && own.instanceId === instanceId && own.pid === pid) fs.rmSync(file, { force: true });
+      // 同样进 guard + 比对 token：只删"我写的这一代"，不删别人的
+      withGuard(fsImpl, guardFile, () => {
+        const own = readLock(file);
+        if (own && own.token === token) fs.rmSync(file, { force: true });
+      });
     } catch { /* ignore */ }
   };
-  return { ok: true, release };
+  // beatNow 暴露给测试：确定性触发一次心跳（生产走 30s 定时器）
+  return { ok: true, release, token, info: decided.info, beatNow: beat };
 }
