@@ -2,6 +2,58 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.83：排错程序（GUI 小应用）+ 桌面快捷方式
+
+用户说「做成一个小应用那样的，有很多按钮，每个按键代表一个指令，然后生成结果」，
+后来又说「名字叫做排错程序，感觉挺实用的」。这版把入口做成一个真正的 Windows 应用。
+
+### `排错程序.exe`（16.5 KB，无依赖）
+
+12 个按钮，点哪个跑哪个，输出实时滚在窗口下半部分：
+
+| 按钮 | 干什么 |
+| --- | --- |
+| ① 体检 | `launcher.mjs --check`：Node / 配置 / 网关 / 桥接 |
+| ② 一键拉起 | `start-all.ps1`（网关 + 桥接） |
+| ③ 打开控制台 | 浏览器开工作台 |
+| ④ 网关扫码页 | 浏览器开 5099 |
+| ⑤ 看日志 | `state/bridge.log` 末 20 行 |
+| ⑥ 跑 18 项自检 | `verify-qq-bridge.ps1` |
+| ⑦ 检查更新 | `update.mjs --check` |
+| ⑧ 停止 | `schtasks /end` |
+| ⑨ 建快捷方式 | 桌面 + 开始菜单 |
+| ⑩ 打开仓库目录 | 资源管理器 |
+| ⑪ 运行报告 | 控制台 `#report` |
+| ⑫ 清空输出 | — |
+
+底部状态栏显示「上次执行了哪个命令、退出码、耗时」。
+
+### 怎么编译（不装任何东西）
+
+```powershell
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /out:排错程序.exe `
+  /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll scripts\launcher-src\LauncherGui.cs
+```
+
+业务逻辑仍在 JS 里（`scripts/launcher.mjs`），**改功能不用重新编译 exe**。
+
+### 桌面快捷方式
+
+`scripts/make-shortcut.ps1`：桌面 + 开始菜单各两个图标——「QQ 桥接控制台」（直接开工作台）
+与「QQ 桥接排错程序」。首次运行排错程序会问一次要不要放桌面（问过就写标记，不再烦）。
+
+### 踩到的两个坑（记下来）
+
+1. **WinForms 的 Dock 是按反向 z-order 布局的**：先加的 `Fill` 会吃掉整屏，标题被挤到按钮下面。
+   试了两次 `SetChildIndex` 才通，最后**放弃 Dock**，改成绝对定位 + `Anchor`，稳定。
+2. **从工具里启动 GUI 会被连带杀掉**：`Start-Process` 起的进程跟着命令一起回收，
+   换 `Win32_Process.Create`（WMI）脱离会话才活下来。
+
+### 顺带修的可用性问题
+
+- `启动器.cmd` 原来只认 PATH 里的 node（这台机器没有）→ 现在四级查找：`QQB_NODE` → PATH →
+  Program Files/LocalAppData → **DSH 自带运行时**
+- `.cmd` 原来是 UTF-8 + LF，cmd.exe 会逐行解析错 → 改成 **ASCII + CRLF**，中文提示全放进 JS
 ## 2026-11-01 — 0.4.77 ~ 0.4.82：空间模块整轮升级（AI 起草 / 配图 / 挑图 / 删除）
 
 用户的原话是「空间只有文字很单调」「图片上传给 AI 挑」「给人点赞评论放到空间里做子分支」。

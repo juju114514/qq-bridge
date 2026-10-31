@@ -178,6 +178,27 @@ function checkUpdate() {
   if (r.status !== 0) warn('检查没成功（网络/代理），不影响本地使用');
 }
 
+function makeShortcut() {
+  head('在桌面放快捷方式');
+  info('会创建「QQ 桥接控制台」（打开工作台）和「QQ 桥接排错程序」两个图标');
+  const code = runPS([path.join(root, 'scripts', 'make-shortcut.ps1')]);
+  if (code === 0) ok('完成：桌面已出现两个图标');
+  else bad('创建失败（看上面的输出）');
+}
+
+/** 首次运行问一次要不要放桌面；问过就写标记，不再烦人 */
+async function askShortcutOnce(rl) {
+  const flag = path.join(root, 'state', 'launcher-shortcut-asked');
+  const desktop = isWin ? path.join(process.env.USERPROFILE || '', 'Desktop') : '';
+  const exists = desktop && fs.existsSync(path.join(desktop, 'QQ 桥接控制台.lnk'));
+  if (fs.existsSync(flag) || exists) return;
+  console.log('');
+  const ans = (await ask(rl, '  要不要在桌面放两个快捷方式（控制台 + 启动器）？[Y/n] ')).toLowerCase();
+  try { fs.mkdirSync(path.dirname(flag), { recursive: true }); fs.writeFileSync(flag, new Date().toISOString()); } catch { /* 无所谓 */ }
+  if (ans === '' || ans === 'y' || ans === 'yes') makeShortcut();
+  else info('跳过。以后想要：菜单 9，或 powershell -File scripts\\make-shortcut.ps1');
+}
+
 function openGateway() {
   head('打开网关扫码页');
   info('网关（SnowLuma / NapCat）是独立软件，5099 是它自己的界面，不是我们的控制台');
@@ -231,6 +252,7 @@ async function menu() {
       console.log('  6) 停止');
       console.log('  7) 打开网关扫码页（SnowLuma，5099）');
       console.log('  8) 检查更新（只看版本，不动文件）');
+      console.log('  9) 在桌面放快捷方式（控制台 + 排错程序）');
       console.log('  0) 退出');
       const choice = await ask(rl, '选一个：');
       if (choice === '0' || choice === 'q') break;
@@ -242,6 +264,7 @@ async function menu() {
       else if (choice === '6') await stopAll();
       else if (choice === '7') openGateway();
       else if (choice === '8') checkUpdate();
+      else if (choice === '9') makeShortcut();
       else if (choice !== '') console.log('  （没有这个选项）');
     }
   } finally {

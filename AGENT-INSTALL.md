@@ -185,6 +185,8 @@ curl -H "X-Console-Token: $tok" http://127.0.0.1:3100/api/status
 ### 9.1 启动器（最省事）
 
 ```powershell
+# 图形版（推荐给人用）：双击仓库根的 排错程序.exe
+# 命令行等价物：
 node scripts\launcher.mjs           # 体检 + 菜单
 node scripts\launcher.mjs --check   # 只体检；退出码 0 = 没问题
 ```
