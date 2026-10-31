@@ -123,7 +123,11 @@ async function healthCheck({ quiet = false } = {}) {
   if (gw3000 || gw3001) ok(`网关在跑（${gw3000 ? '3000' : ''}${gw3000 && gw3001 ? ' + ' : ''}${gw3001 ? '3001' : ''}）`);
   else {
     const ui = await portOpen(5099);
-    if (ui) { warn('网关界面在（5099），但 OneBot 没起来 —— 去 http://127.0.0.1:5099 扫码登录'); problems.push('gateway-login'); }
+    if (ui) {
+      warn('网关界面在（5099），但 OneBot 没起来 —— 去 http://127.0.0.1:5099 扫码登录');
+      info('（菜单选 7 可以直接打开它）');
+      problems.push('gateway-login');
+    }
     else { warn('网关没起（3000/3001 都没监听）—— 需要先启动 SnowLuma 或 NapCat'); problems.push('gateway'); }
   }
 
@@ -165,6 +169,15 @@ async function stopAll() {
   else warn('停不下来（可能不是计划任务模式，或需要管理员权限）');
 }
 
+function openGateway() {
+  head('打开网关扫码页');
+  info('网关（SnowLuma / NapCat）是独立软件，5099 是它自己的界面，不是我们的控制台');
+  const url = 'http://127.0.0.1:5099/';
+  info(url);
+  openUrl(url);
+  ok('已打开：扫码登录后 OneBot 会监听 3000/3001，桥接会自动重连（不用重启）');
+}
+
 function openConsole() {
   head('打开控制台');
   const cfg = readConfig() || {};
@@ -203,10 +216,11 @@ async function menu() {
       console.log(c('36', '──────────────── 启动器 ────────────────'));
       console.log('  1) 体检（不启动任何东西）');
       console.log('  2) 一键拉起（网关 + 桥接）');
-      console.log('  3) 打开控制台');
+      console.log('  3) 打开控制台（我们的，3100）');
       console.log('  4) 看最近日志');
       console.log('  5) 跑 18 项自检');
       console.log('  6) 停止');
+      console.log('  7) 打开网关扫码页（SnowLuma，5099）');
       console.log('  0) 退出');
       const choice = await ask(rl, '选一个：');
       if (choice === '0' || choice === 'q') break;
@@ -216,6 +230,7 @@ async function menu() {
       else if (choice === '4') showLog();
       else if (choice === '5') await selfTest();
       else if (choice === '6') await stopAll();
+      else if (choice === '7') openGateway();
       else if (choice !== '') console.log('  （没有这个选项）');
     }
   } finally {

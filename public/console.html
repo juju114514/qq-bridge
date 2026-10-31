@@ -5491,9 +5491,40 @@ async function loadOverview() {
         + '<div style="font-size:10px;opacity:.5;margin-top:4px">' + sub + '</div>'
         + '</div>';
     }).join('');
+    appendGatewayCard();
   } catch (e) {
     box.innerHTML = '<div style="color:#ffb27a;font-size:12px">仪表盘读取失败：' + (e && e.message ? e.message : e) + '</div>';
   }
+}
+
+// 网关卡（0.4.71）：SnowLuma/NapCat 是**别人的软件**，但用户不该记两个端口。
+// 这里把它的状态放进仪表盘，未连接时直接给一个"打开扫码页"的按钮。
+// 注意：5099 是网关自带的 WebUI，不是我们的页面 —— 卡片副标题写清楚。
+async function appendGatewayCard() {
+  const box = document.getElementById('appDashboard');
+  if (!box) return;
+  let gw = 'unknown';
+  try {
+    const h = await api('/health/detail');
+    gw = String((h && h.services && h.services.snowluma) || 'unknown');
+  } catch { gw = 'unknown'; }
+  const okGw = gw === 'connected';
+  const host = location.hostname || '127.0.0.1';
+  const url = 'http://' + host + ':5099';
+  const card = document.createElement('div');
+  card.style.cssText = 'border:1px solid ' + (okGw ? 'rgba(120,160,220,.22)' : 'rgba(255,140,110,.5)')
+    + ';border-radius:9px;padding:9px 11px;background:rgba(22,34,56,.55)';
+  card.innerHTML = '<div style="font-size:11px;opacity:.65">网关（QQ）</div>'
+    + '<div style="font-size:16px;color:' + (okGw ? '#e8f0ff' : '#ffb27a') + ';margin-top:3px">'
+    + (okGw ? '已连接' : (gw === 'starting' ? '连接中' : '未连接')) + '</div>'
+    + '<div style="font-size:10px;opacity:.5;margin-top:4px">/health/detail · ' + gw + '</div>'
+    + (okGw ? '' : '<button type="button" style="margin-top:6px;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #34507a;background:#1b2b45;color:#dbe6ff;cursor:pointer">打开网关扫码页</button>');
+  if (!okGw) {
+    const btn = card.querySelector('button');
+    if (btn) btn.addEventListener('click', function () { window.open(url, '_blank'); });
+    card.title = '网关是独立软件（SnowLuma / NapCat），未登录时它不会把消息转给我们';
+  }
+  box.appendChild(card);
 }
 
 // ── QQ 空间（0.4.60）──────────────────────────────────────────────────
