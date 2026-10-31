@@ -287,6 +287,32 @@ export function apply(ctx) {
     return ok
   }
 
+  // ── 先白名单：按当前**真实**工具名算，成功就不再跑下面的黑名单 ──
+  let allowApplied = false
+  // 1.5) 注册期白名单（**按当前真实工具名算**）：
+  //      deny 名单在 DSH 0.2.1 上 78 个名字全部 unknown（静默失效），只靠 guard 太靠后。
+  //      这里枚举当前 scope 里真实存在的工具名，只保留白名单内的，再用 allow 一次性限制。
+  try {
+    const schemas = typeof ctx.tools?.schemas === 'function' ? ctx.tools.schemas() : null
+    const names = Array.isArray(schemas)
+      ? schemas.map((s) => (typeof s === 'string' ? s : s?.name ?? s?.function?.name)).filter((n) => typeof n === 'string' && n)
+      : []
+    const keep = names.filter((n) => SAFE_EXACT.has(n) || SAFE_PREFIXES.some((p) => n.startsWith(p)))
+    if (names.length > 0 && keep.length > 0 && keep.length < names.length) {
+      ctx.tools.restrict({ allow: keep })
+      allowApplied = true
+      console.error(`[qq-tool-restrict] 注册期白名单生效：保留 ${keep.length}/${names.length}（${keep.join(', ')}）`)
+      writeDiagnostics([`${stamp} allow-restrict ok 保留=${keep.length}/${names.length}：${keep.join(', ')}`])
+    } else if (names.length === 0) {
+      writeDiagnostics([`${stamp} allow-restrict 跳过：拿不到工具清单（tools.schemas 不可用）`])
+    }
+  } catch (error) {
+    // 单个工具名不存在会让 allow 整批拒绝 —— 退回到已有的 guard 兜底
+    writeDiagnostics([`${stamp} allow-restrict 失败：${String(error?.message ?? error)}`])
+  }
+
+  // ── 兜底：拿不到工具清单 / allow 失败时，退回逐个 deny（历史名单）──
+  if (!allowApplied) {
   const firstOk = attempt(KNOWN_DANGEROUS_GLOBAL_TOOLS)
   const firstFailed = failed.slice()
   failed.length = 0
@@ -317,25 +343,7 @@ export function apply(ctx) {
     timer?.unref?.()
   }
 
-  // 1.5) 注册期白名单（**按当前真实工具名算**）：
-  //      deny 名单在 DSH 0.2.1 上 78 个名字全部 unknown（静默失效），只靠 guard 太靠后。
-  //      这里枚举当前 scope 里真实存在的工具名，只保留白名单内的，再用 allow 一次性限制。
-  try {
-    const schemas = typeof ctx.tools?.schemas === 'function' ? ctx.tools.schemas() : null
-    const names = Array.isArray(schemas)
-      ? schemas.map((s) => (typeof s === 'string' ? s : s?.name ?? s?.function?.name)).filter((n) => typeof n === 'string' && n)
-      : []
-    const keep = names.filter((n) => SAFE_EXACT.has(n) || SAFE_PREFIXES.some((p) => n.startsWith(p)))
-    if (names.length > 0 && keep.length > 0 && keep.length < names.length) {
-      ctx.tools.restrict({ allow: keep })
-      console.error(`[qq-tool-restrict] 注册期白名单生效：保留 ${keep.length}/${names.length}（${keep.join(', ')}）`)
-      writeDiagnostics([`${stamp} allow-restrict ok 保留=${keep.length}/${names.length}：${keep.join(', ')}`])
-    } else if (names.length === 0) {
-      writeDiagnostics([`${stamp} allow-restrict 跳过：拿不到工具清单（tools.schemas 不可用）`])
-    }
-  } catch (error) {
-    // 单个工具名不存在会让 allow 整批拒绝 —— 退回到已有的 guard 兜底
-    writeDiagnostics([`${stamp} allow-restrict 失败：${String(error?.message ?? error)}`])
+
   }
 
   // 2) 执行期白名单：任何不在允许范围内的工具调用都会被拒绝。
