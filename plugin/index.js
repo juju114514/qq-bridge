@@ -140,8 +140,22 @@ export function apply(ctx, rawConfig) {
     },
   };
 
+  // 同名工具已经存在（例：桌面版还挂着 mcp-snowluma，那边也有 qq_get_prompt）时**跳过**。
+  // 真机事故（2026-10-31 12:02）：两个同名工具并存，供应商侧收到的函数 schema 变成
+  // `type: null` → 每一轮都报 "Invalid schema for function 'qq_get_prompt'"，整轮失败。
+  const toolExists = (n) => {
+    try { return typeof ctx.tools.get === 'function' && !!ctx.tools.get(n); } catch { return false; }
+  };
+  const registerTool = (tool) => {
+    if (toolExists(tool.name)) {
+      log(`工具 ${tool.name} 已存在（多半是同名 MCP 工具），跳过注册 —— 该功能请走 MCP 那份`);
+      return;
+    }
+    disposers.push(ctx.tools.register(tool));
+  };
+
   if (typeof ctx?.tools?.register === 'function') {
-    disposers.push(ctx.tools.register(ping));
+    registerTool(ping);
     // N1 第一批：发送 / 引用回复 / 标记已读（进程内工具，不走 MCP）
     const toolDeps = {
       get channel() { return toolRuntime.channel; },
@@ -149,9 +163,7 @@ export function apply(ctx, rawConfig) {
       chatLog,
       log: (m) => log(m),
     };
-    for (const tool of createTools(toolDeps)) {
-      disposers.push(ctx.tools.register(tool));
-    }
+    for (const tool of createTools(toolDeps)) registerTool(tool);
   } else {
     throw new Error('[qq-plugin] 挂载失败：ctx.tools.register 不可用（DSH 版本不匹配？）');
   }
