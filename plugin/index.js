@@ -150,16 +150,36 @@ export function apply(ctx, rawConfig) {
   // ── 通道（只有 enabled=true 才连 QQ）──────────────────────────────
   let channel = null;
   let driver = null;
+  let channelGuard = null;
   if (config.enabled) {
     (async () => {
       try {
-        const [{ OneBotWsClient }, { createInboundGate }, { createChannel }, { createAgentDriver }] = await Promise.all([
+        const [{ OneBotWsClient }, { createInboundGate }, { createChannel }, { createAgentDriver }, { createChannelModeStore }] = await Promise.all([
           import('../src/onebot-ws.js'),
           import('./inbound.js'),
           import('./channel.js'),
           import('./agent-driver.js'),
+          // 通道模式闸：插件和常驻 bridge 只能有一个在收 QQ 消息
+          import('../src/domains/channel-mode-store.js').catch(() => ({ createChannelModeStore: null })),
         ]);
         if (!ctx.agents?.create) throw new Error('ctx.agents.create 不可用（inject 里要声明 agents）');
+
+        // 通道模式闸（N3）：bridge 正在收消息时不重复接，否则群里会看到两条回复。
+        try {
+          const mod = await import('../src/domains/channel-mode-store.js');
+          const store = mod.createChannelModeStore({ fs: await import('node:fs'), path: await import('node:path'), stateDir: config.stateDir || './state' });
+          const claim = store.claim('plugin', { pid: process.pid, note: 'DSH 插件通道' });
+          if (!claim.ok) {
+            log('⚠️ 通道被占用：' + store.describe() + ' —— 插件不连接 QQ（要切到插件模式，请先停掉 bridge）。');
+            return;
+          }
+          log('通道模式：plugin（' + claim.reason + '）');
+          const timer = setInterval(() => store.heartbeat('plugin', { pid: process.pid, note: 'DSH 插件通道' }), 20_000);
+          timer.unref?.();
+          channelGuard = { store, stop: () => { clearInterval(timer); store.release('plugin', { pid: process.pid }); } };
+        } catch (e) {
+          log('通道模式闸不可用（继续启动）：' + (e?.message ?? e));
+        }
         driver = createAgentDriver({
           agents: ctx.agents,
           loadCreateUserMessage: async () => (await import('@deepseek-ai/dsh-llm')).createUserMessage,
@@ -220,6 +240,7 @@ export function apply(ctx, rawConfig) {
   // DSH 卸载插件时会调用返回的 dispose（Cordis 约定：apply 返回清理函数也合法）
   return () => {
     try { channel?.close(); } catch { /* ignore */ }
+    try { channelGuard?.stop?.(); } catch { /* ignore */ }
     try { driver?.disposeAll?.(); } catch { /* ignore */ }
     for (const d of disposers) {
       try { d(); } catch { /* 卸载失败不该影响宿主 */ }

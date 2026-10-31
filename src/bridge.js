@@ -97,6 +97,7 @@ import { handleSocialV2ExtraRoutes } from './api/socialV2-extra.js';
 import { createRoleCadence } from './domains/role-cadence.js';
 import { createPluginBridgeHandler } from './api/plugin-bridge.js';
 import { createPluginBridgeWiring } from './domains/plugin-bridge-wiring.js';
+import { startBridgeChannelGuard } from './domains/channel-mode-store.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -854,6 +855,9 @@ let modelSelectionEpoch = 0;
 // 角色卡注入节奏（默认 every=1 即每轮全量；配 socialV2.roleInjectEvery 才生效）。
 // 放模块级是为了不依赖 main() 内部声明顺序（与 modelSelectionEpoch 同理，避免 TDZ）。
 const roleCadence = createRoleCadence({ every: 1 });
+// 通道模式闸的运行时状态（N3）：认领成功才连网关，退出时释放。
+let channelModeGuard = null;
+let channelModeClaimed = false;
 const REASONING_EFFORT_OPTIONS = ['low', 'high', 'max'];
 const REASONING_EFFORT_DEFAULT = 'max';
 function normalizeReasoningEffort(value) {
@@ -10057,8 +10061,15 @@ function selfCheckSnapshot() {
     void healTokenIfStale(`error ${detail}`.trim().slice(0, 200));
   });
 
+  // ── 通道模式闸（N3）：同一份 state/ 只允许一个东西收 QQ 消息 ────────────
+  // 认领失败时**不连网关**（控制台与工具照常），避免和插件/另一个实例各自回一条。
+  channelModeGuard = startBridgeChannelGuard({
+    fs, path, stateDir: STATE_DIR, pid: process.pid, log: (m) => log(m),
+  });
+  channelModeClaimed = channelModeGuard.ok;
+
   // SnowLuma 尚未就绪时不阻塞桥接启动：SDK 自带后台重连，DSH 侧照常连接。
-  bot.connect().catch((error) => {
+  if (channelModeClaimed) bot.connect().catch((error) => {
     // 说明为什么"第一次连不上"在这里几乎是**必然**的，避免用户把它当成故障：
     // SnowLuma 的 **HTTP token（默认 3000）与 WS token（默认 3001）是两个不同的值**
     // （实测：同一个账号，两者不同；config.json 只能存一个，存的是 HTTP 那个）。
@@ -10085,11 +10096,13 @@ function selfCheckSnapshot() {
 process.on('SIGINT', () => {
   log('退出中…');
   saveState();
+  try { channelModeGuard?.stop(); } catch {}
   releaseLock();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
   saveState();
+  try { channelModeGuard?.stop(); } catch {}
   releaseLock();
   process.exit(0);
 });

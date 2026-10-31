@@ -1,0 +1,94 @@
+// 通道模式闸的落盘测试：认领 / 心跳 / 拒绝 / 释放 / 抢占过期。
+// 用临时目录，不碰真实 state。
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const mod = await import(pathToFileURL(path.join(here, '..', 'src', 'domains', 'channel-mode-store.js')).href);
+
+const results = [];
+const check = (n, f) => { try { f(); results.push(['ok', n]); } catch (e) { results.push(['FAIL', n + ' — ' + (e?.message ?? e)]); } };
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode-'));
+const mk = () => mod.createChannelModeStore({ fs, path, stateDir: tmp });
+
+check('首次认领成功，文件落盘', () => {
+  const s = mk();
+  const r = s.claim('bridge', { pid: 100 });
+  assert.equal(r.ok, true);
+  assert.equal(r.reason, 'free');
+  const onDisk = JSON.parse(fs.readFileSync(path.join(tmp, 'channel-mode.json'), 'utf8'));
+  assert.equal(onDisk.mode, 'bridge');
+  assert.equal(onDisk.pid, 100);
+});
+
+check('同 pid 心跳续期；别人不能续期', () => {
+  const s = mk();
+  const before = JSON.parse(fs.readFileSync(path.join(tmp, 'channel-mode.json'), 'utf8')).at;
+  assert.equal(s.heartbeat('bridge', { pid: 100 }), true);
+  const after = JSON.parse(fs.readFileSync(path.join(tmp, 'channel-mode.json'), 'utf8')).at;
+  assert.ok(after >= before);
+  assert.equal(s.heartbeat('bridge', { pid: 200 }), false);
+});
+
+check('不同 mode 抢 → 拒绝并给出持有者', () => {
+  const s = mk();
+  const r = s.claim('plugin', { pid: 300 });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'other-active');
+  assert.equal(r.holder.mode, 'bridge');
+});
+
+check('release：非持有者删不掉', () => {
+  const s = mk();
+  assert.equal(s.release('bridge', { pid: 999 }), false);
+  assert.ok(fs.existsSync(path.join(tmp, 'channel-mode.json')));
+  assert.equal(s.release('bridge', { pid: 100 }), true);
+  assert.equal(fs.existsSync(path.join(tmp, 'channel-mode.json')), false);
+});
+
+check('心跳过期后可以被抢占（崩溃残留）', () => {
+  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode2-'));
+  const stale = { mode: 'bridge', pid: 111, at: Date.now() - 120_000 };
+  fs.writeFileSync(path.join(dir2, 'channel-mode.json'), JSON.stringify(stale));
+  const s = mod.createChannelModeStore({ fs, path, stateDir: dir2 });
+  const r = s.claim('plugin', { pid: 222 });
+  assert.equal(r.ok, true);
+  assert.equal(r.reason, 'stale');
+  assert.equal(s.read().mode, 'plugin');
+});
+
+check('startBridgeChannelGuard：拿到时启动心跳、stop 时释放', () => {
+  const dir3 = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode3-'));
+  let ticks = 0;
+  const guard = mod.startBridgeChannelGuard({
+    fs, path, stateDir: dir3, pid: 777,
+    setIntervalFn: (fn) => { ticks += 1; const t = setInterval(fn, 10_000); return t; },
+    clearIntervalFn: (t) => clearInterval(t),
+    log: () => {},
+  });
+  assert.equal(guard.ok, true);
+  assert.equal(ticks, 1);
+  guard.stop();
+  assert.equal(fs.existsSync(path.join(dir3, 'channel-mode.json')), false);
+});
+
+check('startBridgeChannelGuard：被占用时 ok:false 且不留文件', () => {
+  const dir4 = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode4-'));
+  fs.writeFileSync(path.join(dir4, 'channel-mode.json'), JSON.stringify({ mode: 'plugin', pid: 5, at: Date.now() }));
+  const logs = [];
+  const guard = mod.startBridgeChannelGuard({
+    fs, path, stateDir: dir4, pid: 777, log: (m) => logs.push(m),
+  });
+  assert.equal(guard.ok, false);
+  assert.equal(guard.reason, 'other-active');
+  assert.match(logs[0], /通道被占用/);
+});
+
+const failed = results.filter(([s]) => s !== 'ok');
+for (const [s, n] of results) console.log(`  ${s === 'ok' ? 'ok  ' : 'FAIL'} ${n}`);
+console.log(`\n结果：${results.length - failed.length} 通过，${failed.length} 失败`);
+process.exit(failed.length ? 1 : 0);
