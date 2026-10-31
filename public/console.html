@@ -1789,6 +1789,7 @@ button:active:not(:disabled) {
         <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
         <button data-view="access" class="nav-item"><span class="nav-icon" aria-hidden="true">⊙</span>访问与安全</button>
         <button data-view="operations" class="nav-item"><span class="nav-icon" aria-hidden="true">⌘</span>调试与运维</button>
+        <button data-view="supervisor" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>守护进程</button>
       </nav>
     <div class="sidebar-bottom"><span class="local-dot"></span>本地控制台<small>QQ ↔ DeepSeek Harness</small></div>
   </aside>
@@ -2802,6 +2803,21 @@ button:active:not(:disabled) {
       <span style="font-size:11px;opacity:.55">只记本页操作，不是引擎历史</span>
     </div>
     <div id="songHistory" style="margin-top:8px;font-size:12px;color:#c8d4ea">（还没有）</div>
+  </div>
+</section>
+<section data-page="supervisor" class="card span-all" hidden id="section-supervisor">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <h2 data-note="存活以进程为准，历史来自日志">守护进程</h2>
+      <div class="meta">存活看 <code>/health/detail</code> 的进程信息；重启/看门狗事件来自 <code>runner.log</code> 与 <code>watchdog.log</code>（<b>日志不是权威存活判断</b>）。两者对不上时下方会显式提示。</div>
+    </div>
+    <button class="btn" id="svRefresh" type="button">刷新</button>
+  </div>
+  <div id="svConflicts" style="margin-top:10px"></div>
+  <div id="svCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:10px">（加载中…）</div>
+  <div style="margin-top:14px">
+    <strong style="font-size:13px">事件时间线（最近 20 条）</strong>
+    <div id="svEvents" style="margin-top:8px;font-size:12px;color:#c8d4ea">（加载中…）</div>
   </div>
 </section>
 <section data-page="memory-graph" class="card span-all" hidden>
@@ -4664,6 +4680,7 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
+  supervisor: ['守护进程', '它一直在，才叫可靠。', '进程存活、重启历史与看门狗事件；存活以进程为准，日志只作补充。'],
   song: ['点歌 / 唱歌', '把喜欢的，唱给对方听。', '下载并截取音频，以语音条发到指定会话（真实发送）。'],
   space: ['空间动态', '让关心的人看到。', '发说说、看好友动态、点赞与评论（写操作需确认）。'],
   'memory-graph': ['记忆星图', '记忆星图', '把长期记忆画成星点：权重、新鲜度、关联一目了然'],
@@ -5725,6 +5742,75 @@ function bindSong() {
   document.getElementById('songGo')?.addEventListener('click', songGo);
 }
 bindSong();
+
+// ── 守护进程（0.4.62）─────────────────────────────────────────────────
+function svClock(ts) {
+  if (!ts) return '—';
+  const d = new Date(Number(ts));
+  const p = function (n) { return String(n).padStart(2, '0'); };
+  return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function svDur(ms) {
+  const n = Number(ms) || 0;
+  if (n < 60000) return Math.round(n / 1000) + ' 秒';
+  if (n < 3600000) return Math.round(n / 60000) + ' 分钟';
+  return (n / 3600000).toFixed(1) + ' 小时';
+}
+async function loadSupervisor() {
+  const cards = document.getElementById('svCards');
+  const evBox = document.getElementById('svEvents');
+  const cfBox = document.getElementById('svConflicts');
+  if (!cards) return;
+  cards.textContent = '（加载中…）';
+  try {
+    const r = await api('/api/supervisor');
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    const alive = r.alive === true;
+    const p = r.process || {};
+    const list = [
+      { label: '进程存活', value: alive ? '运行中' : '未存活', sub: alive ? ('pid ' + p.pid + ' · 已运行 ' + svDur(p.uptimeMs)) : '健康接口不可用', ok: alive },
+      { label: '24 小时重启', value: String(r.restarts24h || 0) + ' 次', sub: r.lastExit ? ('上次退出 code=' + r.lastExit.code + ' · ' + svClock(r.lastExit.at)) : '无退出记录', ok: (r.restarts24h || 0) === 0 },
+      { label: '看门狗事件（24h）', value: String(r.watchdog24h || 0) + ' 条', sub: '来自 watchdog.log，非权威', ok: true },
+      { label: '判定口径', value: r.authority === 'process' ? '以进程为准' : String(r.authority || '—'), sub: '日志只补历史', ok: true }
+    ];
+    cards.innerHTML = list.map(function (c) {
+      const color = c.ok ? '#e8f0ff' : '#ffb27a';
+      const border = c.ok ? 'rgba(120,160,220,.22)' : 'rgba(255,140,110,.5)';
+      return '<div style="border:1px solid ' + border + ';border-radius:9px;padding:9px 11px;background:rgba(22,34,56,.55)">'
+        + '<div style="font-size:11px;opacity:.65">' + c.label + '</div>'
+        + '<div style="font-size:16px;color:' + color + ';margin-top:3px">' + c.value + '</div>'
+        + '<div style="font-size:10px;opacity:.5;margin-top:4px">' + c.sub + '</div></div>';
+    }).join('');
+
+    const conflicts = Array.isArray(r.conflicts) ? r.conflicts : [];
+    if (cfBox) {
+      cfBox.innerHTML = conflicts.length ? conflicts.map(function (c) {
+        return '<div style="padding:8px 10px;border:1px solid rgba(255,140,110,.5);border-radius:8px;background:rgba(60,32,26,.45);font-size:12px;color:#ffb27a;margin-bottom:6px">⚠ ' + c + '</div>';
+      }).join('') : '';
+    }
+
+    const events = Array.isArray(r.events) ? r.events : [];
+    if (evBox) {
+      evBox.innerHTML = events.length ? events.map(function (e) {
+        const tag = e.source === 'watchdog' ? '#c9a6ff' : '#7fb6ff';
+        const kindColor = e.kind === 'exit' ? '#ff9d7a' : (e.kind === 'restart' ? '#ffd479' : '#9fd6a0');
+        return '<div style="padding:5px 0;border-bottom:1px dashed rgba(90,120,160,.22)">'
+          + '<span style="opacity:.55;font-size:11px">' + svClock(e.at) + '</span> '
+          + '<span style="color:' + tag + ';font-size:11px">[' + e.source + ']</span> '
+          + '<span style="color:' + kindColor + '">' + e.text + '</span></div>';
+      }).join('') : '（没有事件）';
+    }
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (cards) cards.innerHTML = '<div style="color:#ffb27a;font-size:12px">读取失败：' + msg + '</div>';
+    if (evBox) evBox.textContent = '';
+  }
+}
+function bindSupervisor() {
+  document.getElementById('svRefresh')?.addEventListener('click', loadSupervisor);
+}
+bindSupervisor();
+
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -5754,6 +5840,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'overview' && typeof loadOverview === 'function') loadOverview();
   if (page === 'space' && typeof spaceInit === 'function') spaceInit();
   if (page === 'song' && typeof songInit === 'function') songInit();
+  if (page === 'supervisor' && typeof loadSupervisor === 'function') loadSupervisor();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });

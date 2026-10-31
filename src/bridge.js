@@ -98,6 +98,7 @@ import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { migrateFromLegacy } from './memory-store.js';
+import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
 import { atomicWriteJson, atomicWriteText, renameWithRetry } from './atomic-write.js';
 import { finalizeTurn } from './turn-finalize.js';
@@ -4328,6 +4329,14 @@ async function main() {
             getQuietHours: () => (cfg.socialV2 ? (cfg.socialV2.quietHours ?? null) : null),
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
             files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log') },
+            getProcessInfo: () => ({
+              pid: process.pid,
+              uptimeMs: Math.round(process.uptime() * 1000),
+              ready: dshReady === true,
+              version: cfg.version || ''
+            }),
+            parseRunnerEvents: (lines) => parseRunnerEventsShared(lines),
+            parseWatchdogEvents: (lines) => parseWatchdogEventsShared(lines),
           })
         })) return;
 

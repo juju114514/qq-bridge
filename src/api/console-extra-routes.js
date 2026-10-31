@@ -12,6 +12,7 @@
 
 import { createDiagnosticsHandler } from './console-diagnostics.js';
 import { createOverviewHandler } from './overview.js';
+import { createSupervisorHandler } from '../supervisor-view.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
 
@@ -46,6 +47,23 @@ export async function handleExtraRoutes(ctx = {}) {
       getQuietHours: d.getQuietHours,
       readFile: d.readFile,
       files: d.files
+    });
+    await handler.handle();
+    return true;
+  }
+
+
+  // GET /api/supervisor —— 守护进程视图（存活以进程为准，历史来自日志）
+  if (req.method === 'GET' && url.pathname === '/api/supervisor') {
+    const d = resolveDeps();
+    const handler = createSupervisorHandler({
+      sendJson,
+      log: d.log,
+      readFile: d.readFile,
+      files: d.files,
+      getProcessInfo: d.getProcessInfo,
+      parseRunnerEvents: d.parseRunnerEvents,
+      parseWatchdogEvents: d.parseWatchdogEvents
     });
     await handler.handle();
     return true;
