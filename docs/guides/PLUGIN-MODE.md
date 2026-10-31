@@ -97,7 +97,7 @@ node <dsh-cli>\lib\bin.js --profile qqtest --dump-config | Select-String 'qq-bri
   "onebotUrl": "ws://127.0.0.1:3001",    // SnowLuma / NapCat 的 WS
   "accessToken": "",
   "sidecarUrl": "http://127.0.0.1:3100", // 常驻 bridge 的控制台地址
-  "sidecarToken": "",                    // 空 = 用 sidecar 的 state/console-token
+  "sidecarToken": "",                    // 空 = 自动读 <stateDir>/console-token（推荐留空）
   "accessToken": "…",                    // ⚠️ SnowLuma 的 **WS** token（不是 HTTP 那个）
   "stateDir": "<sidecar 的 state 目录>",  // ⚠️ 必须和 sidecar 同一个，否则通道互斥失效
   "requireMention": true,

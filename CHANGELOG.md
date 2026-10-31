@@ -2,7 +2,46 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.9：真正的根因 —— 工具没经过 `defineTool()` 编译
+## 2026-10-31 — 0.4.10：插件自动读 sidecar console-token（原来全 401）
+
+> 小更新。真机测试暴露的问题：工具通了，但**读快照一律 401**。
+
+### 现象
+
+```
+qqb_get_prompt → { "ok": false, "status": 401, "error": "unauthorized" }
+```
+
+### 原因
+
+sidecar 的 `/snapshot`、`/events`、`/intents` 都要 Bearer token，
+而插件配置里 `sidecarToken: ""` 意味着**不带 Authorization** → 401。
+
+之前"能用"只是因为在同一台机器上、且我们只测了 `/health`（免鉴权）。
+
+### 修法
+
+`sidecarToken` 为空时，自动读 `<stateDir>/console-token`：
+
+```js
+let sidecarToken = config.sidecarToken;
+if (!sidecarToken) {
+  const f = path.join(config.stateDir, 'console-token');
+  if (fs.existsSync(f)) sidecarToken = fs.readFileSync(f, 'utf8').trim();
+}
+```
+
+同机部署下开箱即用；跨机部署显式配 `sidecarToken` 即可。
+
+### 验证（真机 group:631539503）
+
+```
+role: xiaojingyu   角色卡 9012 字
+wake: diving / infinite / 关键词 11 个 / probability 0.05
+recent: 0 条（沉睡中）
+```
+
+之前 401，现在 200 且有真实数据。## 2026-10-31 — 0.4.9：真正的根因 —— 工具没经过 `defineTool()` 编译
 
 > 小更新，修的是"改名也没用"的那个 schema 错。
 

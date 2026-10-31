@@ -17,6 +17,8 @@
 
 import { sessionIdFor as sessionIdOf } from './agent-driver.js';
 import { createTools } from './tools.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createChatLog } from './chat-log.js';
 
 // 宿主用 defineTool() 把「参数说明」编译成 JSON Schema；直接把裸对象丢给
@@ -106,9 +108,18 @@ export function apply(ctx, rawConfig) {
   let sidecarClient = null;
   import('./sidecar.js')
     .then(({ createSidecarClient }) => {
+      // token 空时自动取 sidecar 的 console-token（同一台机器、同一个 state 目录）：
+      // 否则 /snapshot 与 /intents 都会 401 —— 真机上表现为"工具说拿不到快照"。
+      let sidecarToken = config.sidecarToken;
+      if (!sidecarToken) {
+        try {
+          const f = path.join(config.stateDir, 'console-token');
+          if (fs.existsSync(f)) sidecarToken = fs.readFileSync(f, 'utf8').trim();
+        } catch { /* 读不到就不带 token，交给服务端 401 */ }
+      }
       sidecarClient = createSidecarClient({
         baseUrl: config.sidecarUrl,
-        token: config.sidecarToken,
+        token: sidecarToken,
         log: (m) => log(m),
       });
       toolRuntime.sidecar = sidecarClient;
