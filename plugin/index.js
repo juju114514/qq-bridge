@@ -287,14 +287,24 @@ export function apply(ctx, rawConfig) {
             } catch (e) { log('installModelSelection 失败：' + (e?.message ?? e)); }
             // 插件会把 assistant 文本自动转发到 QQ —— 模型不需要（也不该）再调发送工具。
             // 真机教训：它会先试 qqb_send_message / qq_send_message，报错后再绕一圈，白烧 30+ 步。
+            // 🔒 安全边界：QQ 会话来自**陌生人**，绝不能拿到本地工具。
+            // 真机事故（2026-10-31）：群友让 agent 做"管理员级操作"，它照做了 ——
+            // 因为插件建的 agent 默认带全部工具（bash/read/write/edit…），权限就是用户本人。
+            // 这里用**白名单**（allow）而不是黑名单：新增工具默认不可用。
+            // 与桥接 preset 的 guard 白名单对齐：只有 QQ 工具 + 两个无害模型侧工具。
+            // 注意：宿主里 web 搜索是 MCP 命名空间工具（mcp__web-search-safe__*），
+            // 名字带前缀，这里按**精确名**拿不到 —— 宁可让 QQ 侧没有联网，也不要留本地能力。
+            const ALLOW = [
+              'qqb_ping', 'qqb_get_prompt', 'qqb_mark_read',
+              'qqb_get_recent_messages', 'qqb_get_unread_messages', 'qqb_wait_for_messages',
+              'qqb_send_message', 'qqb_reply',
+              'todo_write', 'ask_user_question',
+            ];
             try {
-              agentCtx?.tools?.restrict?.({ deny: [
-                'qqb_send_message', 'qqb_reply',
-                'qq_send_message', 'qq_reply', 'qq_send_group_message', 'qq_send_private_message', 'qq_send_burst',
-              ] });
-              log('已对 agent 禁用发送类工具（回复走自动转发）');
+              agentCtx?.tools?.restrict?.({ allow: ALLOW });
+              log('已对 agent 应用工具白名单（' + ALLOW.length + ' 个；本地工具全部不可见）');
             } catch (e) {
-              log('禁用发送工具失败（不影响使用，只是会多发几步）：' + (e?.message ?? e));
+              log('⚠️ 工具白名单应用失败（危险，请检查）：' + (e?.message ?? e));
             }
           },
           loadCreateUserMessage: async () => (await import('@deepseek-ai/dsh-llm')).createUserMessage,
