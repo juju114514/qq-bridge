@@ -253,6 +253,9 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 
 ## 版本怎么看
 
+> 📌 **文档版本：0.4.88**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
+> 有守卫 `check-readme-version.mjs` 校验它和代码是否一致。）
+
 
 > **三处口径，别混**：`package.json` 的 `version` 是**代码版本**；`git tag` 是**发布点**；
 > [CHANGELOG.md](CHANGELOG.md) 是**改了什么**。三者以 `package.json` + `git tag` 为准。

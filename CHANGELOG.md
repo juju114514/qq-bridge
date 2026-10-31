@@ -2,6 +2,36 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.88：版本号收敛成一条命令 + 文档版本标记
+
+用户问"能不能在 README 顶部写个版本，让外部核对一眼看出读的是不是最新"。加了，但**不是手写**——
+手写必然再漂一次（0.4.26 vs 0.4.84 就是这么来的）。
+
+### 1）README 顶部加「文档版本」标记
+
+```markdown
+> 📌 **文档版本：0.4.88**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
+> 有守卫 `check-readme-version.mjs` 校验它和代码是否一致。）
+```
+
+### 2）`scripts/bump-version.mjs`：一次改全
+
+```
+node scripts/bump-version.mjs 0.4.88     # 改 package.json / compat.json / README 标记
+node scripts/bump-version.mjs --check    # 只校验四处是否一致
+```
+
+以后发版的固定动作变成：`bump-version` → 写 CHANGELOG → `test-audit` → commit/tag/push。
+
+### 3）守卫升级：标记缺失或不一致都红
+
+`check-readme-version.mjs` 现在做两件事：
+- README 里「当前 vX.Y.Z」这类**断言**必须与 `package.json` 一致（原有）
+- **必须有「文档版本：x.y.z」标记**，且与 `package.json` 一致（新增；缺失也算错）
+
+自测：把标记改成 0.4.87 → 退出码 1 并指出行号；`bump-version 0.4.88` → 恢复通过。
+
+> 从此"文档版本落后于代码"这件事，机器会拦住，不用再靠人肉对比。
 ## 2026-11-01 — 0.4.87：能力全景补全（空间 / Web 搜索 / 控制台 19 个页面）
 
 第三轮外部核对指出「能力全景」表还漏东西。逐条核实结果：

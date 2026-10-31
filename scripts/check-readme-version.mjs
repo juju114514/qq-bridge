@@ -36,6 +36,18 @@ lines.forEach((line, i) => {
   }
 });
 
+// 必须显式声明「文档版本」，且与 package.json 一致 —— 这样别人一眼能判断自己读的是不是最新
+const MARKER_RE = /文档版本[：:]\s*\*{0,2}(\d+\.\d+\.\d+)/;
+const marker = text.match(MARKER_RE);
+if (!marker) {
+  console.error('  ✗ README 顶部缺少「文档版本：x.y.z」标记（守卫无法判断文档新旧）');
+  console.error('    修法：在「版本怎么看」下面加一行，或用 node scripts/bump-version.mjs <版本> 自动维护');
+  process.exit(1);
+}
+if (marker[1] !== version) {
+  bad.push({ line: text.slice(0, marker.index).split('\n').length, found: marker[1], text: '文档版本标记' });
+}
+
 if (!bad.length) {
   console.log(`  ✓ README 的版本断言与 package.json 一致（当前 ${version}）`);
   process.exit(0);
