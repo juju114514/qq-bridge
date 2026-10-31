@@ -179,7 +179,7 @@ check('assets/README.md 说明了 deepseek娘.png 的归属', () => {
 check('package.json 里每个 node -e 脚本都能真正执行（引号配对 + 无乱码）', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const inline = Object.entries(pkg.scripts ?? {}).filter(([, cmd]) => /^node -e "/.test(String(cmd)));
-  assert.ok(inline.length >= 1, '应当至少有一个 node -e 内联脚本（postinstall）');
+      // 0.4.4 起不再强制要求 postinstall：仓库根的 postinstall 会让 git 方式安装插件被 pnpm 拦下（ERR_PNPM_IGNORED_BUILDS）
   for (const [name, cmd] of inline) {
     const inner = String(cmd).replace(/^node -e "/, '').replace(/"$/, '');
     assert.equal((inner.match(/'/g) ?? []).length % 2, 0, `${name}: 单引号不配对（内层脚本非法）`);
@@ -189,9 +189,10 @@ check('package.json 里每个 node -e 脚本都能真正执行（引号配对 + 
   }
 });
 
-check('postinstall 的输出能正常打印（npm install 时看得见）', () => {
+check('内联脚本的输出能正常打印（有就校验；0.4.4 起不强制有 postinstall）', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const cmd = String(pkg.scripts?.postinstall ?? '');
+  if (!cmd) { /* 没有 postinstall 是合法的：见上面 0.4.4 的说明 */ return; }
   const inner = cmd.replace(/^node -e "/, '').replace(/"$/, '');
   const run = spawnSync(process.execPath, ['-e', inner], { encoding: 'utf8', timeout: 30000 });
   assert.equal(run.status, 0);

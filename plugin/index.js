@@ -164,18 +164,18 @@ export function apply(ctx, rawConfig) {
     (async () => {
       try {
         const [{ OneBotWsClient }, { createInboundGate }, { createChannel }, { createAgentDriver }, { createChannelModeStore }] = await Promise.all([
-          import('../src/onebot-ws.js'),
+          import('./vendor/onebot-ws.js'),
           import('./inbound.js'),
           import('./channel.js'),
           import('./agent-driver.js'),
           // 通道模式闸：插件和常驻 bridge 只能有一个在收 QQ 消息
-          import('../src/domains/channel-mode-store.js').catch(() => ({ createChannelModeStore: null })),
+          import('./vendor/channel-mode-store.js').catch(() => ({ createChannelModeStore: null })),
         ]);
         if (!ctx.agents?.create) throw new Error('ctx.agents.create 不可用（inject 里要声明 agents）');
 
         // 通道模式闸（N3）：bridge 正在收消息时不重复接，否则群里会看到两条回复。
         try {
-          const mod = await import('../src/domains/channel-mode-store.js');
+          const mod = await import('./vendor/channel-mode-store.js');
           const store = mod.createChannelModeStore({ fs: await import('node:fs'), path: await import('node:path'), stateDir: config.stateDir });
           const claim = store.claim('plugin', { pid: process.pid, note: 'DSH 插件通道' });
           if (!claim.ok) {
