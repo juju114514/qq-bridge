@@ -26,5 +26,6 @@ export {
   resolveAudioProcessing,
   resolveFfmpeg,
   processAudioVolume,
-  cleanupTemp
+  cleanupTemp,
+  SILK_EXTS
 } from './voice-core.js';
