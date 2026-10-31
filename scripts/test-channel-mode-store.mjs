@@ -78,7 +78,7 @@ check('startBridgeChannelGuard：拿到时启动心跳、stop 时释放', () => 
 
 check('startBridgeChannelGuard：被占用时 ok:false 且不留文件', () => {
   const dir4 = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode4-'));
-  fs.writeFileSync(path.join(dir4, 'channel-mode.json'), JSON.stringify({ mode: 'plugin', pid: 5, at: Date.now() }));
+  fs.writeFileSync(path.join(dir4, 'channel-mode.json'), JSON.stringify({ mode: 'plugin', pid: process.pid, at: Date.now() }));
   const logs = [];
   const guard = mod.startBridgeChannelGuard({
     fs, path, stateDir: dir4, pid: 777, log: (m) => logs.push(m),
@@ -86,6 +86,17 @@ check('startBridgeChannelGuard：被占用时 ok:false 且不留文件', () => {
   assert.equal(guard.ok, false);
   assert.equal(guard.reason, 'other-active');
   assert.match(logs[0], /通道被占用/);
+});
+
+check('startBridgeChannelGuard：持有者进程已退出 → 直接接管（脏环境实测）', () => {
+  const dir6 = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode6-'));
+  // 用一个几乎不可能存在的 pid，模拟"上一个 bridge 被杀了但认领还在 TTL 内"
+  fs.writeFileSync(path.join(dir6, 'channel-mode.json'), JSON.stringify({ mode: 'bridge', pid: 999999, at: Date.now(), note: 'stale' }));
+  const logs = [];
+  const guard = mod.startBridgeChannelGuard({ fs, path, stateDir: dir6, pid: 888, log: (m) => logs.push(m) });
+  assert.equal(guard.ok, true, '死持有者不该拦住新实例');
+  assert.ok(logs.some((m) => /已退出，接管通道/.test(m)), '要记一行接管日志');
+  guard.stop();
 });
 
 check('startBridgeChannelGuard：enabled=false → sidecar-only，不认领也不写文件', () => {

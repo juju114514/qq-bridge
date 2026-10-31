@@ -65,7 +65,20 @@ export function startBridgeChannelGuard({
     log('sidecar-only 模式（channel.enabled=false）：不连接 QQ 网关，也不占用通道认领');
     return { ok: false, store, disabled: true, stop: () => {} };
   }
-  const claim = store.claim('bridge', { pid, note: 'sidecar 通道' });
+  let claim = store.claim('bridge', { pid, note: 'sidecar 通道' });
+  if (!claim.ok) {
+    // 脏环境实测（2026-10-31）：桥接 restart 时旧进程的认领还在 TTL 内（60s），
+    // 新实例被判"被另一个 bridge 占着"→ 干脆不连 QQ，日志只有一行 warning。
+    // 和插件侧一样按 pid 存活性判断：持有者已退出就直接接管。
+    const holderPid = Number(claim?.holder?.pid ?? 0);
+    let holderAlive = false;
+    try { if (holderPid > 0) { process.kill(holderPid, 0); holderAlive = true; } } catch { holderAlive = false; }
+    if (holderPid > 0 && !holderAlive) {
+      try { fs.rmSync(store.file, { force: true }); } catch { /* ignore */ }
+      log(`通道持有者 pid ${holderPid} 已退出，接管通道`);
+      claim = store.claim('bridge', { pid, note: 'sidecar 通道' });
+    }
+  }
   if (!claim.ok) {
     log('⚠️ 通道被占用：' + store.describe()
       + ' —— 本实例不连接 QQ 网关（控制台与工具仍可用）。'

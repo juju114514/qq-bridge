@@ -32,10 +32,14 @@ function check(name, fn) {
 }
 
 // ── 1. 锁文件只能有一个，且必须是 README 里说的那个 ────────────────────────
-check('只有一个依赖锁文件（package-lock.json）', () => {
+check('依赖锁文件：必须有 package-lock.json（额外的 pnpm-lock.yaml 只提示）', () => {
+  // 2026-10-31 干净环境实测：只装 pnpm 的机器 `pnpm install` 会写 pnpm-lock.yaml，
+  // 旧断言「只能有一个锁文件」会让全新克隆直接失败 —— 那是使用者的正常选择，不该判红。
   const locks = fs.readdirSync(root).filter((f) => /^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/.test(f));
-  assert.deepEqual(locks, ['package-lock.json'],
-    `实际: ${locks.join(', ') || '（无）'} —— 多套锁文件会让依赖树按包管理器漂移`);
+  assert.ok(locks.includes('package-lock.json'), 'package-lock.json 必须存在（文档口径是 npm）');
+  const extra = locks.filter((f) => f !== 'package-lock.json');
+  if (extra.length) console.log('      （提示：还发现 ' + extra.join(', ') + '，本地用没事，别提交进仓库）');
+  assert.ok(locks.length >= 1, '至少要有一个锁文件');
 });
 
 check('README / CI / 安装脚本三处的包管理器口径一致（都是 npm）', () => {
