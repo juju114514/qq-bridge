@@ -61,6 +61,11 @@ export async function handleSessionResetRoute(ctx = {}) {
 
   try {
     const r = await d.resetConversation(key);
+    // 没有活动会话 = 已经重置过（或还没开始聊）→ 幂等成功，别报错吓人
+    if (r && r.ok === false && r.reason === 'no-session') {
+      sendJson({ ok: true, key, backupPath, note: '该会话当前没有活动上下文（可能已重置过），无需再重置' });
+      return true;
+    }
     if (r && r.ok === false) {
       sendJson({ ok: false, error: String(r.error || '重置失败'), backupPath }, 502);
       return true;

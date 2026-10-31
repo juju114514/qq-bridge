@@ -111,6 +111,15 @@ await check('重置本身失败 → 502 且带上备份路径', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+await check('没有活动会话（no-session）→ 幂等成功，不报 502', async () => {
+  const { out } = await call({
+    snapshotConversation: () => null,
+    resetConversation: async () => ({ ok: false, reason: 'no-session' })
+  }, { key: 'group:77', backup: false });
+  assert.equal(out.ok, true);
+  assert.match(out.note, /没有活动上下文/);
+});
+
 await check('GET 方法 → 405', async () => {
   const { handled, out } = await call({}, {}, { method: 'GET' });
   assert.equal(handled, true);
