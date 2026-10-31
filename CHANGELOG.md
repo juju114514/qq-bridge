@@ -2,6 +2,33 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.22：`sync-snowluma-token` 的 token 语义修正
+
+> 小更新。轮换 SnowLuma token 时发现的真机结论。
+
+### 结论
+
+`config.json` 里两个字段各管一条链路，**写反了不会报错，但会"连上却发不出消息"**：
+
+| 字段 | 用途 |
+| --- | --- |
+| `snowluma.accessToken` | **WS 连接**（3001）——动作也走这条 |
+| `snowluma.httpToken` | HTTP 调用（3000，发语音/取图/查状态） |
+
+之前脚本把 HTTP token 写进了 `accessToken`，实测后果：
+
+```
+3001 连上了，但 send_group_msg 一律返回 unauthorized
+```
+
+### 修法
+
+脚本拆成两处分别写，并新增 `snowluma.httpToken`。
+
+### 附带
+
+轮换流程也验证了一遍：改 SnowLuma 的 `config/onebot_<QQ>.json` 里两个 token → watchdog 自动重启 →
+`node scripts/sync-snowluma-token.mjs` → 重启桥接。**不需要重新扫码登录 QQ。**
 ## 2026-10-31 — 0.4.21：桥接的工具限制改成「按真实工具名算的白名单」
 
 > 安全加固。上一版的 deny 名单在 DSH 0.2.1 上几乎全失效。
