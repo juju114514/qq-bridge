@@ -169,6 +169,15 @@ async function stopAll() {
   else warn('停不下来（可能不是计划任务模式，或需要管理员权限）');
 }
 
+function checkUpdate() {
+  head('检查更新');
+  info('走 GitHub Release（不写任何文件）；国内网络可能需要在菜单外带 --proxy');
+  const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'update.mjs'), '--check'], {
+    cwd: root, stdio: 'inherit'
+  });
+  if (r.status !== 0) warn('检查没成功（网络/代理），不影响本地使用');
+}
+
 function openGateway() {
   head('打开网关扫码页');
   info('网关（SnowLuma / NapCat）是独立软件，5099 是它自己的界面，不是我们的控制台');
@@ -221,6 +230,7 @@ async function menu() {
       console.log('  5) 跑 18 项自检');
       console.log('  6) 停止');
       console.log('  7) 打开网关扫码页（SnowLuma，5099）');
+      console.log('  8) 检查更新（只看版本，不动文件）');
       console.log('  0) 退出');
       const choice = await ask(rl, '选一个：');
       if (choice === '0' || choice === 'q') break;
@@ -231,6 +241,7 @@ async function menu() {
       else if (choice === '5') await selfTest();
       else if (choice === '6') await stopAll();
       else if (choice === '7') openGateway();
+      else if (choice === '8') checkUpdate();
       else if (choice !== '') console.log('  （没有这个选项）');
     }
   } finally {

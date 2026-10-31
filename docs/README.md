@@ -38,6 +38,7 @@
 | [guides/VOICE.md](guides/VOICE.md) | 语音发送全解：独立工具（`voice-tool/` 的图形界面与命令行）、桥接 CLI、AI 工具、控制台面板，以及**工具拆出后的配置解析顺序** | ✅ 2026 整理时已更新（工具移到上一级 `voice-tool/`） |
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/QUIET-HOURS.md](guides/QUIET-HOURS.md) | **静默时段**：什么时候该开、口径（只算入站）、护栏（默认要求覆盖 02–06）为什么存在、一键采用的四道保护、手动改文件要重启 | ✅ 2026-10-31 |
+| [guides/AUTO-UPDATE.md](guides/AUTO-UPDATE.md) | **自更新（安全版）**：check / download / apply 三步，受保护清单、失败自动回滚、与常见更新器的差异 | ✅ 2026-11-01 |
 | [guides/DSH-UPGRADE-ADAPTATION.md](guides/DSH-UPGRADE-ADAPTATION.md) | **DSH 升级后的适配清单**：快照对比 → 六步检查（插件加载/工具面/控制台/预设）→ 验收三步 | ✅ 2026-11-01 |
 | [guides/OFFICIAL-TROUBLESHOOTING.md](guides/OFFICIAL-TROUBLESHOOTING.md) | **官方通道报错调整方案**：8 类实测报错（两层白名单 / not-friend / 被动窗口 / 鉴权 / 去重）逐条给办法 | ✅ 2026-11-01 |
 | [guides/SWITCH-FROM-UPSTREAM.md](guides/SWITCH-FROM-UPSTREAM.md) | **从上游切到本 fork**：三条路径（脚本/手工/并行装）、受保护清单、三个坑（配置键/任务路径/插件重挂）、回退 | ✅ 2026-11-01 |
