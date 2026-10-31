@@ -2,7 +2,45 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.11：sidecar-only 时**真的**不连网关（否则两边各收一份）
+## 2026-10-31 — 0.4.12：插件里 @ 判定失效（事件没有 self_id）
+
+> 小更新。真机第一次端到端发消息就踩到了。
+
+### 现象
+
+群里 `@小鲸鱼 在吗` → **完全没反应**，日志不报错，事件流也没有新记录。
+但通道确实被插件认领了（`channel-mode.json` = plugin），3001 上也只有插件一条连接。
+
+### 原因
+
+SnowLuma 推送的消息事件里**没有 `self_id` 字段**。而插件是这么判定的：
+
+```js
+const r = gate(event, { selfId: event?.self_id });   // ← undefined
+// inbound.js
+const target = String(selfId ?? event?.self_id ?? '');  // → ''
+if (!target) return false;                              // → 永远"没 @ 我"
+```
+
+结果 `requireMention: true` 下，**每一条群消息都被判成 no-mention 丢掉**。
+桥接没这个问题，因为它在启动时调 `get_login_info` 拿到了自己的 QQ 号。
+
+### 修法
+
+通道启动后主动问一次网关：
+
+```js
+const info = await channel.call('get_login_info', {});
+state.selfId = String(info?.data?.user_id ?? '');
+// 之后
+gate(event, { selfId: state.selfId ?? event?.self_id });
+```
+
+取不到时会打一行警告（`@` 判定可能失效），而不是静默失败。
+
+### 教训
+
+`requireMention` 这类"静默丢弃"的判定，失败时不报错 —— 只能靠**真实发一条消息**才能发现。## 2026-10-31 — 0.4.11：sidecar-only 时**真的**不连网关（否则两边各收一份）
 
 > 小更新。真机实测发现：日志写着"让出通道"，实际却还连着 3001。
 

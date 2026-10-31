@@ -262,7 +262,7 @@ export function apply(ctx, rawConfig) {
             if (key && event?.post_type === 'message' && text.trim()) {
               chatLog.append(key, { text, userId: String(event.user_id ?? ''), self: String(event.user_id) === String(event.self_id) });
             }
-            const r = gate(event, { selfId: event?.self_id });
+            const r = gate(event, { selfId: state.selfId ?? event?.self_id });
             if (!r.handle) return;
             bySession.set(sessionIdOf(r.key), r.key);
             driver.deliver(r.key, r.text).catch((e) => log('投递给 Agent 失败：' + (e?.message ?? e)));
@@ -271,6 +271,21 @@ export function apply(ctx, rawConfig) {
         await channel.start();
         toolRuntime.channel = channel;
         toolRuntime.sidecar = sidecarClient;
+        // 真机事故（2026-10-31 13:0x）：SnowLuma 推送的事件**不带 self_id**，
+        // 于是「@我了吗」永远判 false —— 群里 @ 它完全没反应，也不报错。
+        // 这里主动问一次网关要自己的 QQ 号，之后所有 @ 判定都用它。
+        try {
+          const info = await channel.call('get_login_info', {});
+          const selfId = info?.data?.user_id ?? info?.user_id ?? null;
+          if (selfId) {
+            state.selfId = String(selfId);
+            log('自身 QQ = ' + state.selfId + '（用于 @ 判定）');
+          } else {
+            log('⚠️ 没取到自身 QQ（get_login_info 无 user_id），@ 判定可能失效');
+          }
+        } catch (e) {
+          log('⚠️ get_login_info 失败（@ 判定可能失效）：' + (e?.message ?? e));
+        }
         log('QQ 通道已启动');
       } catch (e) {
         log('QQ 通道启动失败（插件仍可用，只是不连 QQ）：' + (e?.message ?? e));
