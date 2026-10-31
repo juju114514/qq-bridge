@@ -2,6 +2,11 @@ let runtimeFingerprint = null;
 // 通道 epoch（fencing token）：只有本实例持有通道时才有值；sidecar-only 时为 null
 let channelEpoch = null;
 let channelStore = null;
+// 健康状态（进程 / 通道 / 各服务分开表达）；用函数注入避免影响既有初始化顺序
+let health = null;
+function healthSet(service, state, reason = '') {
+  try { health?.set(service, state, reason); } catch { /* 健康状态不能影响主流程 */ }
+}
 
 /**
  * 副作用边界守卫（0.4.39）。返回 true=可以继续，false=已过期应中止。
@@ -26,6 +31,7 @@ function epochGuard(stage) {
 }
 import { readBuildInfo as buildInfo, fingerprintLine } from './build-info.js';
 import { StaleEpochError } from './domains/channel-mode.js';
+import { createHealthState } from './health-state.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
 // 链路：
@@ -3375,6 +3381,7 @@ async function main() {
         dshReady = true;
         lastMode = currentMode;
         log(`DSH 已就绪（模式: ${currentMode}）`);
+    healthSet('dsh', 'connected');
         // 启动时恢复的排队消息要主动补投；否则要等到"下一条新消息"才会被顺带 flush
         if (queued.size > 0) {
           log(`DSH 已就绪，开始补投 ${queued.size} 个会话的排队消息`);
@@ -3752,6 +3759,7 @@ async function main() {
         version: pluginWiring.version(),
         // 运行时指纹：/health 里返回 version/commit/presetHash，便于排查「跑的是哪套」
         buildInfo: () => runtimeFingerprint?.build ?? null,
+        health: () => health?.snapshot() ?? null,
         mode: 'bridge',
         getSocialV2State,
         readRoleState,
@@ -4311,6 +4319,7 @@ async function main() {
     });
     server.listen(port, cfg.consoleHost || '127.0.0.1', () => {
       log(`本地控制台已启动：http://127.0.0.1:${port}`);
+    healthSet('console', 'connected');
     });
     // 端口被占用说明已有实例在跑：以 exit 2 退出，守护脚本会识别为"已有实例"而不是无限重启
     server.on('error', (error) => {
@@ -9945,8 +9954,12 @@ function selfCheckSnapshot() {
         officialSelfName = String(cfg.official?.botName ?? '').trim() || '官方机器人';
         officialSelfOpenid = String(cfg.official?.appid ?? '').trim();
         log(`[official] 自我身份已设置：显示名「${officialSelfName}」（官方通道无 QQ 号）`);
+        healthSet('official', 'connected');
       })
-      .catch((error) => log(`[official] 启动失败：${error?.message ?? error}`));
+      .catch((error) => {
+        log(`[official] 启动失败：${error?.message ?? error}`);
+        healthSet('official', 'reconnecting', 'start-failed');
+      });
   }
 
   bot.onNotice('notify', async (event) => {
@@ -10002,6 +10015,7 @@ function selfCheckSnapshot() {
     const connectedUrl = bot.url ?? cfg.snowluma.wsUrl;
     snowlumaHealth.connected = true;
     log(`SnowLuma 已连接：${connectedUrl}`);
+    healthSet('snowluma', 'connected');
     // 「已连接」只说明与 SnowLuma 的 WebSocket 通了，**不说明 QQ 侧收得到消息** ——
     // 这个区别见 startSnowlumaWatch 的说明。这里顺手把上游健康快照刷一次。
     void pollSnowlumaStatus();
@@ -10173,11 +10187,23 @@ function selfCheckSnapshot() {
     // 日志里的「token 自愈失败」与 config.json 的 snowluma.homeDir。
     log(`SnowLuma 首次连接未成功（将在后台自动重连并尝试自愈 WS token）: ${error?.message ?? error}`);
   });
+  // 健康状态：进程/通道/服务分开（0.4.41）
+  try {
+    const info0 = buildInfo(ROOT);
+    health = createHealthState({
+      version: info0.version, buildId: info0.buildId, sourceCommit: info0.commit,
+      ownerId: channelStore?.ownerId ?? '', pid: process.pid, startedAt: info0.startedAt ?? Date.now(),
+    });
+    health.setChannel({ mode: channelEpoch != null ? 'bridge' : null, epoch: channelEpoch, status: channelEpoch != null ? 'active' : 'starting' });
+    healthSet('console', 'connected');
+  } catch { /* ignore */ }
+
   // 运行时指纹：version / commit / preset hash（排查真机「跑的是哪套代码」用）
   try {
     const info = buildInfo(ROOT);
     runtimeFingerprint = { build: info };
     log('运行时指纹：' + fingerprintLine(info));
+    try { health?.setOwnerId(channelStore?.ownerId ?? ''); } catch { /* ignore */ }
   } catch { /* 指纹失败不影响启动 */ }
   log('桥接已启动。按 Ctrl+C 退出。');
   // 首次部署一次性任务：把已存在的群成员标成 listed（延迟 12 秒，不阻塞启动）

@@ -14,7 +14,7 @@
 
 export const DEFAULT_TTL_MS = 60_000;
 // 状态文件格式版本：以后改结构时靠它做兼容分支
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const MODE_BRIDGE = 'bridge';
 export const MODE_PLUGIN = 'plugin';
 
@@ -42,10 +42,15 @@ export function isFresh(record, now = Date.now(), ttlMs = DEFAULT_TTL_MS) {
  */
 export function claimMode({
   current, mode, pid, now = Date.now(), ttlMs = DEFAULT_TTL_MS, note = '', floorEpoch = 0,
+  ownerId = '', procStart = 0,
 }) {
   const base = Math.max(Number(current?.epoch) || 0, Number(floorEpoch) || 0);
-  const build = (epoch, status = 'active') => ({
-    schemaVersion: SCHEMA_VERSION, mode, pid, epoch, status, at: now, note,
+  // ownerId：进程身份（PID 会被系统重用，ownerId 不会）；procStart：进程启动时刻
+  const build = (epoch, status = 'active', keepOwner = '') => ({
+    schemaVersion: SCHEMA_VERSION, mode, pid,
+    ownerId: keepOwner || ownerId || '',
+    procStart: keepOwner ? Number(current?.procStart) || procStart : procStart,
+    epoch, status, at: now, note,
   });
   if (!current) return { ok: true, record: build(base + 1), reason: 'free' };
   // 已显式释放的认领等于"空闲"，但它带着 epoch 水位 → 新主人从 base+1 起算
@@ -54,9 +59,25 @@ export function claimMode({
   }
   if (!isFresh(current, now, ttlMs)) return { ok: true, record: build(base + 1), reason: 'stale' };
   if (current.mode === mode) {
-    // 同模式：同 pid 就是续期（epoch 不变）；不同 pid 说明上一个同类实例还活着 → 拒绝
-    if (String(current.pid) === String(pid)) {
-      return { ok: true, record: { ...current, schemaVersion: SCHEMA_VERSION, at: now, note, status: 'active' }, reason: 'refresh' };
+    // 同模式：同 pid **且 ownerId 一致** 才算续期（PID 可能被重用成别的进程）
+    const samePid = String(current.pid) === String(pid);
+    const curOwner = String(current.ownerId ?? '');
+    const sameOwner = curOwner ? curOwner === String(ownerId ?? '') : true; // v1 迁移：无 ownerId 视为同一持有者
+    if (samePid && sameOwner) {
+      return {
+        ok: true,
+        record: {
+          ...current, schemaVersion: SCHEMA_VERSION, pid,
+          ownerId: curOwner || String(ownerId ?? ''),
+          procStart: Number(current.procStart) || procStart,
+          at: now, note, status: 'active',
+        },
+        reason: 'refresh',
+      };
+    }
+    if (samePid && !sameOwner) {
+      // 同一个 PID，但换了进程（PID 重用）：这是**新持有者**，epoch 要递增
+      return { ok: true, record: build(base + 1), reason: 'pid-reused' };
     }
     return { ok: false, reason: 'other-active', holder: current, sameMode: true };
   }
@@ -98,9 +119,13 @@ export function assertEpochCurrent(current, { mode, epoch } = {}) {
 }
 
 /** 释放：只有持有者能删（避免把别人的认领删掉）。 */
-export function shouldRelease(current, { mode, pid }) {
+export function shouldRelease(current, { mode, pid, ownerId = '' }) {
   if (!current) return false;
-  return String(current.mode) === String(mode) && String(current.pid) === String(pid);
+  if (String(current.mode) !== String(mode)) return false;
+  if (String(current.pid) !== String(pid)) return false;
+  const curOwner = String(current.ownerId ?? '');
+  if (curOwner && ownerId && curOwner !== String(ownerId)) return false; // PID 被重用：不是"我"
+  return true;
 }
 
 /** 给人看的一句话（日志/控制台横幅共用）。 */
@@ -108,5 +133,6 @@ export function describeMode(record) {
   if (!record) return '无（没有通道在认领）';
   const age = Math.max(0, Math.round((Date.now() - (Number(record.at) || 0)) / 1000));
   const epoch = record.epoch != null ? `，epoch ${record.epoch}` : '';
-  return `${record.mode}（pid ${record.pid}${epoch}，${age}s 前心跳${record.note ? '，' + record.note : ''}）`;
+  const owner = record.ownerId ? `，owner ${String(record.ownerId).slice(0, 8)}` : '';
+  return `${record.mode}（pid ${record.pid}${epoch}${owner}，${age}s 前心跳${record.note ? '，' + record.note : ''}）`;
 }

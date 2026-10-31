@@ -112,7 +112,7 @@ export function runPrelude(ctx) {
   //      它们**自带** bearer 校验（state/plugin-token，缺省回退 console token），
   //      校验在 handler 里用定长比较做。这里只放行，不再让控制台令牌先拦一刀
   //      （否则插件永远收到 401，而且拿不到"缺少哪个 token"的信息）。
-  if (pathname === '/health' || pathname === '/snapshot'
+  if (pathname === '/health' || pathname === '/health/detail' || pathname === '/snapshot'
       || pathname === '/events' || pathname === '/intents') {
     return null;
   }

@@ -253,7 +253,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     spawnSync: () => ({ status: 0, stdout: '', stderr: '' }),
     // process 桩要带 env：voice-core / bridge 会读 process.env.FFMPEG_PATH、FFPROBE_PATH 等。
     // 之前只给 pid/platform/kill/exit，导致 `process.env.FFMPEG_PATH` 直接抛 TypeError。
-    process: { pid: process.pid, cwd: () => process.cwd(), platform: process.platform, kill: process.kill, env: {}, exit: (code) => { throw new Error('unexpected exit ' + code); } },
+    process: { pid: process.pid, cwd: () => process.cwd(), platform: process.platform, kill: process.kill, uptime: () => process.uptime(), env: {}, exit: (code) => { throw new Error('unexpected exit ' + code); } },
     setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timers.add(timer); return timer; },
     clearTimeout, setInterval: () => ({ unref() {} }), clearInterval: () => {},
     NodeApiClient: class { constructor() { return api; } },
