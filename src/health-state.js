@@ -9,7 +9,10 @@
 // live = 进程在跑；ready = 具备"收消息并处理"的条件（通道持有 + DSH + 对应通道连接）
 const STATES = Object.freeze(['starting', 'connected', 'reconnecting', 'degraded', 'stopped', 'failed']);
 
-export function createHealthState({ version = '', buildId = '', sourceCommit = '', ownerId = '', pid = process.pid, startedAt = Date.now() } = {}) {
+export function createHealthState({
+  version = '', buildId = '', sourceCommit = '', ownerId = '', pid = process.pid, startedAt = Date.now(),
+  readSystem = null,
+} = {}) {
   /** @type {Record<string, string>} */
   const services = { dsh: 'starting', snowluma: 'starting', official: 'stopped', console: 'starting' };
   let channel = { mode: null, epoch: null, status: 'starting' };
@@ -38,11 +41,14 @@ export function createHealthState({ version = '', buildId = '', sourceCommit = '
     const activeTransport = channel.mode === 'official' ? null : (channel.mode === 'plugin' ? null : 'snowluma');
     const transportReady = activeTransport ? services[activeTransport] === 'connected' : true;
     const ready = channelOwned && services.dsh === 'connected' && transportReady;
+    let system = null;
+    try { system = typeof readSystem === 'function' ? readSystem() : null; } catch { system = null; }
     return {
       ok: true,
       version,
       buildId,
       sourceCommit,
+      ...(system ? { system } : {}),
       process: { status: 'running', pid, ownerId: ownerIdValue, uptimeMs: Date.now() - startedAt },
       channel: { ...channel },
       services: { ...services },

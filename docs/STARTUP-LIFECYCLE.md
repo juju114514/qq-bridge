@@ -99,3 +99,39 @@ SIGINT / SIGTERM
 | `failed` | 启动或运行失败 |
 
 `live` = 进程活着；`ready` = 能收消息。两者分开。
+
+## 七、资源可观测性（0.4.48）
+
+`/health/detail` 新增 `system` 段，用来回答一个具体问题：
+**是我们卡了，还是服务器被别的进程吃满了？**
+
+```json
+"system": {
+  "cpuPercent": 0.9,
+  "rssMb": 77.9,
+  "heapUsedMb": 24,
+  "freeMemMb": 4739.5,
+  "totalMemMb": 16255,
+  "memUsedPercent": 70.8,
+  "loadavg": null,
+  "eventLoopLagMs": 9,
+  "eventLoopLagMaxMs": 39,
+  "cores": 8,
+  "platform": "win32",
+  "warn": []
+}
+```
+
+判读方法：
+
+| 指标 | 说明 |
+| --- | --- |
+| `eventLoopLagMs` / `MaxMs` | **最能说明"我们被拖累"**：>500ms 说明 Node 主线程被抢 |
+| `cpuPercent` | 只算**本进程**；它低但 lag 高 → 说明是别的进程在抢 CPU |
+| `freeMemMb` | 系统剩余内存；<200MB 时 `warn` 会出现 `low-memory` |
+| `loadavg` | Windows 上恒为 `null`（如实标注，不假装有值） |
+
+`warn` 数组是**非致命告警**（不改变 `ready`）：
+`event-loop-lag:*` / `event-loop-lag-max:*` / `low-memory:*` / `high-cpu:*`。
+它只描述"环境变差了"，不然后果是"我们坏了" —— 这条区别很重要，
+所以它**不参与** `ready` 判定。
