@@ -233,6 +233,11 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     setReady(value) { dshReady = value; },
     setPresets(value) { dshPresetIds = value; dshDefaultPreset = 'standard'; },
     resetEpoch() { if (registryRef) registryRef.bumpEpoch(); else sessionEpoch++; },
+    // 0.4.40：注入通道 store / epoch，验证「发送前 fencing」在真实路径上生效
+    setChannelGuard({ store, epoch }) {
+      channelStore = store ?? null;
+      channelEpoch = epoch == null ? null : Number(epoch);
+    },
   };
   bot.onPrivateMessage(async (event) => {`);
   const timers = new Set();
