@@ -29,6 +29,7 @@
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
 | [guides/OFFICIAL-VS-BRIDGE.md](guides/OFFICIAL-VS-BRIDGE.md) | **官方插件 vs 本仓库**：QQ 官方 `@tencent-connect/dsh-qqbot` 三步接入的实测信息与能力边界；诚实对照两条路（账号风险 / 群消息可见性 / 主动插话 / 表情包 / 记忆），附决策树 | ✅ 2026-10-31 |
 | [guides/INSTALL-SKILL.md](guides/INSTALL-SKILL.md) | **一键安装 Skill**：把这份手册给能执行命令的 AI 助手，它替你装；用户只在三处动手（扫码/白名单/确认）；含自愈顺序与风险声明 | ✅ 2026-10-31 |
+| [guides/BRANCHING.md](guides/BRANCHING.md) | **分支与发版策略**：main 永远可发布；开发进 `next/X.Y.Z`；小更新 +0.0.1、大更新 +0.1.0；`--no-ff` 合并 + tag + Release | ✅ 2026-10-31 |
 | [guides/RELEASE.md](guides/RELEASE.md) | **发版流程**：tag + Release 一条命令；含「gh 猜错仓库」「token 缺 read:org」「正文必须与标签一致」三个坑 | ✅ 2026-10-31 |
 | [guides/BEGINNER.md](guides/BEGINNER.md) | **零基础八步**：从空电脑到「她在群里回话」。每步三件事——做什么 / 应该看到什么 / 没看到怎么办；含常见卡点速查表与术语小抄 | ✅ 2026-10-31 |
 | [guides/FRESH-INSTALL.md](guides/FRESH-INSTALL.md) | **全新机器安装**（入口：Windows `.\scripts\first-run.ps1` / Linux `./deploy/first-run.sh`，或 `node scripts/preflight.mjs` 只体检）：按阶段（系统准备→取代码→装依赖→配置→装 DSH/SnowLuma→首次启动→首次对话）列出会踩的坑，每条标「有没有对应排查」；含本次补的 4 个缺口（没有 npm / PowerShell 执行策略 / preset 没装 / postinstall 提示不是错误）。入口命令 `node scripts/preflight.mjs` | ✅ 2026-10-27 |
