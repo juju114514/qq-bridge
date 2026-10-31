@@ -25,7 +25,8 @@
     "cordis.patch.yml",
     "tools.js",
     "sidecar.js",
-    "chat-log.js"
+    "chat-log.js",
+    "vendor"
   ],
   "dsh": {
     "bundle": {
