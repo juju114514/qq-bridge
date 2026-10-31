@@ -2,7 +2,56 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.8：`sync-snowluma-token.mjs`（HTTP/WS token 别手改）
+## 2026-10-31 — 0.4.9：真正的根因 —— 工具没经过 `defineTool()` 编译
+
+> 小更新，修的是"改名也没用"的那个 schema 错。
+
+### 现象
+
+```
+Invalid schema for function 'qqb_get_prompt':
+schema must be a JSON Schema of type: 'object', got 'type: null'
+```
+
+改名之后**还是同样的错**，说明名字不是原因。
+
+### 根因
+
+宿主 `ctx.tools.register()` **不做 schema 编译**，它只校验 `output`。
+编译发生在 `defineTool()` 里：
+
+```js
+// @deepseek-ai/dsh-tools
+function defineTool(options) {
+  const parameters = parameterSchemaSpecToJsonSchema(options.parameters);  // ← 这里才补上 type: 'object'
+  ...
+}
+```
+
+而我们一直把**裸对象**（`{ chat_id: { type:'string', required:true } }`）直接丢给 `register()`，
+于是供应商收到的函数 schema 是 `{ chat_id: {...} }` —— 没有 `type`，被读成 `type: null`。
+
+**这解释了为什么 0.4.5（撞名跳过）和 0.4.7（改名）都没治本。**
+
+### 修法
+
+`plugin/index.js` 顶层动态取 `defineTool`，注册前包一层：
+
+```js
+let defineToolImpl = null;
+try { ({ defineTool: defineToolImpl } = await import('@deepseek-ai/dsh-tools')); } catch {}
+
+// registerTool 里
+ctx.tools.register(defineToolImpl ? defineToolImpl(tool) : tool);
+```
+
+- 取不到（离线测试）就退回裸对象，不影响挂载
+- 实测编译结果：`parameters.type = "object"`，`required: ["chat_id"]` 正常
+
+### 守卫
+
+`test-plugin-mount.mjs` 增加一条：`index.js` 必须同时出现 `defineToolImpl ? defineToolImpl(tool)` 与
+`import('@deepseek-ai/dsh-tools')` —— 防止以后又把裸对象直接注册。## 2026-10-31 — 0.4.8：`sync-snowluma-token.mjs`（HTTP/WS token 别手改）
 
 > 小更新。加一个脚本，避免"手改 token 改错那一个"。
 

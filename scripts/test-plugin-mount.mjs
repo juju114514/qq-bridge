@@ -137,6 +137,13 @@ check('同名工具已存在 → 跳过注册（真机：与 mcp-snowluma 撞名
   assert.ok(registered.includes('qqb_send_message'), '不撞名的照常注册');
 });
 
+check('index.js 必须用 defineTool 编译参数（否则供应商侧 type: null，每轮报错）', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(path.join(pluginDir, 'index.js'), 'utf8');
+  assert.match(src, /defineToolImpl \? defineToolImpl\(tool\)/, 'registerTool 里要过 defineTool');
+  assert.match(src, /import\('@deepseek-ai\/dsh-tools'\)/, '要从宿主取 defineTool');
+});
+
 const failed = results.filter(([s]) => s !== 'ok');
 for (const [s, n] of results) console.log(`  ${s === 'ok' ? 'ok  ' : 'FAIL'} ${n}`);
 console.log(`\n结果：${results.length - failed.length} 通过，${failed.length} 失败`);
