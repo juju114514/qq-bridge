@@ -2,7 +2,46 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.12：插件里 @ 判定失效（事件没有 self_id）
+## 2026-10-31 — 0.4.13：两条路都开放，一键切换
+
+> 小更新。插件模式和原来的 bridge 模式**并存**，用户按需选。
+
+### 为什么
+
+插件模式能跑，但不是所有场景都合适（长期挂机还是独立进程更稳）。
+之前切换要手改两个文件、还要记住重启顺序，容易出错。
+
+### 新增
+
+`scripts/switch-mode.mjs` + Windows 上两个 bat：
+
+```powershell
+node scripts/switch-mode.mjs status   # 看现在谁在收
+node scripts/switch-mode.mjs bridge   # 路线 A：常驻 bridge
+node scripts/switch-mode.mjs plugin   # 路线 B：DSH 插件
+```
+
+```
+切换-桥接模式.bat
+切换-插件模式.bat
+```
+
+脚本改两处：
+
+| 文件 | 字段 | A | B |
+| --- | --- | --- | --- |
+| `config.json` | `channel.enabled` | `true` | `false` |
+| `<DSH profile>/cordis.patch.yml`（`qq-bridge`） | `enabled` | `false` | `true` |
+
+并打印**正确的重启顺序**：
+
+- 切到 A：先重启 DSH（插件释放通道）→ 再重启 bridge
+- 切到 B：先重启 bridge（让出通道）→ 再重启 DSH
+
+### 文档
+
+`docs/guides/PLUGIN-MODE.md` 开头加「两条路怎么选」对照表 + 「怎么切（一键）」；
+顺手修掉重复的 `## 二·五` 标题。## 2026-10-31 — 0.4.12：插件里 @ 判定失效（事件没有 self_id）
 
 > 小更新。真机第一次端到端发消息就踩到了。
 
