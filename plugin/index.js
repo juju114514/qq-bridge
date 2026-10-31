@@ -35,6 +35,7 @@ const DEFAULTS = {
   accessToken: '',
   sidecarUrl: 'http://127.0.0.1:3110',
   requireMention: true,
+  sidecarToken: '',
   allowGroups: [],
 };
 
@@ -46,6 +47,7 @@ export function normalizeConfig(raw = {}) {
     accessToken: String(cfg.accessToken || ''),
     sidecarUrl: String(cfg.sidecarUrl || DEFAULTS.sidecarUrl).replace(/\/+$/, ''),
     requireMention: cfg.requireMention !== false,
+    sidecarToken: String(cfg.sidecarToken || ''),
     // 注意：Number(null) === 0 且是有限数 —— 只 .filter(Number.isFinite) 会把 null 变成群号 0。
     allowGroups: Array.isArray(cfg.allowGroups)
       ? cfg.allowGroups
@@ -81,6 +83,20 @@ export function apply(ctx, rawConfig) {
   // 工具在挂载时注册（宿主只给一次机会），通道稍后才启动 —— 所以用可变 holder。
   // 注意：必须在 createTools() 之前声明，否则 getter 会踩 TDZ（Cannot access before initialization）。
   const toolRuntime = { channel: null, sidecar: null };
+  // sidecar 客户端在挂载时就建好：即使不 enabled（不连 QQ），工具也能读快照/写意图。
+  // 用动态 import 是为了让"没装 sidecar 也能加载插件"这条降级路径成立。
+  let sidecarClient = null;
+  import('./sidecar.js')
+    .then(({ createSidecarClient }) => {
+      sidecarClient = createSidecarClient({
+        baseUrl: config.sidecarUrl,
+        token: config.sidecarToken,
+        log: (m) => log(m),
+      });
+      toolRuntime.sidecar = sidecarClient;
+      log('sidecar 客户端就绪：' + config.sidecarUrl);
+    })
+    .catch((e) => log('sidecar 客户端创建失败：' + (e?.message ?? e)));
 
   // ── 工具：进程内注册（D7 的 D2：不再走 MCP，少一跳）────────────────
   const ping = {
@@ -179,7 +195,7 @@ export function apply(ctx, rawConfig) {
         });
         await channel.start();
         toolRuntime.channel = channel;
-        toolRuntime.sidecar = null; // N2 接上 sidecar 后再赋值
+        toolRuntime.sidecar = sidecarClient;
         log('QQ 通道已启动');
       } catch (e) {
         log('QQ 通道启动失败（插件仍可用，只是不连 QQ）：' + (e?.message ?? e));

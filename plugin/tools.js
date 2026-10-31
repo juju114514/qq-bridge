@@ -96,6 +96,43 @@ export function createTools({ channel, sidecar = null, log = () => {} } = {}) {
     },
   });
 
+  // ── qq_get_prompt ───────────────────────────────────────────────
+  tools.push({
+    name: 'qq_get_prompt',
+    description: '取当前会话的提示词快照：人格卡、人物印象、群记忆交接、最近消息、唤醒配置。每次开口前先看一眼，能避免"人设漂移"和"忘了昨天聊过什么"。',
+    parameters: {
+      chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
+    },
+    output: OUTPUT,
+    isConcurrencySafe: () => true,
+    execute: async (args) => {
+      const chat = parseChatId(args?.chat_id);
+      if (!chat) return { ok: false, message: 'chat_id 格式不对' };
+      if (!sidecar?.snapshot) {
+        return { ok: false, degraded: true, message: 'sidecar 未连接：拿不到人格卡与群记忆（仍可正常收发消息）' };
+      }
+      try {
+        const snap = await sidecar.snapshot(chat.key);
+        if (!snap.ok) return { ok: false, degraded: true, message: '快照获取失败：' + (snap.error ?? snap.status) };
+        const st = snap.state ?? {};
+        const memoryText = String(st.memory?.text ?? '').trim();
+        return {
+          ok: true,
+          message: snap.notModified ? '快照未变化（缓存命中）' : '快照已更新',
+          notModified: !!snap.notModified,
+          role: st.role ?? null,
+          people: st.people ?? null,
+          wake: st.wake ?? null,
+          handoff: memoryText || '（这个会话还没有交接记录）',
+          recent: Array.isArray(st.recent) ? st.recent.slice(-10) : [],
+        };
+      } catch (e) {
+        log('qq_get_prompt 失败：' + (e?.message ?? e));
+        return { ok: false, degraded: true, message: '快照获取异常：' + (e?.message ?? e) };
+      }
+    },
+  });
+
   // ── qq_mark_read ────────────────────────────────────────────────
   tools.push({
     name: 'qq_mark_read',

@@ -10,6 +10,7 @@
   "contributes": {
     "tools": [
       "qq_ping",
+      "qq_get_prompt",
       "qq_send_message",
       "qq_reply",
       "qq_mark_read"

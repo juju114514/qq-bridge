@@ -26,7 +26,8 @@ const byName = (tools, name) => tools.find((t) => t.name === name);
 
 check('三个工具都注册了，且名字与清单一致', () => {
   const tools = mod.createTools({ channel: fakeChannel() });
-  assert.deepEqual(tools.map((t) => t.name).sort(), ['qq_mark_read', 'qq_reply', 'qq_send_message']);
+  assert.deepEqual(tools.map((t) => t.name).sort(),
+    ['qq_get_prompt', 'qq_mark_read', 'qq_reply', 'qq_send_message']);
   for (const t of tools) {
     assert.equal(typeof t.execute, 'function');
     assert.equal(typeof t.output.render, 'function');
@@ -108,6 +109,45 @@ check('render 输出可读文本（失败时带“失败：”前缀）', () => 
   const t = byName(mod.createTools({ channel: fakeChannel() }), 'qq_send_message');
   assert.equal(t.output.render({}, { ok: true, message: '已发送' })[0].text, '已发送');
   assert.equal(t.output.render({}, { ok: false, message: '坏了' })[0].text, '失败：坏了');
+});
+
+await checkAsync('qq_get_prompt：sidecar 未连接 → degraded，不抛错', async () => {
+  const t = byName(mod.createTools({ channel: fakeChannel() }), 'qq_get_prompt');
+  const r = await t.execute({ chat_id: 'group:1' }, {});
+  assert.equal(r.ok, false);
+  assert.equal(r.degraded, true);
+  assert.match(r.message, /sidecar/);
+});
+
+await checkAsync('qq_get_prompt：有快照 → 返回人格卡 / 交接段 / 最近消息', async () => {
+  const sidecar = {
+    snapshot: async (key) => ({
+      ok: true,
+      notModified: false,
+      etag: 'x',
+      state: {
+        key,
+        role: { name: 'xiaojingyu', hint: '你是小鲸鱼' },
+        people: { level: 2 },
+        wake: { sleepMs: 60000 },
+        memory: { text: '## §〇 交接\n\n### 上次聊到哪\n聊了歌单\n' },
+        recent: [{ text: 'a' }, { text: 'b' }],
+      },
+    }),
+  };
+  const t = byName(mod.createTools({ channel: fakeChannel(), sidecar }), 'qq_get_prompt');
+  const r = await t.execute({ chat_id: 'group:1' }, {});
+  assert.equal(r.ok, true);
+  assert.equal(r.role.name, 'xiaojingyu');
+  assert.match(r.handoff, /聊了歌单/);
+  assert.equal(r.recent.length, 2);
+});
+
+await checkAsync('qq_get_prompt：304 缓存命中 → notModified=true', async () => {
+  const sidecar = { snapshot: async () => ({ ok: true, notModified: true, etag: 'x', state: { memory: { text: 'm' } } }) };
+  const t = byName(mod.createTools({ channel: fakeChannel(), sidecar }), 'qq_get_prompt');
+  const r = await t.execute({ chat_id: 'group:1' }, {});
+  assert.equal(r.notModified, true);
 });
 
 const failed = results.filter(([s]) => s !== 'ok');
