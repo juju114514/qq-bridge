@@ -2,6 +2,46 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.18：插件模式没有人设（角色卡没挂上）
+
+> 小更新。群里说话不像"小鲸鱼"，像通用助手。
+
+### 现象
+
+插件模式下它回话是这样的：
+
+> 「不过有个情况得跟你说一声：我刚试着往 QQ 群里回话，结果报错……」
+> 还带 Markdown 表格 `| 调用 | 返回 |`。
+
+**没有人设卡，也没有 QQ 场景规则**（简短、不用 Markdown、只在被 @ 时说话）。
+
+### 根因
+
+桥接模式的人设来自 DSH 的 **agent preset**（`qq-chat-v2`：persona + 场景规则 + 工具面）。
+插件建 agent 时只给了 `sessionId / meta.cwd / 模型`，**没给 `agentPreset`** ——
+
+```js
+meta: { chatKey, cwd }        // ← 少了 agentPreset
+```
+
+于是拿到的是 DSH 默认系统提示，与 QQ 聊天无关。
+
+### 修法
+
+```js
+meta: { ..., agentPreset: config.agentPreset }   // 默认 'qq-chat-v2'
+```
+
+并新增配置项 `agentPreset`（可改 `qq-chat` / 自定义）。
+建好后日志会打印实际生效的 preset：
+
+```
+agent 已建：preset=qq-chat-v2 cwd=…\state\agents\group_994920175
+```
+
+### 顺带
+
+`mdToPlain` 的表格分隔符 `|` 换成 `·`：QQ 里 `a | b | c` 很难读。
 ## 2026-10-31 — 0.4.17：工具只回"最近 N 条"，把正文丢了
 
 > 小更新。读消息类工具真机一测就露馅。
