@@ -4,6 +4,11 @@ name: audit
 #   这套审计是"clone 即全绿"的承诺。但历史上有 6 处测试写死了作者本机路径
 #   （D:/QQBot-open/qq-bridge），在 Windows 本机全绿、在 Linux / 别的目录立刻红。
 #   所以至少要在 Linux 上跑一遍 —— 这是唯一能持续证明"换机器也能过"的办法。
+#
+# 2026-10-31 修正：这条 workflow 从上线起就一直红（最近 10 次全 failure），
+#   原因是漏了 `npm ci` —— 审计里有些测试需要 js-yaml / zod /
+#   @modelcontextprotocol/sdk / @deepseek-ai/schemastery。那是**测试依赖**，
+#   不是运行时依赖，所以"仓库没有运行时 npm 依赖"这句话没错，但也不能跳过安装。
 
 on:
   push:
@@ -20,8 +25,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
-      # 只跑审计脚本本身，不需要装依赖（仓库没有运行时 npm 依赖）
+      - name: 安装依赖（测试依赖，不是运行时依赖）
+        run: npm ci --no-audit --no-fund
+
       - name: 审计全套
         run: node scripts/test-audit.mjs
 

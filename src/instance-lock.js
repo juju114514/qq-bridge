@@ -1,128 +1,67 @@
-// 实例互斥锁：同一个官方机器人，**只允许一个进程**连 gateway。
+// 实例互斥锁：同一个官方机器人，只允许一个进程连 gateway。
 //
 // 为什么必须有：官方 WebSocket 对同一 bot 基本是"单连接"语义 —— 第二个进程连上来，
 // 网关会把其中一个踢掉；两个进程各自重连，就是无限互踢（表现为消息时有时无）。
-// 宿主机桥接 + Docker 容器同时跑，正是这个场景。
 //
-// 设计：
-//   · 锁文件 state/official-instance.lock，内容 { instanceId, pid, hostname, since, beatAt }
-//   · 心跳：持有者每 30 秒刷 beatAt；超过 90 秒没刷新视为残留，可被接管
-//   · 释放：正常退出删锁；被强杀留下的锁靠心跳过期回收
+// ── 0.4.49.3：互斥交给操作系统内核（回环端口绑定）──────────────────────────
+//
+// 三轮复核的结论：**文件协议（含 .guard sidecar）做不出严格互斥** ——
+// 任何"读-判断-删"都有 TOCTOU；而 Node 在 Windows 上以共享模式打开文件，
+// 连"句柄还在所以不能 rename"这个证明也不成立（实测 rename/删除都成功）。
+//
+// 现在的做法：在 127.0.0.1 上**绑定一个固定端口**：
+//   · 内核保证同一端口只能被一个进程 listen → 真正的互斥，无 TOCTOU
+//   · 进程崩溃/被 kill → 内核立即释放端口 → 下一个实例直接绑定成功
+//     （**不需要人工删锁，也不存在残留 guard**）
+//   · 状态文件只用于诊断（谁占着、什么时候心跳），**不承担互斥职责**；
+//     它坏了/被删了都不影响正确性
+//
+// 端口怎么定（复核指出「200 个端口不够」）：
+//   1) `QQB_LOCK_PORT` 显式指定 —— 多 bot 同机部署**应该用这个**，零碰撞
+//   2) 未指定时按 instanceId 派生（31200 + sha256 % 2000）
+//   3) 碰撞时 **fail-closed**，并且把错误码分开报：EADDRINUSE / EACCES / EADDRNOTAVAIL / timeout
+//      —— 绝不"被占就试下一个端口"：两个相同 instanceId 的启动进程可能各抢一个备用端口，
+//         最终同时得锁，那正是我们要防的双实例
+//
+// 已知边界（写进文档，不要让部署方误以为跨机器也安全）：
+//   · 宿主机多进程、同容器多进程、Linux `--network host` → 互斥成立
+//   · 普通 Docker bridge / Docker Desktop 默认网络 / 两台机器 → **不互斥**
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { atomicWriteJson } from './atomic-write.js';
-import { isPidAlive } from './pid-alive.js';
 
 export const BEAT_INTERVAL_MS = 30_000;
-export const STALE_MS = 90_000;
+const PORT_BASE = 31200;
+const PORT_RANGE = 2000;
 
-const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* ignore */ } };
-
-/**
- * 用 sidecar 文件把"检查 + 创建"串起来（0.4.49，外部审查 P2-3）。
- *
- * 旧实现是 `readLock()` → 判断 → `writeLock()`：两个进程同时看到"无锁/过期"时
- * 会都写锁并各自返回 ok —— 于是同一个官方机器人被连了两次（互踢线）。
- *
- * 做法与 channel-mode-store 一致：`openSync(guard, 'wx')` 独占创建 = 跨进程互斥；
- * 拿到 guard 的人做检查+写入；guard 超过 5 秒未释放视为残留并强占。
- */
-function withGuard(fs, guardFile, fn, { retries = 40, delayMs = 5, staleMs = 5000, onAcquired } = {}) {
-  const token = `${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
-  const tmp = `${guardFile}.${token}.tmp`;
-
-  /**
-   * 原子创建 guard（0.4.49.2，复核 P2-2）。
-   *
-   * 旧写法 `openSync(guard,'wx')` 之后再 writeSync(pid)：两步之间别的进程会读到**空文件**，
-   * 于是 holderPid=0 → isPidAlive(0)=false → 把正在创建中的 guard 当死锁回收。
-   * 现在先写临时文件（内容已就绪），再用 hardlink 原子挂到 guard 名上：
-   * 目标已存在就 EEXIST，不会出现"有人看得见但内容为空"的中间态。
-   */
-  function tryCreate() {
-    fs.writeFileSync(tmp, String(process.pid));
-    try {
-      fs.linkSync(tmp, guardFile);
-      return true;
-    } catch (error) {
-      const code = String(error?.code ?? '');
-      if (code === 'EEXIST') return false;
-      // 文件系统不支持 hardlink（部分网络盘）：退回 wx + 写入，并接受极窄窗口
-      try {
-        const fd = fs.openSync(guardFile, 'wx');
-        try { fs.writeSync(fd, String(process.pid)); } catch { /* ignore */ }
-        try { fs.closeSync(fd); } catch { /* ignore */ }
-        return true;
-      } catch (e2) { if (String(e2?.code ?? '') === 'EEXIST') return false; throw e2; }
-    } finally {
-      try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
-    }
-  }
-
-  /**
-   * 回收 stale guard（0.4.49.2，复核 P2-1 + P2-2）。
-   *
-   * 两个硬要求：
-   *   1. **只删自己检查过的那个文件**：先 rename 抢占（rename 对同一名字只有一个人成功），
-   *      再比对 ino/dev；如果抢到的是别人新建的 guard，就把它还回去。
-   *   2. **pid 读不到 = 不知道 = 不回收**：损坏/空 guard 不再被当成死持有者。
-   *      guard 正常只持有几毫秒；真出现损坏，需要人工删 `<lock>.guard`（见 TROUBLESHOOTING）。
-   */
-  function tryRecycle() {
-    let st0;
-    try { st0 = fs.statSync(guardFile); } catch { return 'gone'; }
-    if (Date.now() - st0.mtimeMs <= staleMs) return 'alive';
-
-    let holderPid = 0;
-    try { holderPid = Number(fs.readFileSync(guardFile, 'utf8').trim()) || 0; } catch { holderPid = 0; }
-    if (!(holderPid > 0)) return 'unknown';           // ← 保守拒绝（P2-2）
-    if (isPidAlive(holderPid)) return 'alive';
-
-    const parked = `${guardFile}.stale-${token}`;
-    // guard-allow: renameSync 这里不是原子写文件，而是用 rename 的唯一性抢占“由谁来删”；
-    //               抢到后还要比对 ino/dev，确认删的就是自己检查过的那个 guard。
-    try { fs.renameSync(guardFile, parked); } catch { return 'gone'; }   // 抢占失败 = 别人处理了
-    try {
-      const st1 = fs.statSync(parked);
-      const same = st1.ino === st0.ino && st1.dev === st0.dev
-        && st1.birthtimeMs === st0.birthtimeMs;
-      if (!same) {
-        // 抢到的是别人刚创建的新 guard：原样还回去，等下一轮
-        // guard-allow: renameSync 归还被别人新建的 guard（抢占后发现不是同一个文件）
-        try { fs.renameSync(parked, guardFile); } catch { /* 还回去失败就只能删，避免残留 */ try { fs.rmSync(parked, { force: true }); } catch { /* ignore */ } }
-        return 'raced';
-      }
-      try { fs.rmSync(parked, { force: true }); } catch { /* ignore */ }
-      return 'recycled';
-    } catch { return 'gone'; }
-  }
-
-  for (let i = 0; i < retries; i += 1) {
-    if (tryCreate()) {
-      try {
-        if (typeof onAcquired === 'function') onAcquired();   // 测试钩子：在临界区内暂停
-        return fn();
-      }
-      finally { try { fs.rmSync(guardFile, { force: true }); } catch { /* ignore */ } }
-    }
-    const verdict = tryRecycle();
-    if (verdict === 'unknown') {
-      // 不知道持有者是谁 → 不夺锁，等它自己结束（正常几毫秒）
-      sleepSync(delayMs);
-      continue;
-    }
-    sleepSync(delayMs);
-  }
-  // 抢不到 guard = 有人在并发认领：保守失败（不冒险写锁）
-  return { __guardTimeout: true };
+/** 按实例名派生端口（同一 instanceId 必须算出同一个端口）。 */
+export function lockPortFor(instanceId = 'default', base = PORT_BASE, range = PORT_RANGE) {
+  const h = crypto.createHash('sha256').update(String(instanceId)).digest();
+  return base + (h.readUInt16BE(0) % range);
 }
 
-export function readLock(file) {
+/** 解析锁端口：显式配置优先（复核建议：多 bot 同机必须显式配）。 */
+export function resolveLockPort({ instanceId = 'default', port, env = process.env } = {}) {
+  const raw = port ?? env?.QQB_LOCK_PORT;
+  // 没配 → 派生。配了就必须合法：**不静默回退**（复核 P2：运维会以为配好的端口生效了）
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return { port: lockPortFor(instanceId), source: 'derived' };
+  }
+  const n = Number(String(raw).trim());
+  if (!Number.isInteger(n) || n <= 0 || n >= 65536) {
+    return { port: 0, source: 'invalid', reason: 'invalid-port', raw: String(raw) };
+  }
+  return { port: n, source: 'explicit' };
+}
+
+/** 读状态（诊断用；读不到返回 null）。 */
+export function readLock(file, { fs: fsImpl = fs } = {}) {
   try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    const raw = JSON.parse(fsImpl.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
     if (!raw || typeof raw !== 'object') return null;
     return {
       instanceId: String(raw.instanceId ?? ''),
@@ -130,98 +69,147 @@ export function readLock(file) {
       hostname: String(raw.hostname ?? ''),
       since: Number(raw.since) || 0,
       beatAt: Number(raw.beatAt) || 0,
-      // generation token（0.4.49.1）：只有"当初写这条锁的人"能刷/删它。
-      // 只比 pid + instanceId 不够：两个进程可能同 instanceId，而 pid 会被复用。
       token: String(raw.token ?? ''),
+      port: Number(raw.port) || 0,
     };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
+/** 写状态（原子写：复核指出 writeFileSync 会出现短暂空文件）。 */
 export function writeLock(file, info) {
-  // 原子写走唯一实现：固定 .tmp 名 + 无失败清理 = 并发下会互相覆盖临时文件
-  atomicWriteJson(file, info);
+  // 原子写走仓库唯一实现（它内部用全局 fs）。这里**不提供 fs 注入**：
+  // 上一版留了个未使用的 fs 参数，复核指出那会让调用方误以为支持注入。
+  try { atomicWriteJson(file, info); } catch { /* 诊断文件写失败不该影响主流程 */ }
+}
+
+/** 把 bind 的错误码翻译成可行动的原因（复核要求：不能混成一个"被占用"）。 */
+export function classifyBindError(code = '') {
+  const c = String(code);
+  // 只能说"端口被占"：占着它的可能是本 bot 的另一个实例，也可能是**别的程序**
+  // （复核：无条件声称"是同实例"会误导排障方向）
+  if (c === 'EADDRINUSE') return { reason: 'held', hint: '端口已被占用（可能是另一个实例，也可能是别的程序）' };
+  if (c === 'EACCES' || c === 'EPERM') return { reason: 'permission', hint: '无权限绑定该端口（<1024 需要特权）' };
+  if (c === 'EADDRNOTAVAIL') return { reason: 'unavailable', hint: '绑定地址在本机不可用' };
+  if (c === 'timeout') return { reason: 'timeout', hint: '绑定超时（网络栈异常）' };
+  return { reason: 'error', hint: `绑定失败：${c || 'unknown'}` };
 }
 
 /**
- * 抢锁。
- * @returns {{ok:true, release:()=>void} | {ok:false, holder:object}}
+ * 抢锁（异步：需要 bind 端口）。
+ *
+ * @returns {Promise<{ok:true, release, token, info, beatNow, stats}
+ *          | {ok:false, holder, reason, hint}>}
  */
-export function acquireInstanceLock(file, { instanceId = 'default', pid = process.pid, now = Date.now(), staleMs = STALE_MS, fs: fsImpl = fs, killFn, log = () => {}, guardHooks = {} } = {}) {
-  const guardFile = `${file}.guard`;
-  const hook = guardHooks.onAcquired;
-  const decided = withGuard(fsImpl, guardFile, () => {
-    const cur = readLock(file);
-    const alive = cur && cur.beatAt && now - cur.beatAt < staleMs;
-    if (alive) {
-      // 0.4.49（外部审查 P2-3）：同 instanceId 换 PID 不再**无条件**接管。
-      //   规则：老进程还活着 → 拒绝（防双实例）；老进程已死 → 允许（重启不误报）。
-      // 旧行为只看 instanceId，同实例的另一个进程可以直接覆盖战领。
-      if (cur.instanceId !== instanceId) return { ok: false, holder: cur };
-      if (cur.pid && cur.pid !== pid && isPidAlive(cur.pid, killFn)) {
-        return { ok: false, holder: cur };
-      }
+/**
+ * 带上限的 bind（0.4.49.3）。抽成独立函数是为了**能对超时路径做注入式测试** ——
+ * 真实 socket 上很难稳定制造"listen 既不 listening 也不 error"的局面。
+ *
+ * 三条硬规则（第 4 轮复核）：
+ *   1. 超时必须**主动关闭** server，不能留下没人持有却占着端口的 listener
+ *   2. 成功/失败都要清掉定时器，否则成功后迟到的事件会把刚拿到的锁关掉
+ *   3. 迟到的 listening：只有"已经以失败收场"时才关闭（用 accepted 判断，不能用 settled ——
+ *      成功路径里 settled 也是 true）
+ */
+export function bindWithTimeout(server, { port, host = '127.0.0.1', timeoutMs = 3000 } = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let accepted = false;
+    // 不能 unref：unref 后如果事件循环恰好空了，进程会先退出，Promise 永不 settle
+    const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
+
+    function closeQuietly() { try { server.close(); } catch { /* ignore */ } }
+    function finish(ok, code = '') {
+      if (settled) return;
+      settled = true;
+      if (ok) { accepted = true; clearTimeout(timer); } else { clearTimeout(timer); closeQuietly(); }
+      resolve({ ok, code });
     }
-    const info = {
-      instanceId, pid, hostname: os.hostname(),
-      token: crypto.randomUUID(),
-      since: cur?.instanceId === instanceId ? (cur.since || now) : now,
-      beatAt: now,
-    };
-    writeLock(file, info);
-    return { ok: true, info };
-  }, { onAcquired: hook });
-  if (!decided || decided.__guardTimeout) {
-    return { ok: false, holder: { instanceId: '(并发认领中)', pid: 0, hostname: '', since: 0, beatAt: 0 } };
-  }
-  if (!decided.ok) return { ok: false, holder: decided.holder };
-  const token = decided.info.token;
-  let timer = null;
-  // 0.4.49.1（R49-01）：心跳也在 guard 内做「读取身份 → 写入」，
-  // 且必须比对 token —— 否则 A 读到旧锁后停顿、B 接管、A 恢复再写，就会覆盖 B。
-  // 0.4.49.2（复核 P3-1）：beat 抢不到 guard 时以前是**静默**跳过，
-  // 连续错过多轮会让 beatAt 变旧、被别人判过期接管 —— 至少要能看见。
-  let beatGuardMisses = 0;
-  let beatTokenLost = false;
-  const beat = () => {
+
+    server.once('error', (error) => finish(false, String(error?.code ?? 'EUNKNOWN')));
+    // 用 microtask 等本轮监听器（含 listen() 的回调）跑完再判断：
+    // 直接同步判断会先于回调执行，把刚成功的 listener 当成"迟到的孤儿"关掉。
+    server.once('listening', () => {
+      queueMicrotask(() => {
+        if (!accepted) closeQuietly();
+        else clearTimeout(timer);
+      });
+    });
     try {
-      const r = withGuard(fsImpl, guardFile, () => {
-        const own = readLock(file);
-        // 已被别人接管：绝不再刷（并且要让人知道）
-        if (!own || own.token !== token) { beatTokenLost = true; return 'lost'; }
-        writeLock(file, { ...own, beatAt: Date.now() });
-        return 'ok';
-      }, { onAcquired: hook });
-      if (r && r.__guardTimeout) {
-        beatGuardMisses += 1;
-        if (beatGuardMisses === 3 || beatGuardMisses % 30 === 0) {
-          log(`⚠️ [official] 心跳连续 ${beatGuardMisses} 次抢不到 guard —— 锁可能被其它实例占用`);
-        }
-      } else {
-        if (beatGuardMisses > 0) { log(`[official] 心跳恢复（此前连续失败 ${beatGuardMisses} 次）`); }
-        beatGuardMisses = 0;
-        if (r === 'lost') log('⚠️ [official] 锁已被其它实例接管，本实例停止心跳（不再抢锁）');
-      }
-    } catch { /* ignore */ }
+      server.listen({ port, host, exclusive: true }, () => finish(true));
+    } catch (error) { finish(false, String(error?.code ?? 'EUNKNOWN')); }
+  });
+}
+
+export async function acquireInstanceLock(file, {
+  instanceId = 'default', pid = process.pid, port, host = '127.0.0.1',
+  fs: fsImpl = fs, log = () => {}, env = process.env,
+} = {}) {
+  const resolved = resolveLockPort({ instanceId, port, env });
+  if (resolved.source === 'invalid') {
+    log(`⚠️ [official] QQB_LOCK_PORT 非法（${resolved.raw}）：应为 1-65535 的整数。`
+      + '为避免"以为配好了其实没生效"，本实例直接不连官方通道。');
+    return { ok: false, holder: null, reason: 'invalid-port', hint: `QQB_LOCK_PORT=${resolved.raw} 不是合法端口` };
+  }
+  const { port: listenPort, source } = resolved;
+  const token = crypto.randomUUID();
+
+  const server = net.createServer((socket) => { try { socket.destroy(); } catch { /* ignore */ } });
+  server.unref?.();
+
+  const bound = await bindWithTimeout(server, { port: listenPort, host, timeoutMs: 3000 });
+
+  if (!bound.ok) {
+    const { reason, hint } = classifyBindError(bound.code);
+    const holder = readLock(file, { fs: fsImpl });
+    log(`⚠️ [official] 无法取得实例锁（端口 ${listenPort}，来源=${source}）：${hint}`
+      + (holder ? `；当前持有者 instance=${holder.instanceId} pid=${holder.pid} host=${holder.hostname}` : '')
+      + (reason === 'held'
+        ? ` —— 本实例不连官方通道（如果是别的程序占了端口，请改 QQB_LOCK_PORT 或换实例名）。`
+        : ''));
+    return { ok: false, holder, reason, hint };
+  }
+
+  // 端口拿到 = 互斥成立。之后的状态文件纯属诊断。
+  const since = Date.now();
+  const info = { instanceId, pid, hostname: os.hostname(), since, beatAt: since, token, port: listenPort };
+  writeLock(file, info);
+
+  let timer = null;
+  let beats = 0;
+  const beat = () => {
+    try { beats += 1; writeLock(file, { ...info, beatAt: Date.now() }); }
+    catch { /* ignore */ }
   };
   timer = setInterval(beat, BEAT_INTERVAL_MS);
   timer.unref?.();
-  const release = () => {
+
+  // 复核 P1：release 必须**等待** close 完成，否则调用方立刻重取会撞 EADDRINUSE
+  const release = () => new Promise((resolve, reject) => {
     if (timer) clearInterval(timer);
     timer = null;
+    let done = false;
+    let fallback = null;
+    const cleanupFile = () => {
+      try {
+        const own = readLock(file, { fs: fsImpl });
+        // 只删自己写的那一份；别人接管后不要动文件
+        if (own && own.token === token) fsImpl.rmSync(file, { force: true });
+      } catch { /* ignore */ }
+    };
+    const settle = (error) => {
+      if (done) return;                  // 幂等：close 回调与兜底只生效一次
+      done = true;
+      if (fallback) clearTimeout(fallback);
+      if (error) reject(error); else resolve();
+    };
     try {
-      // 同样进 guard + 比对 token：只删"我写的这一代"，不删别人的
-      withGuard(fsImpl, guardFile, () => {
-        const own = readLock(file);
-        if (own && own.token === token) fs.rmSync(file, { force: true });
-      });
-    } catch { /* ignore */ }
-  };
-  // beatNow 暴露给测试：确定性触发一次心跳（生产走 30s 定时器）
-  return {
-    ok: true, release, token, info: decided.info, beatNow: beat,
-    // 供测试/自检读取
-    stats: () => ({ guardMisses: beatGuardMisses, tokenLost: beatTokenLost }),
-  };
+      if (!server.listening) { cleanupFile(); return settle(); }
+      // 兜底只负责"不卡死"，**不能**把超时当成释放成功（复核第 2 点）
+      // 同样不能 unref：等待 close 期间进程不能被判定为"没事可做"
+      fallback = setTimeout(() => { cleanupFile(); settle(new Error('release-timeout')); }, 2000);
+      server.close(() => { cleanupFile(); settle(); });
+    } catch { cleanupFile(); settle(); }
+  });
+
+  return { ok: true, release, token, info, beatNow: beat, stats: () => ({ beats, port: listenPort, source }) };
 }
