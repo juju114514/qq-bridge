@@ -36,7 +36,15 @@ $launcher = Join-Path $root '排错程序.exe'
 if (-not (Test-Path $launcher)) { $launcher = Join-Path $root '启动器.exe' }
 if (-not (Test-Path $launcher)) { $launcher = Join-Path $root '启动器.cmd' }
 if (-not (Test-Path $launcher)) { $launcher = Join-Path $root 'scripts\launcher.mjs' }
+# 控制台令牌：**运行期从 state/console-token 读**，不写进仓库（state/ 是 gitignore 的）。
+# 带上它，双击快捷方式就不会再弹"请输入令牌"。
+$token = ''
+$tokenPath = Join-Path $root 'state\console-token'
+if (Test-Path $tokenPath) {
+  try { $token = (Get-Content $tokenPath -Raw -ErrorAction Stop).Trim() } catch { $token = '' }
+}
 $url = "http://127.0.0.1:$consolePort/"
+if ($token) { $url = $url + '?token=' + $token }
 
 function New-Lnk([string]$path, [string]$target, [string]$args = '', [string]$icon = '', [string]$desc = '') {
   $dir = Split-Path -Parent $path
@@ -68,7 +76,9 @@ if (-not $NoStartMenu) {
 }
 
 Write-Output "仓库：$root"
-Write-Output "控制台：$url"
+$shown = $url
+if ($token) { $shown = "http://127.0.0.1:$consolePort/?token=****（已带上，取自 state/console-token）" }
+Write-Output "控制台：$shown"
 
 if ($Remove) {
   foreach ($t in $targets) { Remove-Lnk $t.Path }
