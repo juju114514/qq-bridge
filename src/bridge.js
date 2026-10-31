@@ -4,8 +4,27 @@ let channelEpoch = null;
 let channelStore = null;
 // 健康状态（进程 / 通道 / 各服务分开表达）；用函数注入避免影响既有初始化顺序
 let health = null;
+// 启动摘要（0.4.42）：分阶段耗时 + 失败也要留证
+let bootReport = null;
 function healthSet(service, state, reason = '') {
-  try { health?.set(service, state, reason); } catch { /* 健康状态不能影响主流程 */ }
+  try {
+    health?.set(service, state, reason);
+    // 第一次进入 ready 时打启动摘要（这是"真的能收消息"的时刻，不是进程起来的那一刻）
+    const snap = health?.snapshot();
+    if (snap?.ready && bootReport && !bootReport.summarized) emitStartupSummary(snap);
+  } catch { /* 健康状态不能影响主流程 */ }
+}
+
+function emitStartupSummary(snap) {
+  try {
+    bootReport?.summary({
+      process: { pid: process.pid, ownerId: channelStore?.ownerId ?? '', uptimeMs: Math.round(process.uptime() * 1000) },
+      channel: snap.channel ?? { mode: null, epoch: null, status: 'unknown' },
+      services: snap.services ?? {},
+      live: true,
+      ready: Boolean(snap.ready),
+    });
+  } catch { /* 摘要失败不影响启动 */ }
 }
 
 /**
@@ -32,6 +51,7 @@ function epochGuard(stage) {
 import { readBuildInfo as buildInfo, fingerprintLine } from './build-info.js';
 import { StaleEpochError } from './domains/channel-mode.js';
 import { createHealthState } from './health-state.js';
+import { createBootReport } from './boot-report.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
 // 链路：
@@ -1618,6 +1638,7 @@ let stateDirHardened = null;
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 async function main() {
+  bootReport = createBootReport({ log: (m) => log(m), version: '', buildId: '', sourceCommit: '' });
   // state/ 的 schema 迁移：升级前先备份旧文件，再按版本逐个迁移。
   // 放在最前面 —— 后面所有读 state 的地方都假定当前版本。
   try {
@@ -10162,6 +10183,8 @@ function selfCheckSnapshot() {
   });
   // 0.4.39：记下本次持有的 epoch，供副作用边界校验
   channelStore = channelModeGuard.store ?? null;
+  bootReport?.end('channel-claim', channelModeGuard.ok ? 'ok' : 'degraded',
+    channelModeGuard.ok ? '' : String(channelModeGuard.reason ?? ''));
   channelEpoch = Number.isFinite(channelModeGuard.epoch) ? channelModeGuard.epoch : null;
   channelModeClaimed = channelModeGuard.ok;
   if (!channelModeClaimed) {
@@ -10204,7 +10227,14 @@ function selfCheckSnapshot() {
     runtimeFingerprint = { build: info };
     log('运行时指纹：' + fingerprintLine(info));
     try { health?.setOwnerId(channelStore?.ownerId ?? ''); } catch { /* ignore */ }
+    try { bootReport?.setMeta({ version: info.version, buildId: info.buildId, sourceCommit: info.sourceCommit }); } catch { /* ignore */ }
   } catch { /* 指纹失败不影响启动 */ }
+  // 兜底：10 秒内没等到 ready（例如 sidecar-only / DSH 慢），也要留下启动摘要
+  setTimeout(() => {
+    try {
+      if (bootReport && !bootReport.summarized) emitStartupSummary(health?.snapshot() ?? {});
+    } catch { /* ignore */ }
+  }, 10_000);
   log('桥接已启动。按 Ctrl+C 退出。');
   // 首次部署一次性任务：把已存在的群成员标成 listed（延迟 12 秒，不阻塞启动）
   setTimeout(() => { bootstrapPeopleListed().catch((e) => log(`⚠️ [people] 初始化失败：${e?.message ?? e}`)); }, 12000).unref?.();
@@ -10219,19 +10249,25 @@ function selfCheckSnapshot() {
   await pumpMux();
 }
 
-process.on('SIGINT', () => {
-  log('退出中…');
-  saveState();
-  try { channelModeGuard?.stop(); } catch {}
+function gracefulShutdown(signal) {
+  // 顺序很重要：**先失去 ready，再释放所有权**，避免"旧任务还能产生副作用但通道已放"
+  log(`退出中…（${signal}）`);
+  try { health?.setChannel({ ...(health.channel ?? {}), status: 'draining' }); } catch { /* ignore */ }
+  try { saveState(); } catch { /* ignore */ }
+  try {
+    bootReport?.shutdown({
+      signal,
+      process: { pid: process.pid, ownerId: channelStore?.ownerId ?? '' },
+      channel: { mode: channelEpoch != null ? 'bridge' : null, epoch: channelEpoch, status: 'stopped' },
+      uptimeMs: Math.round(process.uptime() * 1000),
+    });
+  } catch { /* ignore */ }
+  try { channelModeGuard?.stop(); } catch { /* ignore */ }
   releaseLock();
   process.exit(0);
-});
-process.on('SIGTERM', () => {
-  saveState();
-  try { channelModeGuard?.stop(); } catch {}
-  releaseLock();
-  process.exit(0);
-});
+}
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('unhandledRejection', (error) => {
   // 打出 stack：只记 message 的话，「偶发一次」和「已经坏了六小时」看起来一模一样。
   log('未处理异常:', error?.stack ?? error?.message ?? error);
@@ -10255,5 +10291,6 @@ process.on('exit', () => releaseLock());
 
 main().catch((error) => {
   console.error('[bridge] 启动失败:', error);
+  try { bootReport?.incomplete(String(error?.message ?? error)); } catch { /* ignore */ }
   process.exit(1);
 });

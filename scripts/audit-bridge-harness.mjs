@@ -22,6 +22,8 @@ import * as tokenLedger from '../src/token-ledger.js';
 import * as voiceLib from '../src/send-voice-lib.js';
 import * as presetPrompt from '../src/preset-prompt.js';
 import * as stateAcl from '../src/state-acl.mjs';
+import * as bootReportMod from '../src/boot-report.js';
+import * as healthStateMod from '../src/health-state.js';
 // 官方通道适配层：bridge.js 会调用 isOfficialId / stripOfficialId / segmentsToOfficialText /
 // createOfficialTransport。VM 里必须按名字注入 —— 否则它们不是 import 报错，
 // 而是运行到发送/白名单时才抛 ReferenceError（真实踩过：三套审计同时红）。
@@ -264,7 +266,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     OneBotWsClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...stickerPending, ...privateAccess,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...bootReportMod, ...healthStateMod, ...stickerPending, ...privateAccess,
   ...douyinResolve, ...quietHours, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,

@@ -33,10 +33,16 @@ if (-not $node) {
 }
 "[$(& $stamp)] 使用 node: $node" | Out-File $log -Append -Encoding utf8
 
+$exitLog = Join-Path $dir 'state\exit.log'
 while ($true) {
   "[$(& $stamp)] 启动 bridge" | Out-File $log -Append -Encoding utf8
+  $t0 = Get-Date
   & $node 'src/bridge.js'
   $code = $LASTEXITCODE
+  # 退出诊断（0.4.42）：下次"莫名重启"时先看这个文件，而不是猜
+  $secs = [Math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
+  $how = if ($code -eq 0) { '主动退出' } elseif ($code -eq 2) { '发现已有实例' } else { '异常退出' }
+  "[$(& $stamp)] exit code=$code（$how） 运行 ${secs}s" | Out-File $exitLog -Append -Encoding utf8
   if ($code -eq 2) {
     "[$(& $stamp)] 已有实例在跑（code 2），退出守护" | Out-File $log -Append -Encoding utf8
     exit 2
