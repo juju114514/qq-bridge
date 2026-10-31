@@ -109,14 +109,14 @@ node <dsh-cli>\lib\bin.js --profile qqtest --dump-config | Select-String 'qq-bri
 
 | 工具 | 作用 | 依赖 |
 | --- | --- | --- |
-| `qq_send_message` | 发纯文本 | 通道 |
-| `qq_reply` | 引用某条回复 | 通道 |
-| `qq_get_recent_messages` | 最近聊天记录（含自己） | 通道 |
-| `qq_get_unread_messages` | 上次已读之后的新消息 | 通道 |
-| `qq_wait_for_messages` | 等新消息（1~60s） | 通道 |
-| `qq_get_prompt` | 人格卡 / 人物印象 / 群记忆交接 | **sidecar** |
-| `qq_mark_read` | 已读水位（内存 + sidecar） | **sidecar** |
-| `qq_ping` | 自检 | 无 |
+| `qqb_send_message` | 发纯文本 | 通道 |
+| `qqb_reply` | 引用某条回复 | 通道 |
+| `qqb_get_recent_messages` | 最近聊天记录（含自己） | 通道 |
+| `qqb_get_unread_messages` | 上次已读之后的新消息 | 通道 |
+| `qqb_wait_for_messages` | 等新消息（1~60s） | 通道 |
+| `qqb_get_prompt` | 人格卡 / 人物印象 / 群记忆交接 | **sidecar** |
+| `qqb_mark_read` | 已读水位（内存 + sidecar） | **sidecar** |
+| `qqb_ping` | 自检 | 无 |
 
 ## 四·五、三个真机才会暴露的必需项
 
@@ -137,7 +137,7 @@ sidecar 没开时：
 | 能力 | 状态 |
 | --- | --- |
 | 收发消息 / 消息类工具 | ✅ 正常 |
-| 人格卡 / 群记忆 / 人物印象（`qq_get_prompt`） | ❌ 返回 `degraded:true` |
+| 人格卡 / 群记忆 / 人物印象（`qqb_get_prompt`） | ❌ 返回 `degraded:true` |
 | 已读水位持久化 | ⚠️ 只记内存，重启丢 |
 | 主动消息 / 定时提醒 / 控制台 | ❌ 不可用 |
 

@@ -37,7 +37,7 @@ check('清单文件与入口一致（id / main / tools 声明）', async () => {
   assert.equal(manifest.id, mod.name);
   assert.equal(manifest.main, './index.js');
   assert.ok(Array.isArray(manifest.contributes?.tools));
-  assert.ok(manifest.contributes.tools.includes('qq_ping'), '清单里要声明 qq_ping，否则宿主不暴露');
+  assert.ok(manifest.contributes.tools.includes('qqb_ping'), '清单里要声明 qq_ping，否则宿主不暴露');
   assert.match(manifest.engines?.dsh ?? '', />=0\.2\.1/);
 });
 
@@ -58,10 +58,10 @@ let registered = null; // 由 qq_ping 填充（下面测试用）
 const dispose = mod.apply(fakeCtx, { sidecarUrl: 'http://127.0.0.1:9', requireMention: false });
 
 check('注册了 qq_ping，且参数/输出/execute 齐全', () => {
-  registered = toolByName('qq_ping');
+  registered = toolByName('qqb_ping');
   assert.ok(registered, '没有注册 qq_ping');
   assert.ok(registeredAll.length >= 4, `至少应有 4 个工具（ping + 发送/回复/已读），实际 ${registeredAll.length}`);
-  assert.equal(registered.name, 'qq_ping');
+  assert.equal(registered.name, 'qqb_ping');
   assert.equal(typeof registered.execute, 'function');
   assert.deepEqual(registered.parameters, {});
   assert.ok(registered.output?.schema);
@@ -128,13 +128,13 @@ check('同名工具已存在 → 跳过注册（真机：与 mcp-snowluma 撞名
   let disposed = 0;
   const collide = {
     tools: {
-      get: (n) => (n === 'qq_get_prompt' ? { name: n } : undefined),
+      get: (n) => (n === 'qqb_get_prompt' ? { name: n } : undefined),
       register: (tool) => { registered.push(tool.name); return () => { disposed += 1; }; },
     },
   };
   mod.apply(collide, { sidecarUrl: 'http://127.0.0.1:9' });
-  assert.ok(!registered.includes('qq_get_prompt'), '撞名的工具不该注册');
-  assert.ok(registered.includes('qq_send_message'), '不撞名的照常注册');
+  assert.ok(!registered.includes('qqb_get_prompt'), '撞名的工具不该注册');
+  assert.ok(registered.includes('qqb_send_message'), '不撞名的照常注册');
 });
 
 const failed = results.filter(([s]) => s !== 'ok');

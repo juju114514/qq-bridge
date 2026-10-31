@@ -108,7 +108,7 @@ export function apply(ctx, rawConfig) {
 
   // ── 工具：进程内注册（D7 的 D2：不再走 MCP，少一跳）────────────────
   const ping = {
-    name: 'qq_ping',
+    name: 'qqb_ping',
     description: '检查 qq-bridge 插件是否已加载、sidecar 是否在线。用于安装自检，不发送任何 QQ 消息。',
     parameters: {},
     // 宿主实测要求：output 必须同时有 schema **和** render

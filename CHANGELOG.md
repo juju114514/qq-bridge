@@ -2,7 +2,34 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.6：提交到 awesome-dsh-plugin 的收录草稿
+## 2026-10-31 — 0.4.7：插件工具改名 `qqb_*`，彻底避开 MCP 同名
+
+> 小更新。修的是桌面版"每一轮都报 schema 错"的根因。
+
+### 之前为什么没修好
+
+0.4.5 加的「同名就跳过」依赖 `ctx.tools.get(name)` 能看见 MCP 注册的工具。
+真机上它**看不见**（MCP 工具在另一层），于是插件照样注册了 `qq_get_prompt`，
+冲突还在 → 供应商侧 schema 仍是 `type: null`。
+
+### 现在
+
+插件工具统一加 `qqb_` 前缀：
+
+| 旧名 | 新名 |
+| --- | --- |
+| `qq_ping` | `qqb_ping` |
+| `qq_send_message` | `qqb_send_message` |
+| `qq_reply` | `qqb_reply` |
+| `qq_get_prompt` | `qqb_get_prompt` |
+| `qq_mark_read` | `qqb_mark_read` |
+| `qq_get_recent_messages` | `qqb_get_recent_messages` |
+| `qq_get_unread_messages` | `qqb_get_unread_messages` |
+| `qq_wait_for_messages` | `qqb_wait_for_messages` |
+
+- **MCP 的 `qq_*` 工具一个没动**，两边可以并存
+- 撞名跳过逻辑保留（对那些真的能看见的同名工具仍然有效）
+- 名字变化不影响功能：参数、返回、降级语义都没变## 2026-10-31 — 0.4.6：提交到 awesome-dsh-plugin 的收录草稿
 
 > 纯文档版本。
 
