@@ -160,3 +160,28 @@ docker desktop start
 # 第二个实例：
 ⚠️ [official] 另一个实例正在使用同一个机器人（instance=host pid=5648 host=DESKTOP-43CK6HV），本实例不连官方通道，避免互相踢线。
 ```
+
+## 官方通道的实例锁与容器边界（0.4.49.3 起）
+
+官方通道用**回环端口绑定**做实例互斥（内核保证唯一，崩溃自动释放，无需人工删锁）。
+端口默认 `31200 + sha256(instanceId) % 2000`，可用 `QQB_LOCK_PORT` 显式指定。
+
+**多 bot 同机部署请显式配置端口**（派生端口存在碰撞概率，碰撞时 fail-closed 启动失败）：
+
+```
+QQB_INSTANCE=bot-a   QQB_LOCK_PORT=31281
+QQB_INSTANCE=bot-b   QQB_LOCK_PORT=31282
+```
+
+| 部署方式 | 能否互斥 |
+| --- | --- |
+| 宿主机两个进程 | ✅ |
+| 同一容器内两个进程 | ✅ |
+| Linux `docker run --network host` | ✅（共享宿主网络命名空间） |
+| 普通 bridge 网络 | ❌ **容器有自己的回环，看不到宿主端口** |
+| Docker Desktop 默认网络 | ❌ |
+| 两台不同机器 | ❌ |
+
+> 普通 bridge 网络下，容器内绑定 127.0.0.1:31281 只是容器自己的回环，
+> 宿主进程照样能绑自己的 31281 —— **两边都"成功"，然后互踢线**。
+> 要么用 `--network host`，要么别让宿主与容器跑同一个 bot。

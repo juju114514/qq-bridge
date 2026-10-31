@@ -2,6 +2,44 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.49.3：官方通道实例锁改用 OS 端口互斥 + 修红了的 audit CI
+
+> 承接三轮独立复核。**锁的实现整体换掉**：文件协议（含 .guard sidecar）做不出严格互斥。
+
+### 为什么换实现
+
+三轮复核的结论是一致的：任何「读-判断-删」的文件锁都有 TOCTOU；而且 Node 在 Windows 上
+以共享模式打开文件（`FILE_SHARE_READ|WRITE|DELETE`），连"句柄还在所以不能 rename"这个证明
+都不成立（实测：`rename` 成功）。
+
+### 现在的做法：回环端口绑定
+
+- 同一端口只能被一个进程 `listen` —— **内核保证**，没有协议层竞态
+- 进程崩溃/被 kill → 内核立即释放端口 → 下一个实例直接拿到锁（**不需要人工删锁**）
+- 状态文件只做诊断（pid/token/beatAt/port），删了也不影响互斥
+- 端口：`QQB_LOCK_PORT` 显式优先，否则 `31200 + sha256(instanceId) % 2000`
+- 失败按错误码区分：`EADDRINUSE=held` / `EACCES|EPERM=permission` / `EADDRNOTAVAIL=unavailable` / `timeout` / `error`
+- 显式端口非法 → **直接失败（invalid-port）**，不静默回退
+
+### 顺带修掉的 CI 红灯
+
+`audit` workflow 自上线起**每次 push 都失败**（核实：最近 10 次全 failure）。
+原因：ubuntu-latest 上没装依赖，而审计里有些测试需要 js-yaml / zod /
+`@modelcontextprotocol/sdk` / `@deepseek-ai/schemastery`（**测试依赖**，不是运行时依赖）。
+`audit.yml` 已补 `npm ci`。
+
+### 测试
+
+- `scripts/test-instance-lock-os.mjs`（新，14 条）：独占、崩溃 kill -9 后自动接管、
+  并发只有一个成功、删状态文件骗不到锁、release 后再取、timeout 注入 4 条、
+  非法端口 fail-closed、错误码分类
+- `scripts/test-instance-lock.mjs`：改成新 API（同 instanceId 互斥 / 不同 bot 可并存）
+- 删除 `test-instance-lock-atomic.mjs` / `test-instance-lock-toctou.mjs`（guard 语义已不存在）
+
+### 已知边界（写进 DOCKER.md）
+
+宿主机多进程、同容器多进程、Linux `--network host` → 互斥成立；
+普通 Docker bridge / Docker Desktop 默认网络 / 两台机器 → **不互斥**（容器回环是容器自己的）。
 ## 2026-10-31 — 0.4.49.2：guard 回收协议（第二轮复核 P2-1/P2-2 + P3）
 
 > 复核结论：heartbeat/release 修复有效，但 **guard 自身的回收协议**被指出两个新缺口。本版只修这两个 + 两个 P3。

@@ -1793,17 +1793,21 @@ sudo systemctl restart qq-bridge
 2. 删除 `state/plugin.log` 与 `state/plugin.log.1`（轮转文件同样含正文）；
 3. 不要把这两个文件贴到公开 Issue。
 
-### 锁文件卡住时的手工处理（`state/*.guard` / `official-instance.lock`）
+### 官方通道实例锁（端口互斥）——没有需要手工删除的锁文件
 
-0.4.49.2 起，guard 内容读不到（损坏/空）时**不再自动回收**（保守拒绝，避免误删别人的锁）。
-如果你确认没有第二个实例在跑、且日志出现 `抢不到 guard`：
+官方通道实例互斥由**回环端口绑定**实现，状态文件仅用于诊断。删除状态文件不会释放端口，
+也不会让其他实例获得锁；但会丢失持有者、启动时间和心跳等排障信息。
+
+若需要恢复实例，应**正常停止持有进程**，让操作系统释放监听端口，而不是手工删除状态文件。
+
+> ⚠️ 不要在实例运行期间把删除状态文件当作"重置锁"的操作。心跳会重新写入诊断文件，
+> 删除只会造成一段诊断信息缺失。
+
+端口默认按实例名派生（`31200 + sha256(instanceId) % 2000`），多 bot 同机部署请显式指定：
 
 ```powershell
-# 1) 先确认没有第二个 bridge / DSH 实例
-Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Select-Object ProcessId, CommandLine
-# 2) 确认后再删残留
-Remove-Item state\official-instance.lock.guard -Force -ErrorAction SilentlyContinue
-Remove-Item state\official-instance.lock -Force -ErrorAction SilentlyContinue
-# 3) 重启任务
-schtasks /run /tn qq-bridge
+$env:QQB_INSTANCE = 'bot-a'; $env:QQB_LOCK_PORT = '31281'
 ```
+
+端口被别的程序占用时，日志会明确写「端口已被占用（可能是另一个实例，也可能是别的程序）」，
+并按 `EADDRINUSE / EACCES / EADDRNOTAVAIL / timeout` 分类报错。
