@@ -20,6 +20,12 @@ $trigCount = ([regex]::Matches($xmlText, '<LogonTrigger')).Count
 $otherTrig = ([regex]::Matches($xmlText, '<TimeTrigger|<CalendarTrigger|<BootTrigger|<IdleTrigger')).Count
 Check '主任务只保留 LogonTrigger' ($trigCount -ge 1 -and $otherTrig -eq 0) "logon=$trigCount other=$otherTrig"
 
+# 1b) watchdog 任务本身也必须隐藏（0.4.47：它每 5 分钟跑一次，漏了 -WindowStyle Hidden 就会一直弹窗）
+$wdXml = schtasks /query /tn "\qq-bridge-watchdog" /xml 2>$null | Out-String
+Check 'watchdog 任务也带 WindowStyle Hidden' ([bool]($wdXml -match 'WindowStyle Hidden'))
+Check 'watchdog 任务无 RestartOnFailure' (-not ($wdXml -match '<RestartOnFailure>'))
+Check 'watchdog 仍每 5 分钟触发' ([bool]($wdXml -match '<Interval>PT5M</Interval>'))
+
 # 2) watchdog
 $keep = Get-Content (Join-Path $root 'scripts\keepalive.ps1') -Raw -ErrorAction SilentlyContinue
 Check 'watchdog 不再调用 start.bat' (-not ($keep -match 'start\.bat'))

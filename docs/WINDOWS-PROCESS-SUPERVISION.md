@@ -220,3 +220,21 @@ $env:QQB_WATCHDOG_WINDOW_MS='3000'; $env:QQB_WATCHDOG_COOLDOWN_MS='20000'
 
 实测结果：第 1 次累计失败不恢复；第 2 次超过窗口 → 进入恢复流程 → 目标不存在 →
 `recovery_failed` + 冷却 20 秒 + `recoveryAttempts=1`，**生产进程与任务完全没被碰**。
+
+## 十二、0.4.47：「还是一直弹窗」的第二次根因（watchdog 任务漏了隐藏）
+
+0.4.43 修好主任务后，用户仍然每隔几分钟看到一个 PowerShell 窗口弹出来。
+复查两个任务的 XML，发现：
+
+| 任务 | 参数 | 隐藏 |
+| --- | --- | --- |
+| `qq-bridge` | `… -WindowStyle Hidden …` | ✅ |
+| **`qq-bridge-watchdog`** | `-NoProfile -ExecutionPolicy Bypass -File keepalive.ps1` | ❌ **漏了** |
+
+watchdog 的触发器是 `PT5M`（每 5 分钟），所以表现成"**隔几分钟弹一次**"，
+而主任务那次的"1 分钟一次"其实是 `RestartOnFailure`。
+
+**结论：两个任务都要加 `-WindowStyle Hidden`** —— 只修主任务是不够的。
+
+修法：`scripts\harden-watchdog-task.ps1 -Apply`（管理员；只改参数，触发器/设置保持原样）。
+`scripts\verify-qq-bridge.ps1` 已把这条加进验收（现在共 19 项）。

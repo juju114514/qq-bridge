@@ -2,6 +2,36 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.47：第二次弹窗根因（watchdog 任务漏了 -WindowStyle Hidden）
+
+> 0.4.43 修好主任务后，窗口**仍然**每隔几分钟弹一次。这次找到真凶。
+
+### 根因对比
+
+| 任务 | 参数 | 隐藏 |
+| --- | --- | --- |
+| `qq-bridge` | `… -WindowStyle Hidden …` | ✅ |
+| **`qq-bridge-watchdog`** | `-NoProfile -ExecutionPolicy Bypass -File keepalive.ps1` | ❌ |
+
+watchdog 触发器是 `PT5M`（每 5 分钟）→ 表现成"**隔几分钟弹一次**"。
+主任务那次的"1 分钟一次"是 `RestartOnFailure`。**两个根因，两条任务，都要修。**
+
+### 改了什么
+
+- 新增 `scripts/harden-watchdog-task.ps1`（管理员；只改参数，触发器/设置保持原样，先备份）
+- **已提权执行**：watchdog 任务现在带 `-WindowStyle Hidden`
+- `verify-qq-bridge.ps1` 新增 3 条：watchdog 带 Hidden / 无 RestartOnFailure / 仍每 5 分钟触发
+- 手动触发一次 watchdog 验证：进程起来后**无窗口句柄**（handle=0），健康时秒退
+
+### 真机结果
+
+```
+verify-qq-bridge.ps1 → 19 项通过 / 0 失败
+/health/detail → version=0.4.46  buildId=sha256:e492691a…  epoch=12  ready=true
+```
+
+⚠️ 注意：`/health` 显示 0.4.46 是因为**该进程是在 0.4.47 之前启动的**（只同步了文件没重启）。
+下次重启即为 0.4.47，指纹机制本身工作正常。
 ## 2026-10-31 — 0.4.46：补工程规范文档 + 移植 DSH_WEB_URL 优先
 
 > 和上游（v0.2.1-r1 + #131）做了一次**双向对比**后，补齐我们缺的、移植他们更好的。
