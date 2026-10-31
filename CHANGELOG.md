@@ -2,6 +2,53 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.96：页面钩子收口（把"迟早漏"堵上）
+
+连着三次同样的坑：
+
+| 版本 | 漏了什么 | 症状 |
+| --- | --- | --- |
+| 0.4.91 | `bindResetSession()` 没人调 | 会话下拉是空的 |
+| 0.4.93 | `bindSessionBackups()` 没人调 | 备份列表一直「加载中…」 |
+| 0.4.95 | `bindRolePick()` 挂错分支 | 人格下拉不出现、选「自定义」没反应 |
+
+共同点：**函数写好了、语法过、单测绿，页面上就是不出现**。
+根因是接线散落各处（`setConsolePage` 里 16 个 `if (page === '…')`，另有一些藏在 `if (r.ok)` 分支里）。
+
+### 做法：一张表 + 一个执行器
+
+```js
+const PAGE_HOOKS = {
+  overview: ['loadOverview'],
+  sessions: ['loadHeatmap'],
+  ...
+  persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick']
+};
+runPageHooks(page);   // setConsolePage 里只剩这一行
+```
+
+- **每条钩子独立 try**：一个炸了不影响其它（以前一个异常能让整个控制台卡在"加载中"）
+- 缺函数时只 `console.warn`，不抛
+- 散落的 16 个 `if (page === …)` 全部删除（现在 0 处）
+
+### 新增守卫 `check-page-hooks.mjs`
+
+四道检查，防止倒退：
+
+1. `PAGE_HOOKS` 与 `runPageHooks` 必须存在，且 `setConsolePage` 必须调用它
+2. **不允许再出现散落的 `if (page === '…')`**（出现即红，并告诉你去表里加）
+3. 表里的每个函数名必须在同文件里有定义（防止拼错 → 运行时静默 warn）
+4. 表里的每个页面 key 必须在 `consolePages` 里（防止拼错 → 钩子永不执行）
+
+### CDP 实测（切四个页面）
+
+```
+persona → {"roleOptions":6,"resetOptions":12,"backups":"共 2 份 · 目录 …"}
+space   → {"visible":"space","text":"QQ 空间 四个子页…"}
+report  → {"visible":"report","text":"运行报告 一键把「它现在好不好」…"}
+overview→ {"visible":"overview…","text":"本程序仪表盘 数据来自 /api/ov…"}
+JS 异常: 0      钩子 warn: 0
+```
 ## 2026-11-01 — 0.4.95：人格切换改成「选已有角色卡」下拉
 
 用户截图：切换人格那里是个**文本框**，占位符写着"选择已有角色或输入新角色名"——

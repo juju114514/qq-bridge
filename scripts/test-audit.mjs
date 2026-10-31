@@ -218,6 +218,7 @@ const tests = [
   'check-md-links.mjs',
   'check-docs-index.mjs',
   'check-readme-version.mjs',
+  'check-page-hooks.mjs',
   'check-install-commands.mjs',
   // 外部工具探测（yt-dlp）：缓存 / 失败不抛 / 版本解析。
   'test-tool-version.mjs',

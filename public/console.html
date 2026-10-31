@@ -6541,6 +6541,46 @@ async function spaceDeletePost(tid, btn) {
   }
 }
 
+  // ── 页面加载钩子（唯一接线处）────────────────────────────────────
+  // 教训：0.4.91 / 0.4.93 / 0.4.95 连续三次"函数写好了但没人调用"——
+  // bindResetSession、bindSessionBackups、bindRolePick 各自散落在别处，
+  // 语法过、单测绿、页面上就是不出现。所以收口到这一张表：
+  //   新增页面要跑什么，只改这里；不要再往 setConsolePage 里塞 if。
+  //
+  // 每条钩子独立 try：一个钩子炸了不影响其它钩子（这曾经让整个控制台卡在"加载中"）。
+  const PAGE_HOOKS = {
+    overview: ['loadOverview'],
+    sessions: ['loadHeatmap'],
+    people: ['loadPeople'],
+    scheduler: ['loadScheduler'],
+    'memory-graph': ['loadMemoryGraph'],
+    usage: ['loadUsageStructure'],
+    diagnostics: ['loadDiagnostics', 'loadWakeFunnel'],
+    space: ['spaceInit'],
+    song: ['songInit'],
+    supervisor: ['loadSupervisor'],
+    official: ['loadOfficial'],
+    report: ['loadReport'],
+    reference: ['loadToolHealth'],
+    'social-v2': ['loadVoiceLibrary'],
+    // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
+    persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick']
+  };
+
+  function runPageHooks(page) {
+    const names = PAGE_HOOKS[page];
+    if (!names) return;
+    for (const name of names) {
+      try {
+        const fn = window[name];
+        if (typeof fn === 'function') fn();
+        else if (typeof console !== 'undefined') console.warn('[page hook] 缺函数：' + name);
+      } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[page hook] ' + name + ' 失败：' + (e && e.message));
+      }
+    }
+  }
+
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -6558,29 +6598,9 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   try { sessionStorage.setItem('consolePage', page); } catch { /* 忽略 */ }
   if (updateHash && location.hash !== '#' + page) history.pushState({}, '', '#' + page);
   closeConsoleSearch();
-  // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
-  if (page === 'social-v2' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
-  if (page === 'diagnostics' && typeof loadDiagnostics === 'function') loadDiagnostics();
-  if (page === 'diagnostics' && typeof loadWakeFunnel === 'function') loadWakeFunnel();
-  if (page === 'sessions' && typeof loadHeatmap === 'function') loadHeatmap();
-  if (page === 'people' && typeof loadPeople === 'function') loadPeople();
-  if (page === 'scheduler' && typeof loadScheduler === 'function') loadScheduler();
-  if (page === 'memory-graph' && typeof loadMemoryGraph === 'function') loadMemoryGraph();
-  if (page === 'usage' && typeof loadUsageStructure === 'function') loadUsageStructure();
-  if (page === 'overview' && typeof loadOverview === 'function') loadOverview();
-  if (page === 'space' && typeof spaceInit === 'function') spaceInit();
-  if (page === 'song' && typeof songInit === 'function') songInit();
-  if (page === 'supervisor' && typeof loadSupervisor === 'function') loadSupervisor();
-  if (page === 'official' && typeof loadOfficial === 'function') loadOfficial();
-  if (page === 'report' && typeof loadReport === 'function') loadReport();
-  if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
-  // 人格与角色页：重置会话 + 会话备份（0.4.93）
-  if (page === 'persona') {
-    if (typeof bindResetSession === 'function') bindResetSession();
-    if (typeof bindSessionBackups === 'function') bindSessionBackups();
-    if (typeof bindRolePick === 'function') bindRolePick();
-  }
-  if (focus) {
+      runPageHooks(page);
+    
+if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
   }
