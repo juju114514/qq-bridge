@@ -164,10 +164,29 @@ export function createChannelModeStore({ fs, path, stateDir, ttlMs = DEFAULT_TTL
  * 给常驻进程用的封装：开局认领 → 定时心跳 → 退出释放。
  * @returns {{ ok: boolean, store: object, stop: () => void, reason?: string, holder?: object, epoch?: number }}
  */
+// PID 存活性判断（与 src/pid-alive.js **同实现**，行为一致性由 test-pid-alive.mjs 对照）。
+//
+// 为什么不 import：这个文件会被审计 harness 以**源码文本**注入 VM，
+// 而 stripExports 只会剥掉行首的 `export `，`export {x} from '...'` 会变成语法错误。
+// EPERM（存在但无权发信号）必须当"活着" —— 否则会删掉别人的锁、自己接管 = 双实例。
+export function classifyKillError(error) {
+  const code = String(error?.code ?? '');
+  if (code === 'ESRCH') return 'gone';
+  return 'alive';
+}
+
+export function isPidAlive(pid, killFn) {
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return false;
+  const kill = typeof killFn === 'function' ? killFn : process.kill.bind(process);
+  try { kill(n, 0); return true; }
+  catch (error) { return classifyKillError(error) === 'alive'; }
+}
+
 export function startBridgeChannelGuard({
   fs, path, stateDir, pid = process.pid, log = () => {},
   intervalMs = 20_000, setIntervalFn = setInterval, clearIntervalFn = clearInterval,
-  enabled = true,
+  enabled = true, killFn,
 } = {}) {
   const store = createChannelModeStore({ fs, path, stateDir });
   if (!enabled) {
@@ -180,8 +199,8 @@ export function startBridgeChannelGuard({
     // 新实例被判"被另一个 bridge 占着"→ 干脆不连 QQ，日志只有一行 warning。
     // 和插件侧一样按 pid 存活性判断：持有者已退出就直接接管。
     const holderPid = Number(claim?.holder?.pid ?? 0);
-    let holderAlive = false;
-    try { if (holderPid > 0) { process.kill(holderPid, 0); holderAlive = true; } } catch { holderAlive = false; }
+    // 0.4.49：只把 ESRCH（进程不存在）当"已退出"；EPERM/未知一律保守视为活着
+    const holderAlive = isPidAlive(holderPid, killFn);
     if (holderPid > 0 && !holderAlive) {
       log(`通道持有者 pid ${holderPid} 已退出，接管通道`);
       // 删掉残留认领再抢：epoch 水位在另一个文件里，不会因为删文件而回退

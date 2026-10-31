@@ -44,7 +44,7 @@
 | 项 | 值 |
 | --- | --- |
 | 入口 | Windows：`start-bridge.ps1`（[LAUNCHER.md](docs/guides/LAUNCHER.md)）；Linux：`deploy/install-server.sh` + systemd |
-| 自检（离线） | `node scripts/test-audit.mjs` → **115 套**（**以脚本输出为准**，本数字随版本更新）；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
+| 自检（离线） | `node scripts/test-audit.mjs` → **以脚本输出为准**（不要在文档里写死数量，0.4.49 起改为引用输出）；另有 `test-http-layer` / `test-role-id` / `test-compat` / `test-portability` / `test-launcher-scripts` 各自可单独跑 |
 | 自测（活的） | `powershell -File scripts\live-full-test.ps1` → **54 项**（只发 ownerQQ 私聊；`-MaxSends` 限流；会自动处理「AI 暂停」与 agentToken） |
 | 代码结构 | `src/bridge.js`（当前 **10,050**，硬上限 10,800；以 `wc -l` 为准，主循环 + 唤醒状态机）、`src/api/*`（14 个域 handler）、`src/http/*`（响应/请求体/前导关/路由表） |
 | 人格 | 身份在文件 front matter：`roles/<任意文件名>.md` 里 `id:` + `name:`。state 只存 id，**改名不影响绑定**（`test-role-id.mjs` 钉住） |

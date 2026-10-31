@@ -2,6 +2,41 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.49：外部审查第一批（P1-1 + P2-1/2/3/4）+ 文档一致性（P2-5）
+
+> 基线 `4bd29d2`（v0.4.48）全仓外部审查报告 → 逐条核实后按批准范围修。**P0 = 0**。
+
+### 安全与互斥（5 项）
+
+| # | 问题 | 修法 | 测试 |
+| --- | --- | --- | --- |
+| **P1-1** | 插件工具白名单 **fail-open**（`?.restrict?.()` + 无条件成功日志） | 抽出 `applyToolAllowlist()`：缺 `restrict`/抛错/空名单**一律抛错**（宿主建 agent 失败）；并置 `toolsUnsafe`，入站再拒一次 | `test-plugin-tool-allowlist.mjs`（6 条） |
+| **P2-1** | `/api/socialV2/initial-prompt` 只拒 GET，**POST 可被有效 agent token 改写** | 并入管理端集合，**与 method 无关**一律 403 | `test-prelude-agent-denied.mjs`（6 条，用**有效**令牌 + 先过 CSRF） |
+| **P2-2** | 通道锁把 `process.kill` **所有异常**当"进程已死"（EPERM 也会接管 → 双实例） | `classifyKillError()`：只有 `ESRCH` 算死；`EPERM/EACCES/未知` 保守当活着；`killFn` 可注入 | `test-pid-alive.mjs`（8 条，含 EPERM 不接管 / ESRCH 接管） |
+| **P2-3** | instance-lock 非原子（read→判断→write），且同 instanceId 换 PID 可覆盖 | sidecar `.guard` + `openSync('wx')` 串行化；**同实例不同 PID 按持有者存活性决定**（活着拒绝 / 死了允许） | `test-instance-lock-atomic.mjs`（6 条，含三子进程并发只 1 个成功） |
+| **P2-4** | `plugin.log` 落工具参数/结果原文 → **QQ 正文长期驻留磁盘** | `describeToolArgs()` / `describeToolResult()`：只记工具名、键名、长度、状态；正文不落盘；`QQ_PLUGIN_LOG_VERBOSE=1` 才原样记 | `test-plugin-log-redaction.mjs`（8 条，唯一标记正文断言不出现） |
+
+### 兼容性处理
+
+- `channel-mode-store.js` 里的 PID 判定改为**内联**：审计 harness 以源码文本注入 VM，`stripExports` 只剥行首 `export `，re-export 语法会炸（实际踩到，15 个测试红）
+- 两份实现（`src/pid-alive.js` 与内联）由 `test-pid-alive.mjs` 的**行为对照**守住，防止漂移
+- `plugin/vendor/channel-mode-store.js` + `pid-alive.js` 已同步（vendor 守卫 4/4）
+
+### 文档一致性（P2-5）
+
+| 文件 | 改了什么 |
+| --- | --- |
+| `CONTRIBUTING.md` | 删除"hotfix 可直接在 main"，改为**一律 `next/<版本>`** |
+| `SECURITY.md` | "个人 fork" → "独立维护分支（定向回移植）"，中英文都改 |
+| `AGENTS.md` | 审计数量不再写死（"以脚本输出为准"） |
+| `docs/UPSTREAM-SECURITY-REGISTER.md` | 401 → **429**（并注明以命令输出为准） |
+| `docs/WINDOWS-PROCESS-SUPERVISION.md` | §三/§四 标注为**历史章节**，指向 §十二 的现状 |
+
+### 质量门
+
+- 审计 **144/144**（新增 5 个测试文件，共 +34 条断言）
+- `test-file-size` 基线更新（`instance-lock.js` +52 行 = 原子认领 + guard，属真实增长）
+- vendor 守卫 4/4、链接检查通过
 ## 2026-10-31 — 0.4.48：资源可观测性（`system` 段）
 
 > 起因：有用户的服务器上跑网页版抖音自动化把机器吃满，QQ 侧表现为"慢/不回"。

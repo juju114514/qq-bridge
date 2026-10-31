@@ -13,9 +13,43 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { atomicWriteJson } from './atomic-write.js';
+import { isPidAlive } from './pid-alive.js';
 
 export const BEAT_INTERVAL_MS = 30_000;
 export const STALE_MS = 90_000;
+
+const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* ignore */ } };
+
+/**
+ * 用 sidecar 文件把"检查 + 创建"串起来（0.4.49，外部审查 P2-3）。
+ *
+ * 旧实现是 `readLock()` → 判断 → `writeLock()`：两个进程同时看到"无锁/过期"时
+ * 会都写锁并各自返回 ok —— 于是同一个官方机器人被连了两次（互踢线）。
+ *
+ * 做法与 channel-mode-store 一致：`openSync(guard, 'wx')` 独占创建 = 跨进程互斥；
+ * 拿到 guard 的人做检查+写入；guard 超过 5 秒未释放视为残留并强占。
+ */
+function withGuard(fs, guardFile, fn, { retries = 40, delayMs = 5, staleMs = 5000 } = {}) {
+  for (let i = 0; i < retries; i += 1) {
+    try {
+      const fd = fs.openSync(guardFile, 'wx');
+      try { fs.writeSync(fd, String(process.pid)); } catch { /* ignore */ }
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+      try { return fn(); }
+      finally { try { fs.rmSync(guardFile, { force: true }); } catch { /* ignore */ } }
+    } catch (error) {
+      if (String(error?.code ?? '') !== 'EEXIST') throw error;
+      // 残留 guard：持有者已死或写入卡住超过 5 秒
+      try {
+        const st = fs.statSync(guardFile);
+        if (Date.now() - st.mtimeMs > staleMs) { fs.rmSync(guardFile, { force: true }); continue; }
+      } catch { /* 已被别人清掉，重试即可 */ }
+      sleepSync(delayMs);
+    }
+  }
+  // 抢不到 guard = 有人在并发认领：保守失败（不冒险写锁）
+  return { __guardTimeout: true };
+}
 
 export function readLock(file) {
   try {
@@ -42,14 +76,32 @@ export function writeLock(file, info) {
  * 抢锁。
  * @returns {{ok:true, release:()=>void} | {ok:false, holder:object}}
  */
-export function acquireInstanceLock(file, { instanceId = 'default', pid = process.pid, now = Date.now(), staleMs = STALE_MS } = {}) {
-  const cur = readLock(file);
-  const alive = cur && cur.beatAt && now - cur.beatAt < staleMs;
-  if (alive && cur.instanceId !== instanceId) {
-    return { ok: false, holder: cur };
+export function acquireInstanceLock(file, { instanceId = 'default', pid = process.pid, now = Date.now(), staleMs = STALE_MS, fs: fsImpl = fs, killFn } = {}) {
+  const guardFile = `${file}.guard`;
+  const decided = withGuard(fsImpl, guardFile, () => {
+    const cur = readLock(file);
+    const alive = cur && cur.beatAt && now - cur.beatAt < staleMs;
+    if (alive) {
+      // 0.4.49（外部审查 P2-3）：同 instanceId 换 PID 不再**无条件**接管。
+      //   规则：老进程还活着 → 拒绝（防双实例）；老进程已死 → 允许（重启不误报）。
+      // 旧行为只看 instanceId，同实例的另一个进程可以直接覆盖战领。
+      if (cur.instanceId !== instanceId) return { ok: false, holder: cur };
+      if (cur.pid && cur.pid !== pid && isPidAlive(cur.pid, killFn)) {
+        return { ok: false, holder: cur };
+      }
+    }
+    const info = {
+      instanceId, pid, hostname: os.hostname(),
+      since: cur?.instanceId === instanceId ? (cur.since || now) : now,
+      beatAt: now,
+    };
+    writeLock(file, info);
+    return { ok: true, info };
+  });
+  if (!decided || decided.__guardTimeout) {
+    return { ok: false, holder: { instanceId: '(并发认领中)', pid: 0, hostname: '', since: 0, beatAt: 0 } };
   }
-  const info = { instanceId, pid, hostname: os.hostname(), since: cur?.instanceId === instanceId ? (cur.since || now) : now, beatAt: now };
-  writeLock(file, info);
+  if (!decided.ok) return { ok: false, holder: decided.holder };
   let timer = null;
   const beat = () => {
     try {

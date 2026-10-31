@@ -63,6 +63,10 @@ bridge 退出（code X），5 秒后重启
 
 ## 三、修法（需要管理员执行一次）
 
+> ⚠️ **历史章节**：本节写的是 0.4.43 当时的状态。当前两个任务都已隐藏，
+> 现状与最新证据见 §十二；执行脚本仍是 `scripts\harden-scheduled-task.ps1`（主任务）与
+> `scripts\harden-watchdog-task.ps1`（watchdog）。
+
 ```powershell
 # 管理员 PowerShell
 cd <部署目录>
@@ -81,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File scripts\harden-scheduled-task.ps1 -Appl
 > 不加 `-Apply` 是演练模式，只打印将要做的事。
 > 非管理员执行会得到 `Access is denied.`（`Register-ScheduledTask` 需要管理员）。
 
-## 四、另外三个启动器（现状与建议）
+## 四、另外三个启动器（⚠️ 历史章节，0.4.43 时的状态；现状见 §十二）
 
 | 启动器 | 触发者 | 行为 | 建议 |
 | --- | --- | --- | --- |
