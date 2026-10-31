@@ -35,7 +35,7 @@
 | sliverp/DeepSeek-harness-qqbot | 17 | 2,853 | MIT | 插件 | 极简官方 Bot 插件（附件/文件工具） |
 | happysnaker/qq-ai-bot | — | — | — | 不可用 | **实测：仓库 404**（表格标的"未验证"是对的） |
 
-> 我们自己的 juju114514/qq-bridge 不在这个目录里（在 `D:\QQBot-open\qq-bridge`），
+> 我们自己的 juju114514/qq-bridge 不在这个目录里（见主仓库目录），
 > 128 个源码文件、约 10.1k 行 `bridge.js` + 109 个 API 模块、117 个测试脚本。
 
 ## 三、值得抄的 8 个点（带文件位置）
