@@ -39,6 +39,28 @@ node <dsh-cli>\lib\bin.js plugin --profile qqtest add <repo>\plugin
 node <dsh-cli>\lib\bin.js --profile qqtest --dump-config | Select-String 'qq-bridge'
 ```
 
+## 二·五、让 sidecar 把通道让出来（必做）
+
+插件和常驻 bridge **只能有一个收消息**（`state/channel-mode.json` 里的认领）。
+所以正式用插件模式时，sidecar 要以 **sidecar-only** 姿态启动：
+
+```jsonc
+// sidecar 机器上的 config.json
+{
+  "channel": { "enabled": false }   // ← 只提供控制台 / 契约 / 定时器，不连网关、不占通道
+}
+```
+
+启动日志应该看到：
+
+```
+[bridge] sidecar-only 模式（channel.enabled=false）：不连接 QQ 网关，也不占用通道认领
+```
+
+此时 `state/channel-mode.json` **不存在**，插件才能拿到通道（`claim(plugin) → ok=true`）。
+
+> 反过来：想切回 bridge 模式，就把 `channel.enabled` 改回 `true`（或删掉这一行）并重启。
+
 ## 三、配置
 
 ```jsonc

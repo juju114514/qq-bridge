@@ -57,8 +57,14 @@ export function createChannelModeStore({ fs, path, stateDir, ttlMs = DEFAULT_TTL
 export function startBridgeChannelGuard({
   fs, path, stateDir, pid = process.pid, log = () => {},
   intervalMs = 20_000, setIntervalFn = setInterval, clearIntervalFn = clearInterval,
+  enabled = true,
 } = {}) {
   const store = createChannelModeStore({ fs, path, stateDir });
+  if (!enabled) {
+    // sidecar-only：只提供控制台 / 契约 / 定时器，不连网关，也不占通道
+    log('sidecar-only 模式（channel.enabled=false）：不连接 QQ 网关，也不占用通道认领');
+    return { ok: false, store, disabled: true, stop: () => {} };
+  }
   const claim = store.claim('bridge', { pid, note: 'sidecar 通道' });
   if (!claim.ok) {
     log('⚠️ 通道被占用：' + store.describe()
