@@ -258,6 +258,7 @@ const tests = [
   'test-system-metrics.mjs',
   'test-plugin-log-redaction.mjs',
   'test-instance-lock-atomic.mjs',
+  'test-instance-lock-toctou.mjs',
   'test-pid-alive.mjs',
   'test-prelude-agent-denied.mjs',
   'test-plugin-tool-allowlist.mjs',

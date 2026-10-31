@@ -168,6 +168,23 @@ export function describeToolArgs(name, args, { maxFields = 6 } = {}) {
 /**
  * 工具结果同样只写"结构信息"：是否 ok、长度、错误摘要（错误里也可能带正文，只取首行）。
  */
+/**
+ * 异常摘要（0.4.49.1，R49-02）：**默认不带 message**。
+ * 宿主的错误信息可能含 prompt / 消息片段 / 请求体 —— 那正是我们要避免落盘的东西。
+ * 需要原文时显式 `QQ_PLUGIN_LOG_VERBOSE=1`。
+ */
+export function describeError(error, { verbose = verboseLogEnabled() } = {}) {
+  const name = String(error?.name ?? 'Error');
+  const code = error?.code !== undefined ? ` code=${String(error.code)}` : '';
+  let len = 0;
+  try { len = String(error?.message ?? error ?? '').length; } catch { len = 0; }
+  if (verbose) {
+    const raw = String(error?.message ?? error ?? '');
+    return `${name}${code} "${raw.split('\n')[0].slice(0, 160)}"`;
+  }
+  return `${name}${code} (message ${len} 字，默认不落盘)`;
+}
+
 export function describeToolResult(name, result, { maxErr = 120 } = {}) {
   let r = result;
   if (typeof r === 'string') {
@@ -175,7 +192,10 @@ export function describeToolResult(name, result, { maxErr = 120 } = {}) {
   }
   if (r && typeof r === 'object') {
     const ok = r.ok === true ? 'ok' : (r.ok === false ? 'fail' : '?');
-    const err = typeof r.error === 'string' ? ` err:"${r.error.split('\n')[0].slice(0, maxErr)}"` : '';
+    // 0.4.49.1（R49-02）：错误文本同样可能含正文，默认只记长度
+    const err = typeof r.error === 'string'
+      ? (verboseLogEnabled() ? ` err:"${r.error.split('\n')[0].slice(0, maxErr)}"` : ` err:${r.error.length}字`)
+      : '';
     let size = '';
     try { size = ` ${JSON.stringify(r).length}字`; } catch { size = ''; }
     return `${name} → ${ok}${size}${err}`;
@@ -413,7 +433,7 @@ export function apply(ctx, rawConfig) {
         // Agent 侧的错误以前完全看不到 —— 加一条监听，直接落进 plugin.log
         if (typeof ctx.on === 'function') {
           disposers.push(ctx.on('agent/error', ({ agent: subject, error } = {}) => {
-            log('❌ agent 错误：' + (error?.message ?? String(error)));
+            log('❌ agent 错误：' + describeError(error));
           }));
         }
         if (typeof ctx.on === 'function') {
@@ -458,7 +478,7 @@ export function apply(ctx, rawConfig) {
             log(`助手回复 → ${chatKey}（${String(text).length} 字，转纯文本 ${String(outgoing).length} 字）`);
             // OneBotWsClient.call() 返回的就是 response.data
             channel?.send(chatKey, outgoing)
-              .then((r) => log(`发送成功 ${chatKey} message_id=${r?.message_id ?? r?.data?.message_id ?? JSON.stringify(r ?? null).slice(0, 60)}`))
+              .then((r) => log(`发送成功 ${chatKey} message_id=${r?.message_id ?? r?.data?.message_id ?? '(none)'}`))
               .catch((e) => log(`❌ 发送失败 ${chatKey}：` + (e?.message ?? e)));
           }));
         }

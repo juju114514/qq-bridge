@@ -50,16 +50,61 @@ check('结果摘要：字符串结果只给长度', () => {
   assert.match(s, new RegExp(String(SECRET.length) + '字'));
 });
 
-check('结果摘要：错误信息保留首行（便于排障），但不带正文', () => {
+check('结果摘要：错误默认只记长度（0.4.49.1 起；原文需 verbose）', () => {
   const s = m.describeToolResult('qqb_reply', { ok: false, error: 'no such message' });
   assert.match(s, /fail/);
-  assert.match(s, /no such message/);
+  assert.match(s, /err:\d+字/, '默认不应出现错误原文');
+  assert.ok(!s.includes('no such message'), '默认不应出现错误原文');
 });
 
 check('verbose 开关默认关闭；显式 =1 才开', () => {
   assert.equal(m.verboseLogEnabled({}), false);
   assert.equal(m.verboseLogEnabled({ QQ_PLUGIN_LOG_VERBOSE: '0' }), false);
   assert.equal(m.verboseLogEnabled({ QQ_PLUGIN_LOG_VERBOSE: '1' }), true);
+});
+
+// ── 0.4.49.1（R49-02 / R49-04）：残留收口 ──────────────────────────────
+const LEAK = '这段是群友原话-9c2f-不该进日志';
+
+check('describeError：默认不带 message（只给 name/code + 长度）', () => {
+  const e = Object.assign(new Error(LEAK), { code: 'E_TEST' });
+  const s = m.describeError(e, { verbose: false });
+  assert.ok(!s.includes(LEAK), '错误信息泄漏：' + s);
+  assert.match(s, /E_TEST/);
+  assert.match(s, /message \d+ 字/);
+});
+
+check('describeError：verbose 才输出原文首行', () => {
+  const e = new Error(LEAK + '\n第二行');
+  const s = m.describeError(e, { verbose: true });
+  assert.ok(s.includes(LEAK));
+  assert.ok(!s.includes('第二行'), '只应给首行');
+});
+
+check('工具结果的 error 字段：默认只记长度', () => {
+  const s = m.describeToolResult('qqb_reply', { ok: false, error: LEAK });
+  assert.ok(!s.includes(LEAK), '结果错误字段泄漏正文：' + s);
+  assert.match(s, /err:\d+字/);
+  assert.match(s, /fail/);
+});
+
+check('工具结果的 error 字段：verbose 保留首行（排障用）', () => {
+  const prev = process.env.QQ_PLUGIN_LOG_VERBOSE;
+  process.env.QQ_PLUGIN_LOG_VERBOSE = '1';
+  try {
+    const s = m.describeToolResult('qqb_reply', { ok: false, error: LEAK });
+    assert.ok(s.includes(LEAK));
+  } finally {
+    if (prev === undefined) delete process.env.QQ_PLUGIN_LOG_VERBOSE;
+    else process.env.QQ_PLUGIN_LOG_VERBOSE = prev;
+  }
+});
+
+check('源码层：发送成功日志不再用 JSON.stringify 兜底', async () => {
+  const fs = await import('node:fs/promises');
+  const src = await fs.readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
+  assert.ok(!/发送成功[^`]*JSON\.stringify/.test(src), '发送成功日志仍会 stringify 整个响应');
+  assert.ok(src.includes("message_id=${r?.message_id"), '应只取明确 message_id');
 });
 
 console.log(`\n结果：${failures === 0 ? '全部通过' : failures + ' 项失败'}`);
