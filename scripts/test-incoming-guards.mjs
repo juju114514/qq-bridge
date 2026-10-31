@@ -16,12 +16,12 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  FAIL ${name}\n       ${e.message}`); }
 };
 
-function makeGuards({ quote = false, mode = 'active', pendingEntry = null, allowed = true } = {}) {
+function makeGuards({ quote = false, mode = 'active', pendingEntry = null, allowed = true, cfg = null } = {}) {
   const calls = { activity: [], log: [], remembered: [], answered: [] };
   const g = createIncomingGuards({
     log: (m) => calls.log.push(m),
     appendActivity: (m) => calls.activity.push(m),
-    getCfg: () => ({ ownerQQ: '10001' }),
+    getCfg: () => (cfg ?? { ownerQQ: '10001' }),
     isSessionAllowedInCurrentMode: () => allowed,
     isQuoteTargetSelf: async () => quote,
     rememberPersonInMessage: (kind, id) => calls.remembered.push(`${kind}:${id}`),
@@ -61,6 +61,20 @@ await check('官方只 @ 一下（带附件）：合成上下文并继续', asyn
   const r = await g.gate({ ...base, key: 'group:official-x', event, plainContent: '' });
   assert.equal(r.stop, false);
   assert.match(r.plainContent, /带了 2 个附件/);
+  assert.equal(r.isOwner, false);
+});
+
+await check('官方通道：openid 命中 official.ownerOpenid 时算管理员', async () => {
+  const { g } = makeGuards({ cfg: { ownerQQ: '10001', official: { ownerOpenid: 'OWNER_OPENID_123' } } });
+  const event = { user_id: 'official-OWNER_OPENID_123', __official: { atBot: true } };
+  const r = await g.gate({ ...base, key: 'group:official-y', event, plainContent: '在吗' });
+  assert.equal(r.isOwner, true);
+});
+
+await check('官方通道：openid 不在 ownerOpenid 时不是管理员', async () => {
+  const { g } = makeGuards({ cfg: { ownerQQ: '10001', official: { ownerOpenid: 'OWNER_OPENID_123' } } });
+  const event = { user_id: 'official-SOMEONE_ELSE', __official: { atBot: true } };
+  const r = await g.gate({ ...base, key: 'group:official-z', event, plainContent: '在吗' });
   assert.equal(r.isOwner, false);
 });
 

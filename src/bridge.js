@@ -7897,22 +7897,26 @@ async function main() {
   // agent 能看到的消息里只有 "@樰" 这串文本，没人告诉它"樰"就是它自己，于是它会把
   // @自己 当成 @别人、已读不回（issue #29）。群名片可能与昵称不同，但 at/引用段里
   // 带的是 QQ 号，所以两条都给。
-  function selfIdentityTextV2() {
-    const name = String(selfDisplayName || '').trim();
-    const id = String(selfUserId || '').trim();
+  // 官方通道的自我身份（官方事件里没有 QQ 号，只有 openid）
+  let officialSelfName = '';
+  let officialSelfOpenid = '';
+  function selfIdentityTextV2(isOfficial = false) {
+    const name = String((isOfficial ? officialSelfName : selfDisplayName) || '').trim();
+    const id = String((isOfficial ? officialSelfOpenid : selfUserId) || '').trim();
     if (!name && !id) return '';
     const label = name ? `「${name}」` : '（昵称未取到）';
-    const idText = id ? `（QQ ${id}）` : '';
+    // 官方通道没有 QQ 号，别写「QQ xxx」——那会诱导模型把 openid 当 QQ 号
+    const idText = isOfficial ? (id ? '（官方机器人）' : '') : (id ? `（QQ ${id}）` : '');
     const callBits = name
       ? `消息里出现「@${name}」、有人叫「${name}」、或引用你的消息，指的都是你 —— 不要当成别人`
       : '被 @、被叫到你的昵称、或引用你的消息，指的都是你 —— 不要当成别人';
-    return `【你的身份】你在 QQ 上的昵称是${label}${idText}。${callBits}；群名片可能与昵称不同，at/引用段里带${id ? ` ${id} ` : '你的 QQ 号'}就是在叫你。\n\n`;
+    return `【你的身份】你在 QQ 上的昵称是${label}${idText}。${callBits}；群名片可能与昵称不同，at/引用段里带${isOfficial ? ' @你 ' : (id ? ` ${id} ` : '你的 QQ 号')}就是在叫你。\n\n`;
   }
 
   function buildWakePromptV2(key, reason) {
     const roleState = readRoleState();
     const roleLine = roleState.role ? `【当前角色】${roleState.role}（完整角色卡请调用 qq_get_prompt 查看）\n\n` : '';
-    const identityLine = selfIdentityTextV2();
+    const identityLine = selfIdentityTextV2(String(key).includes('official-'));
     const st = getSocialV2State(key);
     const tokenLine = `【会话令牌】${st.agentToken}（调用二代状态工具时请在参数中带上此令牌）\n\n`;
     const memoryText = formatMemoryV2(st);
@@ -8659,9 +8663,27 @@ function selfCheckSnapshot() {
     rememberPersonInMessage, readRoleState, handlePendingAnswer, pending
   }));
 
+  // 官方通道重连后官方会重投同一 msg_id，而入站没有 seq 可用 —— 只能按 message_id 去重。
+  // 见 docs/audits/official-channel-audit-2026-10-31.md 缺口 3。
+  const seenOfficialMsgIds = new Map(); // message_id -> ts
+  const OFFICIAL_DEDUPE_TTL_MS = 10 * 60 * 1000;
+  function isDuplicateOfficialMessage(msgId) {
+    const k = String(msgId ?? '');
+    if (!k) return false;
+    const now = Date.now();
+    for (const [id2, ts] of seenOfficialMsgIds) if (now - ts > OFFICIAL_DEDUPE_TTL_MS) seenOfficialMsgIds.delete(id2);
+    if (seenOfficialMsgIds.has(k)) return true;
+    seenOfficialMsgIds.set(k, now);
+    return false;
+  }
+
   async function handleIncoming(kind, id, event, cfg) {
     lastInboundAtMs = Date.now();
     const key = convKey(kind, id);
+    if (String(key).includes('official-') && isDuplicateOfficialMessage(event?.message_id)) {
+      log(`[official] 重复消息，跳过（message_id=${String(event?.message_id ?? '').slice(0, 12)}…）`);
+      return;
+    }
     // 私聊准入：只在 config.socialV2.privateAccess.enabled=true 时接管。
     // 不依赖 get_friend_list —— OneBot 的 sub_type='friend' 本身就代表"好友"，SnowLuma 也认。
     if (kind === 'private') {
@@ -9219,7 +9241,10 @@ function selfCheckSnapshot() {
       } catch {}
     }
     const targetIsSelf = !!targetId && selfId != null && String(targetId) === String(selfId);
-    const isOwner = String(senderId) === String(cfg.ownerQQ ?? '');
+    const isOwner = Boolean(
+      (String(cfg.ownerQQ ?? '') && String(senderId) === String(cfg.ownerQQ ?? ''))
+      || (String(cfg.official?.ownerOpenid ?? '').trim()
+        && String(senderId).replace(/^official-/, '') === String(cfg.official.ownerOpenid).trim()));
     const msg = appendSocialV2Poke(key, {
       sender,
       userId: senderId || null,
@@ -9872,7 +9897,15 @@ function selfCheckSnapshot() {
           log(`处理官方消息出错：${error?.message ?? error}`);
         }
       }
-    }).catch((error) => log(`[official] 启动失败：${error?.message ?? error}`));
+    })
+      // 官方通道的自我身份：官方事件里没有 QQ 号，用 appid + 配置的显示名。
+      // 不设置的话 prompt 会拿 SnowLuma 的个人号身份去说（审计缺口 1）。
+      .then(() => {
+        officialSelfName = String(cfg.official?.botName ?? '').trim() || '官方机器人';
+        officialSelfOpenid = String(cfg.official?.appid ?? '').trim();
+        log(`[official] 自我身份已设置：显示名「${officialSelfName}」（官方通道无 QQ 号）`);
+      })
+      .catch((error) => log(`[official] 启动失败：${error?.message ?? error}`));
   }
 
   bot.onNotice('notify', async (event) => {

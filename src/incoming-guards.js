@@ -40,7 +40,15 @@ export function createIncomingGuards(deps = {}) {
       return { stop: true, reason: 'empty' };
     }
 
-    const isOwner = String(event?.user_id) === String(cfg?.ownerQQ ?? '');
+    // owner 判定要同时支持两种身份：
+    //   · 个人号：QQ 号（数字）
+    //   · 官方通道：openid（官方事件里没有 QQ 号）
+    //   见 docs/audits/official-channel-audit-2026-10-31.md 缺口 2
+    const senderRaw = String(event?.user_id ?? '');
+    const ownerQQNum = String(cfg?.ownerQQ ?? '');
+    const ownerOpenid = String(cfg?.official?.ownerOpenid ?? '').trim();
+    const isOwner = Boolean((ownerQQNum && senderRaw === ownerQQNum)
+      || (ownerOpenid && senderRaw.replace(/^official-/, '') === ownerOpenid));
     rememberPersonInMessage?.(kind, id, event);
     const roleState = typeof readRoleState === 'function' ? readRoleState() : { mode: 'active' };
 

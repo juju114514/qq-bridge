@@ -95,6 +95,12 @@ export function createConfigLoader(deps = {}) {
       intents: undefined,
       allowAll: false,
       allow: [],
+      // 管理员的**官方通道 openid**（不是 QQ 号）：官方事件里没有 QQ 号，只有 openid。
+      // 留空 = 官方通道没有管理员（审批/切角色等仅管理员能力不可用）。
+      ownerOpenid: '',
+      // 官方机器人在 prompt 里的显示名（官方 API 没有「取自己资料」的稳定接口，
+      // 用配置项最省事；留空则退回「官方机器人」）
+      botName: '官方机器人',
       // 官方会话在 reserved2 下是否把 AI 最终文本自动发出去（模型没调发送工具时的兜底）
       autoForward: true,
       ...(file.official ?? {})
