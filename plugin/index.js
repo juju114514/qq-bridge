@@ -323,7 +323,23 @@ export function apply(ctx, rawConfig) {
         }
         if (typeof ctx.on === 'function') {
           disposers.push(ctx.on('session/event', (session, event) => {
-            if (bySession.has(session?.id)) log(`会话事件：${event?.type ?? '?'}`);
+            if (bySession.has(session?.id)) {
+              const ty = event?.type ?? '?';
+              if (ty === 'tool/call') {
+                // 取证需要：哪个工具、什么参数（截断）。真机事故里只记 "tool/call"
+                // 完全看不出它调的是 desktop_sequence + win+r。
+                const nm = event?.data?.name ?? event?.data?.toolName ?? '?';
+                let args = '';
+                try { args = JSON.stringify(event?.data?.args ?? event?.data?.arguments ?? {}); } catch { args = ''; }
+                log(`工具调用：${nm} ${String(args).slice(0, 200)}`);
+              } else if (ty === 'tool/result') {
+                let r2 = '';
+                try { r2 = JSON.stringify(event?.data?.result ?? event?.data?.output ?? {}); } catch { r2 = ''; }
+                log(`工具结果：${String(r2).slice(0, 160)}`);
+              } else {
+                log(`会话事件：${ty}`);
+              }
+            }
             const chatKey = bySession.get(session?.id);
             if (!chatKey) return;
             if (event?.type !== 'assistant/message') return;
@@ -401,6 +417,22 @@ export function apply(ctx, rawConfig) {
           log('⚠️ get_login_info 失败（@ 判定可能失效）：' + (e?.message ?? e));
         }
         log('QQ 通道已启动');
+
+        // 🔴 熔断开关：存在 <stateDir>/plugin-kill 就立刻断开 QQ 并释放通道。
+        // 为什么需要：插件跑在 DSH 进程里，出事时"改配置 + 重启 DSH"太慢，
+        // 也没有外部手段能叫停正在跑的 agent。这个文件是唯一能秒停的入口。
+        const killFile = path.join(config.stateDir, 'plugin-kill');
+        const killer = setInterval(() => {
+          try {
+            if (!fs.existsSync(killFile)) return;
+            clearInterval(killer);
+            log('🔴 检测到 plugin-kill：正在断开 QQ 通道并释放通道');
+            try { channelGuard?.stop?.(); } catch { /* ignore */ }
+            try { channel?.close?.(); } catch { /* ignore */ }
+            try { log('🔴 已熔断：本进程不再收发 QQ（删除 ' + killFile + ' 并重启 DSH 才能恢复）'); } catch {}
+          } catch { /* 轮询失败不影响主流程 */ }
+        }, 2000);
+        killer.unref?.();
       } catch (e) {
         log('QQ 通道启动失败（插件仍可用，只是不连 QQ）：' + (e?.message ?? e));
       }
