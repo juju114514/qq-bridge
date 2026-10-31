@@ -9,6 +9,8 @@
 > **第一次用（没写过代码）？** → [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)（零基础八步：每步都写了「应该看到什么 / 没看到怎么办」）
 > **想直接跑起来（会命令行）？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
 > **想让 AI 替你装？** → [docs/guides/INSTALL-SKILL.md](docs/guides/INSTALL-SKILL.md)（把手册给你的 AI 助手，它照着装）
+> **只想让 AI 在群里答问题、不想碰个人号？** → QQ 官方插件 3 步搞定、无封号风险 →
+> [docs/guides/OFFICIAL-VS-BRIDGE.md](docs/guides/OFFICIAL-VS-BRIDGE.md)（官方 vs 本仓库，诚实对照）
 >
 ### 你已经装了什么？不用换，直接用
 
@@ -33,6 +35,8 @@ node src/bridge.js   # 然后 /role 里切到 silent，或控制台点「暂停�
 ```
 你现在的情况？
 │
+├─ 只想让 AI 在群里答问题 →  官方插件（3 步，无封号风险）→ docs/guides/OFFICIAL-VS-BRIDGE.md
+  │
 ├─ 只想先看看它怎么想   →  npm run demo          （不用 QQ、不联网，30 秒）
 │
 ├─ 什么都没有（新手）    →  docs/guides/BEGINNER.md（零基础八步，含截图）

@@ -27,6 +27,7 @@
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
+| [guides/OFFICIAL-VS-BRIDGE.md](guides/OFFICIAL-VS-BRIDGE.md) | **官方插件 vs 本仓库**：QQ 官方 `@tencent-connect/dsh-qqbot` 三步接入的实测信息与能力边界；诚实对照两条路（账号风险 / 群消息可见性 / 主动插话 / 表情包 / 记忆），附决策树 | ✅ 2026-10-31 |
 | [guides/INSTALL-SKILL.md](guides/INSTALL-SKILL.md) | **一键安装 Skill**：把这份手册给能执行命令的 AI 助手，它替你装；用户只在三处动手（扫码/白名单/确认）；含自愈顺序与风险声明 | ✅ 2026-10-31 |
 | [guides/RELEASE.md](guides/RELEASE.md) | **发版流程**：tag + Release 一条命令；含「gh 猜错仓库」「token 缺 read:org」「正文必须与标签一致」三个坑 | ✅ 2026-10-31 |
 | [guides/BEGINNER.md](guides/BEGINNER.md) | **零基础八步**：从空电脑到「她在群里回话」。每步三件事——做什么 / 应该看到什么 / 没看到怎么办；含常见卡点速查表与术语小抄 | ✅ 2026-10-31 |
