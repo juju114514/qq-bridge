@@ -25,7 +25,9 @@ export const name = 'qq-bridge';
 export const normalizeConfigForTest = (raw) => normalizeConfig(raw);
 
 /** DSH 插件依赖的服务。少一个都不挂载（fail-loud，不静默降级）。 */
-export const inject = ['tools'];
+// 'agents' 必须声明：宿主只把声明过的服务放进 ctx，没声明时访问 ctx.agents 会抛
+// "cannot get property \"agents\" without inject"（真机踩过）。
+export const inject = ['tools', 'agents'];
 
 /** 配置默认值。真正的 schema 校验交给 DSH 的 schemastery（见 Config 导出）。 */
 const DEFAULTS = {
@@ -37,6 +39,8 @@ const DEFAULTS = {
   sidecarUrl: 'http://127.0.0.1:3110',
   requireMention: true,
   sidecarToken: '',
+  // 必须和 sidecar 的 state/ 是同一个目录：通道认领文件要写在那里才起互斥作用
+  stateDir: './state',
   allowGroups: [],
 };
 
@@ -49,6 +53,7 @@ export function normalizeConfig(raw = {}) {
     sidecarUrl: String(cfg.sidecarUrl || DEFAULTS.sidecarUrl).replace(/\/+$/, ''),
     requireMention: cfg.requireMention !== false,
     sidecarToken: String(cfg.sidecarToken || ''),
+    stateDir: String(cfg.stateDir || './state'),
     // 注意：Number(null) === 0 且是有限数 —— 只 .filter(Number.isFinite) 会把 null 变成群号 0。
     allowGroups: Array.isArray(cfg.allowGroups)
       ? cfg.allowGroups
@@ -171,7 +176,7 @@ export function apply(ctx, rawConfig) {
         // 通道模式闸（N3）：bridge 正在收消息时不重复接，否则群里会看到两条回复。
         try {
           const mod = await import('../src/domains/channel-mode-store.js');
-          const store = mod.createChannelModeStore({ fs: await import('node:fs'), path: await import('node:path'), stateDir: config.stateDir || './state' });
+          const store = mod.createChannelModeStore({ fs: await import('node:fs'), path: await import('node:path'), stateDir: config.stateDir });
           const claim = store.claim('plugin', { pid: process.pid, note: 'DSH 插件通道' });
           if (!claim.ok) {
             log('⚠️ 通道被占用：' + store.describe() + ' —— 插件不连接 QQ（要切到插件模式，请先停掉 bridge）。');
@@ -237,11 +242,13 @@ export function apply(ctx, rawConfig) {
   }
 
   // ── 降级检查：启动时探一次，把结论打出来（5.5 节要求）──────────────
-  probeSidecar(config.sidecarUrl)
+  probeSidecar(config.sidecarUrl, { timeoutMs: 5000 })
     .then((res) => {
       state.sidecar = res;
       if (!res.ok) {
-        log(`sidecar 未连接（${config.sidecarUrl}）：主动消息、记忆写入、记账、控制台均不可用（被动回复正常）`);
+        // 把原因也打出来：宿主启动期 1.5s 超时会造成"明明开着却说没连上"的误判
+        log(`sidecar 未连接（${config.sidecarUrl}，原因：${res.error ?? 'unknown'}）：`
+            + '主动消息、记忆写入、记账、控制台均不可用（被动回复正常）');
       } else {
         log(`已挂载；sidecar 在线（mode=${res.mode ?? '?'}）`);
       }

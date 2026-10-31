@@ -26,7 +26,8 @@ const mod = await import(pathToFileURL(path.join(pluginDir, 'index.js')).href);
 check('插件导出 name / inject / apply（DSH 插件四项约定里的三项）', () => {
   assert.equal(typeof mod.name, 'string');
   assert.ok(mod.name.length > 0);
-  assert.deepEqual(mod.inject, ['tools']);
+  // 'agents' 必须声明（真机：不声明时访问 ctx.agents 会抛 "without inject"）
+  assert.deepEqual(mod.inject, ['tools', 'agents']);
   assert.equal(typeof mod.apply, 'function');
 });
 
