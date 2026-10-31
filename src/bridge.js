@@ -6,6 +6,7 @@ let channelStore = null;
 let health = null;
 // 启动摘要（0.4.42）：分阶段耗时 + 失败也要留证
 let bootReport = null;
+let readSystemForHealth = () => null;
 function healthSet(service, state, reason = '') {
   try {
     health?.set(service, state, reason);
@@ -52,6 +53,7 @@ import { readBuildInfo as buildInfo, fingerprintLine } from './build-info.js';
 import { StaleEpochError } from './domains/channel-mode.js';
 import { createHealthState } from './health-state.js';
 import { createBootReport } from './boot-report.js';
+import { startEventLoopMonitor, createCpuSampler, readSystemSnapshot } from './system-metrics.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
 // 链路：
@@ -10213,9 +10215,19 @@ function selfCheckSnapshot() {
   // 健康状态：进程/通道/服务分开（0.4.41）
   try {
     const info0 = buildInfo(ROOT);
+    // 资源可观测性：事件循环延迟 + CPU（0.4.48）
+    try {
+      const lag0 = startEventLoopMonitor({
+        onWarn: (ms) => log(`⚠️ [system] 事件循环延迟 ${ms}ms（>500ms）—— 可能被其它进程拖累`),
+      });
+      const cpu0 = createCpuSampler();
+      globalThis.__qqbSystemMonitor = { lag0, cpu0 };
+      readSystemForHealth = () => readSystemSnapshot({ lag: lag0.read(), cpuPercent: cpu0() });
+    } catch { /* ignore */ }
     health = createHealthState({
       version: info0.version, buildId: info0.buildId, sourceCommit: info0.commit,
       ownerId: channelStore?.ownerId ?? '', pid: process.pid, startedAt: info0.startedAt ?? Date.now(),
+      readSystem: () => readSystemForHealth(),
     });
     health.setChannel({ mode: channelEpoch != null ? 'bridge' : null, epoch: channelEpoch, status: channelEpoch != null ? 'active' : 'starting' });
     healthSet('console', 'connected');

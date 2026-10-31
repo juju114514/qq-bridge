@@ -2,6 +2,39 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.48：资源可观测性（`system` 段）
+
+> 起因：有用户的服务器上跑网页版抖音自动化把机器吃满，QQ 侧表现为"慢/不回"。
+> 当时我们**拿不出任何资源证据**，只能靠猜。
+
+### `/health/detail` 新增 `system`
+
+```json
+"system": {"cpuPercent":0.9,"rssMb":77.9,"heapUsedMb":24,
+  "freeMemMb":4739.5,"totalMemMb":16255,"memUsedPercent":70.8,
+  "loadavg":null,"eventLoopLagMs":9,"eventLoopLagMaxMs":39,
+  "cores":8,"platform":"win32","warn":[]}
+```
+
+### 三个判读要点
+
+| 指标 | 说明 |
+| --- | --- |
+| `eventLoopLagMs` | **最能说明"我们被拖累"**（>500ms 说明主线程被抢） |
+| `cpuPercent` | 只算本进程；**它低但 lag 高 → 是别的进程在抢 CPU** |
+| `freeMemMb` | 系统剩余内存，<200MB 触发 `low-memory` |
+
+- `loadavg`：Windows 上恒为 `null`（如实标注，不假装有值）
+- `warn` 数组：`event-loop-lag:*` / `low-memory:*` / `high-cpu:*`
+- **`warn` 不参与 `ready` 判定** —— 它描述"环境变差"，不等于"我们坏了"
+
+### 实现
+
+- `src/system-metrics.js`：事件循环延迟监控（1s 采样、保留 60 个）+ CPU 采样 + 快照
+- 延迟超过 500ms 时打一条限流日志（60s 一次）
+- 新增 6 条测试（含"阻塞 250ms 能被捕到"与"空闲时应该很低"）
+
+审计 139/139。
 ## 2026-10-31 — 0.4.47：第二次弹窗根因（watchdog 任务漏了 -WindowStyle Hidden）
 
 > 0.4.43 修好主任务后，窗口**仍然**每隔几分钟弹一次。这次找到真凶。
