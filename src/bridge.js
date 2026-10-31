@@ -15,7 +15,9 @@ function epochGuard(stage) {
     channelStore.assertCurrent({ mode: 'bridge', epoch: channelEpoch });
     return true;
   } catch (error) {
-    if (error instanceof StaleEpochError) {
+    // 不依赖 instanceof：VM/多模块实例下类身份可能不同（harness 里实测过）
+    const stale = error?.code === 'STALE_EPOCH' || error?.name === 'StaleEpochError';
+    if (stale) {
       log(`⚠️ [epoch] ${stage} 前发现通道已易主（本实例 epoch=${channelEpoch}），中止该次操作：${error.message}`);
       return false;
     }
@@ -8701,23 +8703,26 @@ function selfCheckSnapshot() {
 
   // 官方通道重连后官方会重投同一 msg_id，而入站没有 seq 可用 —— 只能按 message_id 去重。
   // 见 docs/audits/official-channel-audit-2026-10-31.md 缺口 3。
-  const seenOfficialMsgIds = new Map(); // message_id -> ts
-  const OFFICIAL_DEDUPE_TTL_MS = 10 * 60 * 1000;
-  function isDuplicateOfficialMessage(msgId) {
+  // 重复投递去重（全通道）：官方重连会重投，SnowLuma 侧重连/重试也可能重投。
+  // 0.4.29 只给官方通道加了这段，0.4.40 的集成测试发现普通群同样会重复计数
+  // （同一 message_id 连投两次 → 两条未读、两次唤醒）。这里提升为通用逻辑。
+  const seenMsgIds = new Map(); // message_id -> ts
+  const MSG_DEDUPE_TTL_MS = 10 * 60 * 1000;
+  function isDuplicateMessage(msgId) {
     const k = String(msgId ?? '');
     if (!k) return false;
     const now = Date.now();
-    for (const [id2, ts] of seenOfficialMsgIds) if (now - ts > OFFICIAL_DEDUPE_TTL_MS) seenOfficialMsgIds.delete(id2);
-    if (seenOfficialMsgIds.has(k)) return true;
-    seenOfficialMsgIds.set(k, now);
+    for (const [id2, ts] of seenMsgIds) if (now - ts > MSG_DEDUPE_TTL_MS) seenMsgIds.delete(id2);
+    if (seenMsgIds.has(k)) return true;
+    seenMsgIds.set(k, now);
     return false;
   }
 
   async function handleIncoming(kind, id, event, cfg) {
     lastInboundAtMs = Date.now();
     const key = convKey(kind, id);
-    if (String(key).includes('official-') && isDuplicateOfficialMessage(event?.message_id)) {
-      log(`[official] 重复消息，跳过（message_id=${String(event?.message_id ?? '').slice(0, 12)}…）`);
+    if (isDuplicateMessage(event?.message_id)) {
+      log(`重复消息，跳过（key=${key} message_id=${String(event?.message_id ?? '').slice(0, 12)}…）`);
       return;
     }
     // 私聊准入：只在 config.socialV2.privateAccess.enabled=true 时接管。

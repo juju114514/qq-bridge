@@ -46,7 +46,7 @@
     "src/atomic-write.js": 60,
     "src/audio-transcribe.js": 86,
     "src/bili-enrich.js": 176,
-    "src/bridge.js": 10228,
+    "src/bridge.js": 10233,
     "src/config.js": 441,
     "src/conv-key.js": 49,
     "src/core/memory.js": 251,

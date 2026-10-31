@@ -253,6 +253,7 @@ const tests = [
   'test-safe-fetch-ports.mjs',
   'check-preset-fresh.mjs',
   'test-channel-epoch.mjs',
+  'test-integration.mjs',
   'test-characterization.mjs',
   'test-build-info.mjs',
   'check-lock.mjs',
