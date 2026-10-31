@@ -9,6 +9,7 @@
 //   DELETE /api/session-backups?file=x.json → { ok, removed }
 import fs from 'node:fs';
 import path from 'node:path';
+import { buildRestorePatch, restorableCount } from '../session-backup-restore.js';
 
 const MAX_ITEMS = 200;
 const PREVIEW_MESSAGES = 50;
@@ -32,12 +33,15 @@ function summarize(file, dir) {
     snapshot = null;
   }
   const messages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
+  const recover = restorableCount(snapshot || {});
   return {
     file,
     key: String(snapshot?.key || ''),
     at: Number(snapshot?.at || st.mtimeMs || 0),
     size: st.size,
     messages: messages.length,
+    restorable: recover.recent,
+    restorableUnread: recover.unread,
     longTerm: Array.isArray(snapshot?.longTerm) ? snapshot.longTerm.length : 0,
     broken: !snapshot
   };
@@ -75,6 +79,70 @@ export async function handleSessionBackupsRoute(ctx = {}) {
   if (!isSafeBackupName(file)) { sendJson({ ok: false, error: '文件名不合法' }, 400); return true; }
 
   const full = path.join(dir, file);
+
+  if (req.method === 'POST') {
+    const body = (await (ctx.readBody)?.()) || {};
+    if (body.action === 'trimUnread') {
+      let snap = null;
+      try { snap = JSON.parse(fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, '')); } catch { /* 忽略 */ }
+      if (!snap || !Array.isArray(snap.unread)) { sendJson({ ok: false, error: '备份里没有未读列表' }, 400); return true; }
+      if (typeof d.restoreConversation !== 'function') { sendJson({ ok: false, error: '当前版本不支持' }, 501); return true; }
+      let live = {};
+      try {
+        const rawLive = typeof d.readFile === 'function' ? d.readFile(d.files?.socialV2 || '') : '';
+        if (rawLive) live = (JSON.parse(rawLive.replace(/^\uFEFF/, ''))?.conversations?.[String(snap.key || '')]) || {};
+      } catch { /* 忽略 */ }
+      const ids = new Set(snap.unread.map((x) => `${x.messageId ?? ''}|${x.seq ?? ''}`));
+      const kept = (Array.isArray(live.unread) ? live.unread : []).filter((x) => !ids.has(`${x.messageId ?? ''}|${x.seq ?? ''}`));
+      const removed = (live.unread || []).length - kept.length;
+      d.restoreConversation(String(snap.key || ''), { recentMessages: live.recentMessages, unread: kept });
+      sendJson({ ok: true, removed, totalUnread: kept.length });
+      return true;
+    }
+    if (body.action !== 'restore') { sendJson({ ok: false, error: "只支持 action:'restore' / 'trimUnread'" }, 400); return true; }
+    let snapshot = null;
+    try {
+      snapshot = JSON.parse(fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, ''));
+    } catch (error) {
+      sendJson({ ok: false, error: `备份读不出来：${error?.message ?? error}` }, 400);
+      return true;
+    }
+    if (typeof d.restoreConversation !== 'function') {
+      sendJson({ ok: false, error: '当前版本不支持恢复（restoreConversation 未注入）' }, 501);
+      return true;
+    }
+    const key = String(snapshot?.key || '');
+    if (!/^(group|private):[A-Za-z0-9_-]+$/.test(key)) {
+      sendJson({ ok: false, error: '备份里的会话 key 不合法，拒绝恢复' }, 400);
+      return true;
+    }
+    // 当前会话（可能已存在），用于合并去重
+    let live = {};
+    try {
+      const rawLive = typeof d.readFile === 'function' ? d.readFile(d.files?.socialV2 || '') : '';
+      if (rawLive) {
+        const parsed = JSON.parse(rawLive.replace(/^\uFEFF/, ''));
+        live = parsed?.conversations?.[key] || {};
+      }
+    } catch { /* 读不到就当空的 */ }
+    const patch = buildRestorePatch({ snapshot, live, includeUnread: body.includeUnread === true });
+    try {
+      const applied = d.restoreConversation(key, patch);
+      sendJson({
+        ok: true,
+        key,
+        file,
+        addedRecent: patch.addedRecent,
+        addedUnread: patch.addedUnread,
+        totalRecent: applied?.recent ?? patch.recentMessages.length,
+        totalUnread: applied?.unread ?? patch.unread.length,
+        note: `已恢复 ${patch.addedRecent} 条历史 / ${patch.addedUnread} 条未读（与现有记录去重后合并）`
+      });
+    } catch (error) {
+      sendJson({ ok: false, error: `恢复失败：${error?.message ?? error}` }, 500);
+    }
+    return true;
+  }
 
   if (req.method === 'GET') {
     try {

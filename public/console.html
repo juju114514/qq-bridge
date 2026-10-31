@@ -6625,13 +6625,30 @@ async function loadSessionBackups() {
       <div class="row" style="gap:8px;align-items:center;padding:3px 0">
         <span style="flex:0 0 96px">${fmtTime(it.at)}</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.key || '(未知会话)'}</span>
-        <span style="flex:0 0 70px">${it.messages} 条</span>
+        <span style="flex:0 0 92px" title="可恢复的历史条数（含 old 备份的 unread 兜底）">${it.restorable || it.messages || 0} 条</span>
         <span style="flex:0 0 66px">${(it.size / 1024).toFixed(1)} KB</span>
         <button data-bk-view="${it.file}" style="flex:0 0 auto">查看</button>
+        <button data-bk-restore="${it.file}" style="flex:0 0 auto">恢复</button>
         <button data-bk-del="${it.file}" style="flex:0 0 auto">删除</button>
       </div>`).join('');
     list.querySelectorAll('[data-bk-view]').forEach((b) => {
       b.addEventListener('click', () => viewSessionBackup(b.dataset.bkView));
+    });
+    list.querySelectorAll('[data-bk-restore]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const f = b.dataset.bkRestore;
+        if (!confirm('把这份备份合并回当前会话？\n（按消息 id 去重，不会覆盖现有记录）')) return;
+        b.disabled = true;
+        try {
+          const r = await api('/api/session-backups?file=' + encodeURIComponent(f), 'POST', { action: 'restore' });
+          if (r && r.ok) {
+            const el = document.getElementById('sessionBackupDetail');
+            if (el) el.textContent = `恢复完成：${r.key}\n${r.note}\n现有历史 ${r.totalRecent} 条 / 未读 ${r.totalUnread} 条`;
+          } else {
+            alert((r && r.error) || '恢复失败');
+          }
+        } finally { b.disabled = false; }
+      });
     });
     list.querySelectorAll('[data-bk-del]').forEach((b) => {
       b.addEventListener('click', async () => {
