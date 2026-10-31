@@ -80,21 +80,27 @@ Windows 上也可以直接双击仓库根的两个 bat：
 <你的仓库路径>\plugin
 ```
 
-### 方式 B：GitHub 子目录（验证可用，0.4.4+）
+### 方式 B：GitHub 子目录（**推荐这种写法**）
 
 ```
-github:juju114514/qq-bridge#main&path:/plugin
+dsh plugin --profile desktop add github:juju114514/qq-bridge#path:/plugin
 ```
 
 - 插件已**自包含**（`plugin/vendor/` 里带了 `onebot-ws` 与通道闸），装下来就能跑
 - 前提：仓库根的 `postinstall` 已移除（0.4.4 起）——它会让 pnpm 报
   `ERR_PNPM_IGNORED_BUILDS`，装不上
 
+> ⚠️ **不要写 `#main&path:/plugin`**（0.4.4 时代的旧写法）。
+> 新版 pnpm / DSH 会把 `main&path:/plugin` 整串当成一个 ref，解析失败后退回装**仓库根**
+> （= 桥接应用本身 0.4.x），结果是个普通依赖，插件不会加载。
+> 实测翻车记录：装完 `bundles` 里出现的是 `@juju114514/qq-bridge-plugin 0.1.0` 但工具不注册，
+> 或者干脆只装了根包 —— 认准 `#path:/plugin`，**中间不要有 `&`**。
+
 ### 方式 C：等 npm 发布（还没做）
 
 插件是 `private: true`、没发到 npm，**填包名会 404**。
 
-> ⚠️ 直接填仓库**根地址**（不带 `&path:/plugin`）不行：根目录是桥接应用本身，
+> ⚠️ 直接填仓库**根地址**（不带 `#path:/plugin`）也不行：根目录是桥接应用本身，
 > 不是 DSH 插件（没有 `dsh.bundle`），只会被装成普通依赖。
 
 ## 二·六、安装（临时验证必须用独立 DSH_HOME）

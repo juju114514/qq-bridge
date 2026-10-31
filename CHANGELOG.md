@@ -2,6 +2,30 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.75：修插件安装命令（`#main&path:/plugin` 会装错）
+
+有人在 DSH 里用 `github:juju114514/qq-bridge#main&path:/plugin` 装插件，报：「已完成」，
+但提示 `main&path:/plugin` 会被整串当成 ref，**退回装仓库根的 qq-bridge 0.4.73 普通依赖**。
+
+### 问题
+
+`docs/guides/PLUGIN-MODE.md` 的「方式 B」还写着 0.4.4 时代的旧写法（带 `#main&`），
+而新版 pnpm/DSH 不认这种 ref 组合，结果是"装上了但插件不加载"。
+
+### 修法
+
+1. 命令改成唯一正确的形式：
+
+   ```
+   dsh plugin --profile desktop add github:juju114514/qq-bridge#path:/plugin
+   ```
+
+2. 文档里明确写「**不要写 `#main&path:/plugin`**」并解释为什么（会被当 ref → 装根包 → 插件不加载）
+3. 新增守门脚本 `scripts/check-install-commands.mjs`：
+   扫 README / llms.txt / AGENT-INSTALL / docs/guides / docs/design，
+   发现活的 `#main&path:/plugin` 就红；`CHANGELOG` / `docs/releases` / `docs/audits` 豁免（历史不许改）。
+
+守卫自测：塞一条错误写法 → 退出码 1 并指出文件行号；删掉 → 恢复通过。
 ## 2026-11-01 — 0.4.74：运行报告（别人出问题，一键给出一段能贴的文本）
 
 用户远程服务器上的机器人已经连续跑 3 天（唯一一次失败是云服务器 CPU 被别的程序吃满），
