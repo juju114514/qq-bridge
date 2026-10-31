@@ -16,6 +16,7 @@ import { createSupervisorHandler } from '../supervisor-view.js';
 import { handleOfficialRoute } from './official-route.js';
 import { handleQzoneEndpoints } from './qzone-endpoints.js';
 import { handleSessionResetRoute } from './session-reset-route.js';
+import { handleSessionBackupsRoute } from './session-backups-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -88,6 +89,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // POST /api/sessions/reset —— 一键重置会话（可先备份）
   if (await handleSessionResetRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // GET/DELETE /api/session-backups —— 会话备份列表 / 详情 / 删除
+  if (await handleSessionBackupsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {

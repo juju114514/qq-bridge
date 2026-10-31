@@ -2,6 +2,53 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.93：会话备份列表（防止备份写了找不到）
+
+用户："可以识别之前的对话备份到一个模块，防止找不到"。
+
+0.4.91 的重置会写 `state/session-backups/`，但**写完就没人看得见**——只能去文件夹里翻。
+
+### 新端点 `GET/DELETE /api/session-backups`
+
+| 请求 | 返回 |
+| --- | --- |
+| `GET` | `{ ok, dir, count, items:[{file,key,at,size,messages,longTerm,broken}] }`（按时间倒序，最多 200 份） |
+| `GET ?file=x.json` | `{ ok, item, snapshot:{ key, at, role, model, messages(最后 50 条), truncated, longTerm(前 20) } }` |
+| `DELETE ?file=x.json` | `{ ok, removed }` |
+
+安全：`isSafeBackupName()` 只允许 `[A-Za-z0-9._-]+.json` 且不含 `..` ——
+`?file=../config.json` 实测返回 **400**（有测试）。
+
+### 控制台：人格与角色页下面多一块「会话备份」
+
+```
+会话备份
+共 2 份 · 目录 D:\...\state\session-backups
+11-01 06:21  group:630679184   4 条  0.6 KB  [查看] [删除]
+11-01 05:58  private:1599…     0 条  0.4 KB  [查看] [删除]
+```
+
+点「查看」直接在下面展开前 50 条消息（`[user] …` / `[assistant] …`），删除有确认。
+
+### CDP 实测（真的渲染出来了，不是"应该能"）
+
+```
+会话下拉选项: 13
+备份 meta: 共 2 份 · 目录 <state>/session-backups
+备份行数: 2
+第一行: 11-01 06:21 group:630679184 4 条 0.6 KB 查看 删除
+查看后: group:630679184 · 11-01 06:21 · 4 条 / [user] 今天好累啊
+JS 异常: 0
+```
+
+### 顺带修的两个"接线漏了"
+
+- `bindResetSession()` 定义了但**从来没人调用** → 下拉是空的；现在在 `setConsolePage` 的
+  `persona` 分支里调用
+- 同样地 `bindSessionBackups()` 也是"写了没接"
+
+> 这类问题的共同点：函数写好了、语法也过、单测也绿，但**页面上就是不出现**。
+> 控制台这种"注册式接线"必须用 CDP 真点一遍才算数。
 ## 2026-11-01 — 0.4.92：重置会话改成幂等（没有活动上下文也算成功）
 
 0.4.91 上线后真机复测发现：**连按两次会报 502**。

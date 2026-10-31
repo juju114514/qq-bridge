@@ -1942,6 +1942,11 @@ button:active:not(:disabled) {
         <span class="meta" id="resetSessionMsg"></span>
       </div>
       <div class="meta">改完预设后，正在进行的 QQ 会话仍用旧 preset；在这里重置即可（下条消息开新上下文）。备份存到 <code>state/session-backups/</code>；备份失败会中止重置，不会把上下文弄丢。</div>
+
+      <h3 style="margin-top:14px">会话备份</h3>
+      <div class="meta" id="sessionBackupsMeta">加载中…</div>
+      <div id="sessionBackupsList" style="font-size:12.5px"></div>
+      <div class="meta" id="sessionBackupDetail" style="white-space:pre-wrap;margin-top:6px"></div>
     </section>
 <section id="section-social-v1" data-page="social-v1" class="card span-all">
       <h2>一代仿真模式（reserved）</h2>
@@ -4343,7 +4348,7 @@ document.getElementById('socialSave').addEventListener('click', async () => {
   });
   document.getElementById('socialMsg').textContent = r.ok ? '✅ 已保存' : ('❌ ' + (r.error || '失败'));
   document.getElementById('socialMsg').className = r.ok ? 'meta ok' : 'meta err';
-  if (r.ok) { loadSocialForm(); refreshSocialStatus(); }
+  if (r.ok) { loadSocialForm(); bindResetSession(); bindSessionBackups(); refreshSocialStatus(); }
 });
 document.getElementById('socialFlush').addEventListener('click', async () => {
   const r = await api('/api/social/flush', 'POST', {});
@@ -6308,6 +6313,68 @@ function bindResetSession() {
   loadResetSessionOptions();
 }
 
+// ── 会话备份列表（0.4.93）─────────────────────────────────────────
+function fmtTime(ts) {
+  const d = new Date(Number(ts) || 0);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function loadSessionBackups() {
+  const meta = document.getElementById('sessionBackupsMeta');
+  const list = document.getElementById('sessionBackupsList');
+  if (!meta || !list) return;
+  try {
+    const r = await api('/api/session-backups');
+    if (!r || !r.ok) { meta.textContent = '读取失败：' + ((r && r.error) || '未知'); return; }
+    if (!r.count) { meta.textContent = '还没有备份（重置时勾上「先备份」就会有）'; list.innerHTML = ''; return; }
+    meta.textContent = `共 ${r.count} 份 · 目录 ${r.dir}`;
+    list.innerHTML = r.items.map((it) => `
+      <div class="row" style="gap:8px;align-items:center;padding:3px 0">
+        <span style="flex:0 0 96px">${fmtTime(it.at)}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.key || '(未知会话)'}</span>
+        <span style="flex:0 0 70px">${it.messages} 条</span>
+        <span style="flex:0 0 66px">${(it.size / 1024).toFixed(1)} KB</span>
+        <button data-bk-view="${it.file}" style="flex:0 0 auto">查看</button>
+        <button data-bk-del="${it.file}" style="flex:0 0 auto">删除</button>
+      </div>`).join('');
+    list.querySelectorAll('[data-bk-view]').forEach((b) => {
+      b.addEventListener('click', () => viewSessionBackup(b.dataset.bkView));
+    });
+    list.querySelectorAll('[data-bk-del]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        if (!confirm('删除这份备份？删了就找不回来了')) return;
+        await api('/api/session-backups?file=' + encodeURIComponent(b.dataset.bkDel), 'DELETE');
+        loadSessionBackups();
+      });
+    });
+  } catch (e) {
+    meta.textContent = '读取失败：' + e.message;
+  }
+}
+
+async function viewSessionBackup(file) {
+  const el = document.getElementById('sessionBackupDetail');
+  if (!el) return;
+  el.textContent = '读取中…';
+  try {
+    const r = await api('/api/session-backups?file=' + encodeURIComponent(file));
+    if (!r || !r.ok) { el.textContent = '读不出来：' + ((r && r.error) || '未知'); return; }
+    const s = r.snapshot || {};
+    const lines = (s.messages || []).map((m) => {
+      const who = m.role || m.sender || m.kind || '?';
+      const text = String(m.text ?? m.content ?? '').replace(/\s+/g, ' ').slice(0, 160);
+      return `  [${who}] ${text}`;
+    });
+    el.textContent = `${r.item.key || '(未知)'} · ${fmtTime(r.item.at)} · ${r.item.messages} 条` +
+      (s.truncated ? '（只显示最后 50 条）' : '') + '\n' + lines.join('\n');
+  } catch (e) {
+    el.textContent = '读不出来：' + e.message;
+  }
+}
+
+function bindSessionBackups() { loadSessionBackups(); }
+
 function bindSpaceTabs() {
   const tabs = document.getElementById('spaceTabs');
   if (!tabs) return;
@@ -6414,6 +6481,11 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'official' && typeof loadOfficial === 'function') loadOfficial();
   if (page === 'report' && typeof loadReport === 'function') loadReport();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
+  // 人格与角色页：重置会话 + 会话备份（0.4.93）
+  if (page === 'persona') {
+    if (typeof bindResetSession === 'function') bindResetSession();
+    if (typeof bindSessionBackups === 'function') bindSessionBackups();
+  }
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
