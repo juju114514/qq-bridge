@@ -2,6 +2,44 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.36：运行时指纹（version / commit / presetHash）
+
+> 对应外部评审第 2 条：「运行时到底执行什么」。一天 32 个版本 + 三份 preset 副本，
+> 出问题时**没法从日志判断跑的是哪套代码**。
+
+### 现在有了什么
+
+```json
+GET /health
+{
+  "ok": true, "mode": "bridge", "version": "0.4.36",
+  "commit": "929f29a7de1a",
+  "preset": "qq-chat-v2",
+  "presetHash": "bc836a15c8c9",
+  "presetSource": "dsh/agent-presets/qq-chat-v2/qq-tool-restrict.mjs"
+}
+```
+
+启动横幅也打一行：
+
+```
+运行时指纹：version=0.4.36 commit=929f29a7de1a preset=qq-chat-v2@bc836a15c8c9
+```
+
+### 实现
+
+- 新增 `src/build-info.js`：读 `.git/HEAD`（不打子进程）+ 算 preset 文件 sha256
+  （放在 `src/` 而不是 `src/core/`，因为 core 有「禁止 IO import」的纯度守卫）
+- `/health` 与启动日志都带上
+- 新增 `scripts/test-build-info.mjs`（5 条，含「没有 .git 时降级不抛错」）
+- 顺手修好 `docs/ROUTES.md` 漂移（`gen-route-index --write`）
+
+### 为什么这条便宜又值钱
+
+排查真机问题时，「你说的是哪个版本」从猜变成查：
+commit 能定位代码、presetHash 能定位**实际加载的那份 preset**（正是 0.4.35 修的静默故障）。
+
+审计 132/132。
 ## 2026-10-31 — 0.4.35：独立维护 + preset 单一真源（外部评审落地 ①②）
 
 > 采纳外部评审里**成本最低、收益最高**的两条：宣布独立维护、preset 去掉多份权威源。

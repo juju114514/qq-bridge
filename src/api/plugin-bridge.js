@@ -55,7 +55,9 @@ export function createPluginBridgeHandler(deps = {}) {
     const p = url.pathname;
 
     if (p === '/health') {
-      sendJson({ ok: true, mode, version, startedAt, uptimeMs: Date.now() - startedAt }, 200);
+      // 指纹：让「现在跑的到底是哪套代码」可追溯（version / commit / presetHash）
+      const fp = typeof deps?.buildInfo === 'function' ? deps.buildInfo() : null;
+      sendJson({ ok: true, mode, version, startedAt, uptimeMs: Date.now() - startedAt, ...(fp ?? {}) }, 200);
       return true;
     }
 

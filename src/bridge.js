@@ -1,3 +1,5 @@
+let runtimeFingerprint = null;
+import { readBuildInfo as buildInfo, fingerprintLine } from './build-info.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
 // 链路：
@@ -3722,6 +3724,8 @@ async function main() {
         pluginToken: pluginWiring.pluginToken(),
         consoleToken,
         version: pluginWiring.version(),
+        // 运行时指纹：/health 里返回 version/commit/presetHash，便于排查「跑的是哪套」
+        buildInfo: () => runtimeFingerprint?.build ?? null,
         mode: 'bridge',
         getSocialV2State,
         readRoleState,
@@ -10129,6 +10133,12 @@ function selfCheckSnapshot() {
     // 日志里的「token 自愈失败」与 config.json 的 snowluma.homeDir。
     log(`SnowLuma 首次连接未成功（将在后台自动重连并尝试自愈 WS token）: ${error?.message ?? error}`);
   });
+  // 运行时指纹：version / commit / preset hash（排查真机「跑的是哪套代码」用）
+  try {
+    const info = buildInfo(ROOT);
+    runtimeFingerprint = { build: info };
+    log('运行时指纹：' + fingerprintLine(info));
+  } catch { /* 指纹失败不影响启动 */ }
   log('桥接已启动。按 Ctrl+C 退出。');
   // 首次部署一次性任务：把已存在的群成员标成 listed（延迟 12 秒，不阻塞启动）
   setTimeout(() => { bootstrapPeopleListed().catch((e) => log(`⚠️ [people] 初始化失败：${e?.message ?? e}`)); }, 12000).unref?.();
