@@ -400,7 +400,7 @@
         "_说明": "互动召回（is_wakeup）：只有单聊；30 天内 4 个周期各 1 条"
       }
     },
-    "_locked": "Official 通道：代码已实现但未通过真机 e2e，仓库标记 EXPERIMENTAL。启用属自主决定，风险自负 —— 见 LOCK.md"
+    "_locked": "Official 通道正在调试与维修（真机 e2e 中），预计 3~5 天内更新（2026-11-03 前）；期间建议先等。启用属自主决定，风险自负 —— 见 LOCK.md"
   },
   "consoleHost": "127.0.0.1",
   "_consoleHost说明": "控制台监听地址。Docker 里设 QQB_CONSOLE_HOST=0.0.0.0（compose 已带），宿主机保持 127.0.0.1",
