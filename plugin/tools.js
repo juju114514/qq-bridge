@@ -23,10 +23,38 @@ const OUTPUT = {
   schema: { type: 'object', additionalProperties: true },
   render: (_args, value) => {
     const v = value && typeof value === 'object' ? value : {};
-    const text = typeof v.message === 'string' && v.message
+    const head = typeof v.message === 'string' && v.message
       ? v.message
       : (v.ok === false ? '失败' : '完成');
-    return [{ type: 'text', text: v.ok === false ? `失败：${text}` : text }];
+    const lines = [v.ok === false ? `失败：${head}` : head];
+
+    // ⚠️ 真机事故（2026-10-31 13:4x）：以前只渲染 v.message，把 messages 数组整个丢了 ——
+    // 模型看到"最近 9 条"却看不到任何正文，工具等于没用。数据类字段必须一起渲染。
+    const fmt = (m) => {
+      const seq = m?.seq ?? '?';
+      const who = m?.self ? '我' : (m?.userId ?? '?');
+      const text = String(m?.text ?? '').replace(/\s+/g, ' ').trim();
+      return `  #${seq} ${who}: ${text}`;
+    };
+    if (Array.isArray(v.messages) && v.messages.length) {
+      lines.push(...v.messages.map(fmt));
+    }
+    if (Array.isArray(v.recent) && v.recent.length) {
+      lines.push('最近消息：', ...v.recent.map((m) => fmt({ ...m, self: m?.self ?? (String(m?.userId) === String(v.selfId ?? '')) })));
+    }
+    if (typeof v.handoff === 'string' && v.handoff.trim()) {
+      lines.push('交接记忆：', v.handoff.trim());
+    }
+    if (v.role && typeof v.role === 'object') {
+      lines.push(`角色卡：${v.role.name ?? '?'}（${String(v.role.hint ?? '').length} 字）`);
+    }
+    if (v.wake && typeof v.wake === 'object') {
+      const kw = Array.isArray(v.wake?.triggers?.keywords) ? v.wake.triggers.keywords.length : 0;
+      lines.push(`唤醒配置：mode=${v.wake.mode ?? '?'} 关键词=${kw} 概率=${v.wake?.triggers?.probability ?? '?'}`);
+    }
+    if (v.readThroughSeq !== undefined) lines.push(`已读水位：${v.readThroughSeq}`);
+    if (v.timeout === true) lines.push('（等待超时，没有新消息）');
+    return [{ type: 'text', text: lines.join('\n') }];
   },
 };
 
