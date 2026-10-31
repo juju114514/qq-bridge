@@ -102,7 +102,53 @@ chat.agent.followup(createUserMessage({ /* role:'user', content:[...] */ }));
 | 卸载 | `apply` 返回 disposer | 宿主热重载会调用；不返回就泄漏 |
 | 失败策略 | 缺 `ctx.tools.register` → **抛错** | 静默挂载会让用户以为装上了 |
 
-## 7. 还没确认的两点（P1 收尾时补）
+## 7. 已确认：`createUserMessage`（对照 `@deepseek-ai/dsh-llm@0.0.1-rc.1`）
 
-1. `plugin add <本地路径>` 在临时 profile 里的行为（会不会要求 `pnpm build`）
-2. `createUserMessage` 的确切导入路径与字段（`role` / `content` 的形状）
+**导入路径**：`import { createUserMessage } from '@deepseek-ai/dsh-llm'`
+（不是 `dsh-session` —— dsh-onebot 的 `bridge.ts` L12 是这么引的，我们下载包核对过）
+
+**类型定义**（`lib/types/message.d.ts`）：
+
+```ts
+interface UserMessage extends Message { readonly role: 'user' }
+interface Message {
+  readonly id: MessageId
+  readonly role: 'system' | 'user' | 'assistant'
+  readonly content: ContentBlock[]      // ← 数组，不是字符串
+  readonly source: MessageSource
+}
+type NewUserMessage = Omit<UserMessage, 'id' | 'role'>   // 只留 content + source
+
+declare function createUserMessage<T extends NewUserMessage>(
+  input: T & { readonly id?: never; readonly role?: never },
+): T & Pick<UserMessage, 'id' | 'role'>
+```
+
+- **不能自己传 `id` / `role`**：类型层是 `readonly id?: never`，传了就编译不过（运行时也会被冻结逻辑覆盖）
+- **`role` 由它固定成 `'user'`**
+
+**`ContentBlock` 五种**（`lib/types/types.d.ts` L25-75）：
+
+| type | 字段 |
+| --- | --- |
+| `text` | `{ type:'text', text: string }` |
+| `reasoning` | `{ type:'reasoning', text: string }` |
+| `image` | `{ type:'image', attachment: ImageAttachmentRef }` |
+| `tool-call` | `{ type:'tool-call', id, name, arguments }` |
+| `tool-result` | `{ type:'tool-result', toolCallId, content, isError? }` |
+
+**`source` 的 user 形态**：`{ kind: 'user' }`（`MessageSourceMap` 是 merge-extensible 的 sum type）
+
+**我们的封装**：`plugin/user-message.js`
+
+```js
+buildUserMessage('你好')
+// → { content: [{ type: 'text', text: '你好' }], source: { kind: 'user' } }
+```
+
+为什么不直接调 `createUserMessage`：离线测试与宿主版本不匹配时，插件仍要能构造消息。
+所以先产出**纯数据**，`assertNewUserMessage()` 做形状校验，真正调用库函数的地方再加一层。
+
+## 8. 仍未确认（下一步）
+
+`plugin add <本地路径>` 在临时 profile 里会不会要求 `pnpm build` —— P1 收尾装一次就知道了。

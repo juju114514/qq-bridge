@@ -85,6 +85,32 @@ check('配置归一化：默认值 + allowGroups 过滤非法项', () => {
   assert.equal(cfg.sidecarUrl, 'http://127.0.0.1:3110');
 });
 
+// ── createUserMessage 的形状（对照 dsh-llm 0.0.1-rc.1 的 .d.ts 确认过）─────────
+const um = await import(pathToFileURL(path.join(pluginDir, 'user-message.js')).href);
+
+check('buildUserMessage 产出 NewUserMessage 形状：{ content:[{type:text}], source:{kind:user} }', () => {
+  const msg = um.buildUserMessage('你好');
+  assert.deepEqual(msg, { content: [{ type: 'text', text: '你好' }], source: { kind: 'user' } });
+  assert.equal(msg.id, undefined, '不能带 id —— createUserMessage 会拒绝');
+  assert.equal(msg.role, undefined, '不能带 role —— 由 createUserMessage 固定');
+});
+
+check('assertNewUserMessage 对合法消息返回 true', () => {
+  assert.equal(um.assertNewUserMessage(um.buildUserMessage('x')), true);
+});
+
+for (const [name, bad] of [
+  ['带 id', { id: 'x', content: [{ type: 'text', text: 'a' }], source: { kind: 'user' } }],
+  ['带 role', { role: 'user', content: [{ type: 'text', text: 'a' }], source: { kind: 'user' } }],
+  ['content 空', { content: [], source: { kind: 'user' } }],
+  ['text 不是字符串', { content: [{ type: 'text', text: 1 }], source: { kind: 'user' } }],
+  ['source.kind 不对', { content: [{ type: 'text', text: 'a' }], source: { kind: 'plugin' } }],
+]) {
+  check(`assertNewUserMessage 拒绝非法消息：${name}`, () => {
+    assert.throws(() => um.assertNewUserMessage(bad));
+  });
+}
+
 const failed = results.filter(([s]) => s !== 'ok');
 for (const [s, n] of results) console.log(`  ${s === 'ok' ? 'ok  ' : 'FAIL'} ${n}`);
 console.log(`\n结果：${results.length - failed.length} 通过，${failed.length} 失败`);
