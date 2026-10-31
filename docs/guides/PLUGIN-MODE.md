@@ -19,6 +19,33 @@
 
 **两者互斥**：同一份 `state/` 只允许一个东西收 QQ 消息（见 `state/channel-mode.json`）。
 
+### 怎么切（一键）
+
+```powershell
+node scripts/switch-mode.mjs status   # 看现在谁在收
+node scripts/switch-mode.mjs bridge   # 路线 A：常驻 bridge
+node scripts/switch-mode.mjs plugin   # 路线 B：DSH 插件
+```
+
+Windows 上也可以直接双击仓库根的两个 bat：
+
+```
+切换-桥接模式.bat
+切换-插件模式.bat
+```
+
+脚本改两个文件：
+
+| 文件 | 字段 | 路线 A | 路线 B |
+| --- | --- | --- | --- |
+| `config.json` | `channel.enabled` | `true` | `false` |
+| `<DSH profile>/cordis.patch.yml` 的 `qq-bridge` 条目 | `enabled` | `false` | `true` |
+
+**然后按它打印的顺序重启**（顺序错了要么空窗、要么两边各回一条）：
+
+- 切到 A：先**重启 DSH**（插件释放通道）→ 再重启 bridge
+- 切到 B：先**重启 bridge**（让出通道）→ 再重启 DSH
+
 ## 二、安装（三种方式，任选）
 
 ### 方式 A：本地路径（最稳，推荐）
@@ -46,7 +73,7 @@ github:juju114514/qq-bridge#main&path:/plugin
 > ⚠️ 直接填仓库**根地址**（不带 `&path:/plugin`）不行：根目录是桥接应用本身，
 > 不是 DSH 插件（没有 `dsh.bundle`），只会被装成普通依赖。
 
-## 二·五、安装（临时验证必须用独立 DSH_HOME）
+## 二·六、安装（临时验证必须用独立 DSH_HOME）
 
 ```powershell
 # 1) 隔离环境（千万别装在真实 ~/.dsh 里，会和桌面版抢状态文件）
