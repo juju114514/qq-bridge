@@ -2,7 +2,25 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.7：插件工具改名 `qqb_*`，彻底避开 MCP 同名
+## 2026-10-31 — 0.4.8：`sync-snowluma-token.mjs`（HTTP/WS token 别手改）
+
+> 小更新。加一个脚本，避免"手改 token 改错那一个"。
+
+SnowLuma 的 **HTTP token 与 WS token 是两个不同的值**，重新扫码后都会变：
+
+| 位置 | 字段 | 用哪个 |
+| --- | --- | --- |
+| `config.json` | `snowluma.accessToken` | **HTTP**（桥接的 API 调用） |
+| DSH profile 的 `cordis.patch.yml`（`qq-bridge` 条目） | `accessToken` | **WS**（插件连 3001） |
+
+```powershell
+node scripts/sync-snowluma-token.mjs --dry   # 先看会改什么（token 默认打码）
+node scripts/sync-snowluma-token.mjs         # 真改
+```
+
+- 自动从 SnowLuma 的 `config/onebot_<QQ>.json` 读两个 token
+- 多账号时用 `config.json` 的 `selfQQ` 固定；没配会告警并取第一个
+- 只在必要时写文件；改完提示要重启 DSH（插件启动时加载）## 2026-10-31 — 0.4.7：插件工具改名 `qqb_*`，彻底避开 MCP 同名
 
 > 小更新。修的是桌面版"每一轮都报 schema 错"的根因。
 
