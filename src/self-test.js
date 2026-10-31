@@ -36,21 +36,46 @@ async function cleanupSelfTestSession() {
 }
 
 async function main() {
-  const baseUrl = process.argv[2] ?? 'http://127.0.0.1:3080';
+  // 优先级：命令行参数 → config.json 的 dsh.baseUrl → 旧默认 3080
+  let cfg = null;
+  try { cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')); } catch { cfg = null; }
+  const baseUrl = process.argv[2] ?? cfg?.dsh?.baseUrl ?? 'http://127.0.0.1:3080';
   let auth;
   try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
     auth = {
-      token: cfg.dsh?.authToken || discoverDshLaunchToken(),
-      header: cfg.dsh?.authHeader,
-      prefix: cfg.dsh?.authPrefix
+      token: cfg?.dsh?.authToken || discoverDshLaunchToken(),
+      header: cfg?.dsh?.authHeader,
+      prefix: cfg?.dsh?.authPrefix
     };
-  } catch {}
+  } catch { auth = undefined; }
   const api = new NodeApiClient(baseUrl, undefined, auth);
   selfTestApi = api;
   const promptText = process.argv[3] ?? '只回复两个字：收到';
 
-  const desc = unwrap(await api.settings.describe({}), 'settings.describe');
+  // 连不上时给出**可操作**的提示：`fetch failed` 本身什么都不说明（干净环境实测）。
+  let desc;
+  try {
+    desc = unwrap(await api.settings.describe({}), 'settings.describe');
+  } catch (error) {
+    const msg = String(error?.message ?? error);
+    if (/fetch failed|ECONNREFUSED|ENOTFOUND|ECONNRESET/i.test(msg)) {
+      console.error(`❌ 连不上 DSH：${baseUrl}`);
+      console.error('   可能是：① DSH 没在跑  ② 端口变了（DSH 每次启动可能换端口）');
+      console.error('   排查：');
+      console.error('     · 看 config.json 的 dsh.baseUrl 是不是当前端口（控制台 /api/status 里有）');
+      console.error('     · 或直接指定：node src/self-test.js http://127.0.0.1:<端口>');
+      console.error('     · 桥接在跑的话，它启动时会自动探测并写回正确端口');
+      await cleanupSelfTestSession();
+      process.exit(1);
+    }
+    if (/401|unauthorized|forbidden/i.test(msg)) {
+      console.error(`❌ DSH 拒绝鉴权（${baseUrl}）：${msg}`);
+      console.error('   DSH 需要 launch token：确认 config.json 的 dsh.authToken，或先跑 node scripts/setup-dsh.mjs');
+      await cleanupSelfTestSession();
+      process.exit(1);
+    }
+    throw error;
+  }
   console.log('✅ DSH 连接成功:', JSON.stringify(desc).slice(0, 200));
 
   // 独立测试会话，cwd 用**系统临时目录**（不是仓库的 state/）：
