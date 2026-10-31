@@ -59,6 +59,10 @@ check('注册了 qq_ping，且参数/输出/execute 齐全', () => {
   assert.equal(typeof registered.execute, 'function');
   assert.deepEqual(registered.parameters, {});
   assert.ok(registered.output?.schema);
+  // 真机学到的两条（不锁住的话下次还会踩）：
+  assert.equal(typeof registered.output.render, 'function', 'output 必须同时有 render');
+  assert.ok(['object','array','string','number','integer','boolean','null'].includes(registered.output.schema.type),
+    `schema.type 必须是 ${'object/array/string/number/integer/boolean/null'} 之一，实际 ${registered.output.schema.type}`);
 });
 
 await checkAsync('qq_ping 在 sidecar 不可达时返回 degraded=true（降级语义）', async () => {

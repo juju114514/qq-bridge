@@ -152,3 +152,59 @@ buildUserMessage('你好')
 ## 8. 仍未确认（下一步）
 
 `plugin add <本地路径>` 在临时 profile 里会不会要求 `pnpm build` —— P1 收尾装一次就知道了。
+
+## 9. 真机装了一次之后学到的（2026-10-31，dsh 0.2.1-rc.5）
+
+在 `~/.dsh/profiles/qqtest` 这个**临时 profile** 里真装了一次（不碰 desktop）：
+
+```powershell
+dsh plugin --profile qqtest add <repo>\plugin        # 需要 pnpm 在 PATH 上
+# 还要把包名加进 profile package.json 的 dsh.profile.bundles：
+#   "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@juju114514/qq-bridge-plugin"
+dsh --profile qqtest --dump-config                     # 能看到 - id: qq-bridge 即成功
+dsh --profile qqtest                                   # 启动，看挂载日志
+```
+
+三个只在真机上才暴露的事实：
+
+| # | 现象 | 正确做法 |
+| --- | --- | --- |
+| 1 | `dsh plugin ... add` 报 `'pnpm' is not recognized` | **它 shell 出去调 pnpm**：得把 pnpm 放进 PATH（我做了个 `pnpm.cmd` 垫片指向 `pnpm.mjs`） |
+| 2 | `tool "qq_ping" must declare output { schema, render, presentationMeta? }` | `output` **必须同时给 `schema` 和 `render`**，只给 schema 会在注册时抛错 |
+| 3 | `unsupported JSON schema: schema.type must be one of object/array/string/...` | **`type: 'json'` 不被支持**（dsh-onebot 用 json 是它适配的宿主版本更新）。对象输出写 `{ type: 'object', additionalProperties: true }` |
+
+还有一条：只放 `dsh.plugin.json` 不够 —— 宿主认的是 **`package.json` 的 `dsh.bundle.patch`**，
+指向包内的 `cordis.patch.yml`（顶层 YAML 数组，`- insert: [{ id, name }]`），
+否则只装成普通依赖并提示 `declares no dsh.bundle`。
+
+成功的样子：
+
+```
+[qq-plugin] 插件已挂载：onebot=ws://127.0.0.1:3001 sidecar=http://127.0.0.1:3110 requireMention=true
+[qq-plugin] sidecar 未连接（http://127.0.0.1:3110）：主动消息、记忆写入、记账、控制台均不可用（被动回复正常）
+dsh web: http://127.0.0.1:3080/?token=...
+```
+
+## 10. ⚠️ 教训：临时 profile 一定要用独立的 `DSH_HOME`
+
+我第一次验证时把 profile 建在了真实的 `~/.dsh/profiles/qqtest`，然后启动它 ——
+结果**同时有两个 DSH 宿主在写同一个 `~/.dsh`**（共享 `storages/`、`.dshw-*.json`、`sessions/`），
+桌面上那个本体随后弹了「暂时无法保存确认状态，请重试」。
+
+不是必然冲突，但**没有任何理由冒这个险**。正确做法：
+
+```powershell
+$env:DSH_HOME = 'D:\QQBot\temp\dsh-home'    # 宿主会用它下面的 profiles/
+node <dsh-cli>\lib\bin.js --from-default-profile web --profile qqtest --dump-config
+node <dsh-cli>\lib\bin.js plugin --profile qqtest add <repo>\plugin
+node <dsh-cli>\lib\bin.js --profile qqtest
+```
+
+`--help` 里写的是「the profile under `$DSH_HOME/profiles`」—— 也就是说**这条路是被支持的**，
+我之前没用它纯属偷懒。
+
+判断有没有踩坑：
+- `~/.dsh/profiles/` 下出现非 `desktop`/`web` 的目录
+- `~/.dsh/storages/` 或 `~/.dsh/.dshw-*.json` 的修改时间与临时实例启动时间重合
+
+清理：删掉那个临时 profile 目录即可（本次已删）。

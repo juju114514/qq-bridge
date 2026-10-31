@@ -5,12 +5,35 @@
   "type": "module",
   "main": "./index.js",
   "description": "qq-bridge 的 DSH 插件形态（薄插件 + 复用 src/core 与 sidecar）",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/schemastery": "*",
     "@deepseek-ai/dsh-tools": "*",
     "@deepseek-ai/dsh-agent": "*",
     "@deepseek-ai/dsh-session": "*"
+  },
+  "files": [
+    "index.js",
+    "inbound.js",
+    "channel.js",
+    "agent-driver.js",
+    "user-message.js",
+    "dsh.plugin.json",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshx": {
+    "contributes": {
+      "tools": [
+        "qq_ping"
+      ]
+    }
   }
 }

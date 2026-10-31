@@ -83,7 +83,18 @@ export function apply(ctx, rawConfig) {
     name: 'qq_ping',
     description: '检查 qq-bridge 插件是否已加载、sidecar 是否在线。用于安装自检，不发送任何 QQ 消息。',
     parameters: {},
-    output: { schema: { type: 'json' } },
+    // 宿主实测要求：output 必须同时有 schema **和** render
+    // （真机报错：tool "qq_ping" must declare output { schema, render, presentationMeta? }）
+    output: {
+      // 宿主实测：SCHEMA_TYPES 只有 object/array/string/number/integer/boolean/null，
+      // 没有 'json'（dsh-onebot 用 json 是因为它适配的是更新的宿主）。
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => {
+        const v = value && typeof value === 'object' ? value : {};
+        const sidecar = v.sidecar?.ok ? '在线' : '离线（降级）';
+        return [{ type: 'text', text: `qq-bridge 插件存活；sidecar ${sidecar}` }];
+      },
+    },
     isConcurrencySafe: () => true,
     execute: async () => {
       const sidecar = await probeSidecar(config.sidecarUrl);
