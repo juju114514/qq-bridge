@@ -5139,6 +5139,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   document.getElementById('pageTitle').textContent = consolePages[page][1];
   document.getElementById('pageDescription').textContent = consolePages[page][2];
   document.title = consolePages[page][0] + ' · QQ 桥接控制台';
+  try { sessionStorage.setItem('consolePage', page); } catch { /* 忽略 */ }
   if (updateHash && location.hash !== '#' + page) history.pushState({}, '', '#' + page);
   closeConsoleSearch();
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
@@ -5734,7 +5735,23 @@ document.getElementById('usageClear').addEventListener('click', async () => {
   refreshUsageRecent();
 });
 
-setConsolePage(location.hash.slice(1), { updateHash:false });
+// 首屏选页：优先 hash（深链接），其次上次停留的页（sessionStorage），最后总览。
+// 之前只有一句 setConsolePage(location.hash.slice(1))，hash 一丢就静默落回总览。
+function bootConsolePage() {
+  const fromHash = location.hash.slice(1);
+  let saved = '';
+  try { saved = sessionStorage.getItem('consolePage') || ''; } catch { /* 隐私模式下忽略 */ }
+  const page = Object.hasOwn(consolePages, fromHash)
+    ? fromHash
+    : (Object.hasOwn(consolePages, saved) ? saved : 'overview');
+  setConsolePage(page, { updateHash: true });
+}
+bootConsolePage();
+// 有的浏览器在 load 之后才把 hash 填上（或前端路由先跑一步），再对齐一次，避免"看起来点不动"
+window.addEventListener('load', function () {
+  const want = location.hash.slice(1);
+  if (Object.hasOwn(consolePages, want) && currentConsolePage !== want) setConsolePage(want, { updateHash: false });
+});
 
 refresh(); refreshRoles(); refreshWhitelist(); refreshSessions(); refreshPending(); refreshPresets(); loadSocialForm(); loadV2Config(); refreshV2Activity(); loadV2ToolLog(); loadV2SessionOptions(); refreshSocialStatus(); refreshSlang(); loadSlangConfig(); loadSecurity(); refreshSimPrompt(); refreshDshModel(); refreshUsage(); refreshUsageChart(); refreshUsageRecent();
 setInterval(() => { refresh(); refreshSessions(); refreshPending(); refreshSocialStatus(); refreshSlang(); }, 3000);
