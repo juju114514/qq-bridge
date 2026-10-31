@@ -162,6 +162,7 @@ function orderAddresses(addresses) {
 /** 解析主机名并校验**全部**解析结果，返回可尝试的地址列表（IPv4 优先）。 */
 export async function resolveSafeAddresses(hostname) {
   const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  // 端口白名单由调用方（fetchSafe）在拿到完整 URL 时校验；这里只做主机名检查。
   if (!h) throw new Error('主机名为空');
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) {
     throw new Error('禁止访问内网/本机地址');
@@ -186,6 +187,26 @@ export async function resolveSafeAddresses(hostname) {
   return ordered.length ? ordered : [addresses[0].address];
 }
 
+/**
+ * 允许抓取的端口白名单（上游 #85 的一半，2026-10-31 backport）。
+ *
+ * 为什么需要：私网 IP 拦住了「内网主机」，但没拦住「公网 IP 的内网端口」，
+ * 也没拦住内网服务的非常规端口（如 :6379 Redis、:9200 ES 的 HTTP 接口）。
+ * 媒体抓取只该碰 Web 端口。
+ */
+export const SAFE_PORTS = Object.freeze([80, 443, 8080, 8443, 3000, 3001, 3100]);
+const SAFE_PORT_SET = new Set(SAFE_PORTS);
+
+/** 校验 URL 的端口：http 默认 80、https 默认 443；不在白名单就拒绝。 */
+export function assertSafePort(url) {
+  const u = url instanceof URL ? url : new URL(String(url));
+  const port = u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 80);
+  if (!SAFE_PORT_SET.has(port)) {
+    throw new Error(`禁止访问非白名单端口：${port}（允许：${SAFE_PORTS.join(', ')}）`);
+  }
+  return port;
+}
+
 export async function resolveSafeHost(hostname) {
   const [first] = await resolveSafeAddresses(hostname);
   return first;
@@ -195,6 +216,7 @@ export async function validateFetchUrl(raw) {
   let url;
   try {
     url = new URL(String(raw ?? '').trim());
+  assertSafePort(url); // 端口白名单（重定向后还会再校验一次）
   } catch {
     throw new Error('URL 无效');
   }
@@ -373,6 +395,7 @@ export async function safeFetch(urlString, maxChars = 50000) {
     if ([301, 302, 303, 307, 308].includes(result.statusCode)) {
       if (!result.redirect) throw new Error(`重定向缺少 Location: ${result.statusCode}`);
       const next = new URL(result.redirect, url).toString();
+      assertSafePort(new URL(next));
       ({ url, addresses } = await validateFetchUrl(next));
       continue;
     }
@@ -407,6 +430,7 @@ export async function safeFetchBuffer(urlString, maxBytes = 8 * 1024 * 1024) {
     if ([301, 302, 303, 307, 308].includes(result.statusCode)) {
       if (!result.redirect) throw new Error(`重定向缺少 Location: ${result.statusCode}`);
       const next = new URL(result.redirect, url).toString();
+      assertSafePort(new URL(next));
       ({ url, addresses } = await validateFetchUrl(next));
       continue;
     }
@@ -439,6 +463,7 @@ export async function safeDownloadToFile(urlString, destFile, { maxBytes = 64 * 
     if (REDIRECT_STATUSES.has(result.statusCode)) {
       if (!result.redirect) throw new Error(`重定向缺少 Location: ${result.statusCode}`);
       const next = new URL(result.redirect, url).toString();
+      assertSafePort(new URL(next));
       ({ url, addresses } = await validateFetchUrl(next));
       continue;
     }

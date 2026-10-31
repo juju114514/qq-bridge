@@ -250,6 +250,7 @@ const tests = [
   // 原子写唯一实现守卫（renameSync / 写 .tmp 只允许出现在 src/atomic-write.js，例外需 guard-allow）
   'check-atomic-write.mjs',
   // 路由总表要跟代码一致：改了路由忘了重新生成 → 红（生成：node scripts/gen-route-index.mjs --write）
+  'test-safe-fetch-ports.mjs',
   'check-lock.mjs',
   'check-plugin-vendor-fresh.mjs',
   'check-privacy.mjs',
