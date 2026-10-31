@@ -188,7 +188,7 @@ function fakeClient() {
       constructor(opts) { this.opts = opts; }
       on(ev, fn) { (handlers[ev] ??= []).push(fn); }
       async connect() { (handlers.open ?? []).forEach((f) => f()); }
-      action(action, params) { calls.push({ action, params }); return Promise.resolve({ status: 'ok' }); }
+      call(action, params) { calls.push({ action, params }); return Promise.resolve({ status: 'ok' }); }
       close() { calls.push({ action: 'close' }); }
       emit(ev, payload) { (handlers[ev] ?? []).forEach((f) => f(payload)); }
     },

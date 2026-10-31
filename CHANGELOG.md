@@ -2,7 +2,46 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.13：两条路都开放，一键切换
+## 2026-10-31 — 0.4.16：插件模式在真机跑通（一次性修掉 10 个静默失败）
+
+> 这是插件模式第一个**真能用的版本**：群里 @ 它 → 它回话。
+
+### 里程碑
+
+```
+[qq-plugin] 入站投递 group:994920175 uid=…
+[qq-plugin] 会话映射建立 session=qqbridge:group:… → group:994920175
+[qq-plugin] agent 初始：status=running seq=6
+[qq-plugin] 助手回复 → group:994920175（422 字，转纯文本 380 字）
+[qq-plugin] 发送成功 group:994920175 message_id=…
+```
+
+### 10 个坑（全部"不报错、只是不动"）
+
+| 环节 | 症状 | 根因 |
+| --- | --- | --- |
+| 工具注册 | `schema … got 'type': null` | `register()` 不编译，编译在 `defineTool()` |
+| sidecar | 快照全 401 | token 空；`/health` 免鉴权所以看着正常 |
+| 通道独占 | 一条消息回两次 | sidecar-only 仍建 WS 连接 |
+| @ 判定 | @ 它没反应 | 事件无 `self_id` |
+| 认领 | 重启后不连 | 僵尸认领未判 pid 存活 |
+| 发送 | `client.action is not a function` | 方法名是 `call()` |
+| 投递 | 会话建了没消息 | 新 agent 的 `whenIdle()` 永不 resolve |
+| Agent | 无 turn、无报错 | 没给模型（`agentOptions:{}`） |
+| Agent | 同上 | `meta` 缺 `cwd` |
+| **Windows** | `mkdir …group:994920175: ENOENT` | **文件名不允许 `:`** |
+| 转发 | 模型答了群里没有 | fallback session id 与监听 id 不一致 |
+
+### 新增（可用性）
+
+- 插件日志落盘 `<stateDir>/plugin.log`（512KB 轮转）——桌面版看不到 stdout
+- 回复前 `mdToPlain()`：QQ 不渲染 Markdown，去掉围栏/反引号/粗体
+- agent 创建时 `tools.restrict({ deny: [...] })` 禁掉所有发送类工具：文本走自动转发，避免模型先试工具白烧 30+ 步
+- 只 @ 不带文字 → 当成一次"戳"（原来判 `empty` 丢掉）
+
+### 文档
+
+`docs/guides/PLUGIN-MODE.md` 新增「真机踩坑清单」：12 行症状→根因→修法对照表。## 2026-10-31 — 0.4.13：两条路都开放，一键切换
 
 > 小更新。插件模式和原来的 bridge 模式**并存**，用户按需选。
 

@@ -79,8 +79,16 @@ export function createInboundGate(config = {}) {
       if (requireMention && !mentionsSelf(event, self)) return { handle: false, reason: 'no-mention' };
     }
 
-    const text = extractText(event.message).trim();
-    if (!text) return { handle: false, reason: 'empty' };
+    let text = extractText(event.message).trim();
+    if (!text) {
+      // 真机（2026-10-31 13:19）：用户发的是 `@小鲸鱼 `（只有 @ 没文字）→ 判 empty 丢掉，
+      // 但真人就是这么用的。这种"戳一下"应当交给 agent，由它自己决定说什么。
+      if (event.message_type === 'group' && mentionsSelf(event, self)) {
+        text = '（对方只 @ 了你，没有说别的内容）';
+      } else {
+        return { handle: false, reason: 'empty' };
+      }
+    }
     if (remember(event.message_id)) return { handle: false, reason: 'duplicate' };
 
     return { handle: true, key, text, userId: String(event.user_id ?? ''), groupId: event.group_id ?? null };

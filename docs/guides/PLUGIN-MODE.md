@@ -201,6 +201,59 @@ node scripts/sync-snowluma-token.mjs          # 真改
 
 改完**重启 DSH**（插件在启动时加载）。多账号时用 `config.json` 的 `selfQQ` 固定用哪个。
 
+## 六·九、真机踩坑清单（2026-10-31 一次性踩完）
+
+插件模式从"能装"到"能在群里说话"，在 **Windows + dsh 0.2.1-rc.5** 上共踩了 10 个坑。
+全部是**静默失败**：不报错、不崩溃，只是不动。按链路顺序排列，症状 → 修法：
+
+| 环节 | 症状 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 工具注册 | 每轮 `Invalid schema for function …: got 'type': null` | `ctx.tools.register()` **不编译** parameters，编译在 `defineTool()` 里 | 注册前 `defineTool(tool)` 包一层 |
+| sidecar 鉴权 | 读快照全 401 | `sidecarToken` 空 → 不带 Authorization（`/health` 免鉴权所以"看着是好的"） | 自动读 `<stateDir>/console-token` |
+| 通道独占 | 一条群消息被回两次 | `channel.enabled=false` 时仍建了 WS 连接 | 让出通道时 `reconnect=false` + `connect=async()=>{}` + `close()` |
+| @ 判定 | 群里 @ 它完全没反应 | 事件里**没有 `self_id`**，`mentionsSelf` 恒 false | 连上后 `get_login_info` 拿自己的号并缓存 |
+| 通道认领 | 重启 DSH 后不连 QQ | 旧实例的认领还在 60s 心跳窗口内，新实例被判"被占用" | 认领失败时用 `process.kill(pid,0)` 探测存活，死了直接接管 |
+| 发送动作 | `client.action is not a function` | `OneBotWsClient` 的方法叫 `call()` | 改 `client.call(action, params)` |
+| 投递 | 会话建了、消息没进去、不报错 | 新建 agent 的 `whenIdle()` 可能永不 resolve | `Promise.race(whenIdle(), 1.5s)` |
+| Agent 启动 | 有入队、无任何 turn 事件 | `agents.create` 没给模型（`agentOptions:{}` + 无 `setup`） | 取 `ctx.get('agentDefaultModel').currentSelection()`，传 `{provider, model}` + `installModelSelection` |
+| Agent 启动 | 同上 | `meta` 没带 `cwd`（宿主建 agent 必带） | `cwd = state/agents/<key>`，先 `mkdir -p` |
+| **Windows 路径** | `mkdir …\stategents\group:994920175: ENOENT` | **Windows 文件名不允许 `:`** | 目录名把 `:` 换成 `_` |
+| 回复转发 | 模型明明回答了，QQ 里没有 | 会话 id 撞车时 driver 用 fallback id（`…#xxxx`），监听却按原始 id 匹配 | 用 `deliver()` 返回的**真实** sessionId 建映射 |
+| 只 @ 不带字 | `入站丢弃（empty）` | 用户发 `@小鲸鱼 `（只有 @）被判空文本丢掉 | 群消息且 @ 了自己 → 当成一次"戳"，给占位文本 |
+
+### 观测：插件日志
+
+插件跑在 DSH 进程里，**桌面版的 stdout 看不到**。0.4.15 起每条日志同时写：
+
+```
+<stateDir>/plugin.log     # 超过 512KB 自动轮转成 plugin.log.1
+```
+
+排障时先看它，能直接定位到上面哪一环：
+
+```
+入站投递 group:… uid=…          → @ 判定通过
+会话映射建立 session=… → group:…
+agent 初始：status=running seq=6
+助手回复 → group:…（N 字，转纯文本 M 字）
+发送成功 group:… message_id=…
+```
+
+### 插件模式下别让模型用 `qq_*` MCP 工具
+
+插件会**自动转发** assistant 的文本到 QQ，模型不需要再调发送工具。
+真机上它先试了 `qqb_send_message`（报「通道未启动」），再绕 30+ 步才回到文本回复——白烧 token。
+
+插件已在 agent 创建时 `tools.restrict({ deny: [...] })` 禁掉：
+
+```
+qqb_send_message / qqb_reply / qq_send_message / qq_reply
+qq_send_group_message / qq_send_private_message / qq_send_burst
+```
+
+如果你的 DSH 里同时挂着 `mcp-snowluma`，建议在插件模式下**把它的 qq 工具关掉**（控制台面板有开关）：
+既能省掉 45 个工具描述的上下文，也不会让模型走错路。
+
 ## 七、排障
 
 | 现象 | 先查 |
