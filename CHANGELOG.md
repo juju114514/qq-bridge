@@ -2,6 +2,17 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.52.1：修「星图看得到、改权重 404」
+
+读端点 `/api/socialV2/memory` 在没有 `longTermMemories` 时，会用 `migrateFromLegacy` **现场合成**
+一份长期记忆（保证"升级即可见"，只读不落盘）。而新写的 `/api/socialV2/memory-weight` 只查
+`st.longTermMemories` —— 于是旧会话会出现**星图里有这条、点改权重却 404**。
+
+修法：写端点同样调用 `migrateFromLegacy`，并**顺手落盘完成迁移**（写时升级），之后按文本匹配。
+
+> 另一种 404 是测试脚本自己的锅：Windows PowerShell 5.1 的 `Invoke-WebRequest -Body "<字符串>"`
+> 默认不是 UTF-8，中文被改写导致文本匹配失败。用 `[Text.Encoding]::UTF8.GetBytes()` 发即可。
+> 浏览器端不受影响。
 ## 2026-10-31 — 0.4.52：星图可改权重 + 遗忘时间轴
 
 ### 1. 权重可编辑（新增写端点）

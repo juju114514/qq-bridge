@@ -14,7 +14,7 @@
  *   · 已处于潜水配置且有未完成的睡前观察窗口时，必须 400 拒绝（防止「聊两句又去潜水」）
  */
 
-import { addAtom, splitVariant, MAX_ATOMS } from '../memory-store.js';
+import { addAtom, splitVariant, MAX_ATOMS, migrateFromLegacy } from '../memory-store.js';
 
 export function createSocialV2WriteHandler(deps) {
   const {
@@ -249,6 +249,21 @@ export function createSocialV2WriteHandler(deps) {
         return true;
       }
       const st = getSocialV2State(key);
+      // 读端点（socialV2-read）在没有 longTermMemories 时会用 migrateFromLegacy 现场合成，
+      // 保证"升级即可见"。写端点必须同源：这里同样合成，并**顺手落盘**完成迁移，
+      // 否则会出现"星图里看得到、改权重却 404"的鬼故事。
+      if (!Array.isArray(st.longTermMemories) || !st.longTermMemories.length) {
+        try {
+          const synthesized = migrateFromLegacy(st);
+          if (synthesized.length) {
+            st.longTermMemories = synthesized;
+            saveSocialV2State();
+            log(`[memory] 旧结构迁移为长期原子：${synthesized.length} 条`);
+          }
+        } catch (error) {
+          log(`[memory] 迁移失败（忽略）：${error?.message ?? error}`);
+        }
+      }
       if (!Array.isArray(st.longTermMemories) || !st.longTermMemories.length) {
         sendJson({ ok: false, error: '该会话还没有长期记忆' }, 404);
         return true;
