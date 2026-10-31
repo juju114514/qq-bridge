@@ -272,5 +272,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4305 |
-| ANY | `/api/tokens/` | L4305 |
+| ANY | `/api/tokens/summary` | L4336 |
+| ANY | `/api/tokens/` | L4336 |

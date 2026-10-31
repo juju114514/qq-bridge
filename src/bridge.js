@@ -99,6 +99,7 @@ import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { migrateFromLegacy } from './memory-store.js';
 import { captureReply as captureQzoneDraft } from './qzone-draft.js';
+import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
 import { atomicWriteJson, atomicWriteText, renameWithRetry } from './atomic-write.js';
@@ -216,6 +217,10 @@ const STATE_DIR = path.join(ROOT, 'state');
 const STATE_FILE = path.join(STATE_DIR, 'sessions.json');
 const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
 const QZONE_DRAFT_FILE = path.join(STATE_DIR, 'qzone-draft.json');
+// 断电/崩溃检测（0.4.84）：心跳 + 运行标记 + 异常事件
+const HEARTBEAT_FILE = path.join(STATE_DIR, 'heartbeat.json');
+const RUNTIME_MARKER_FILE = path.join(STATE_DIR, 'runtime-marker.json');
+const INCIDENTS_FILE = path.join(STATE_DIR, 'incidents.jsonl');
 const SLANG_FILE = path.join(STATE_DIR, 'slang.json');
 // 表情笔记（独立存储，和 slang.json 同级）。群聊/私聊严格隔离：
 // scope 由会话 key 前缀决定，笔记层不传 scope 就返回空，双保险。
@@ -1728,6 +1733,32 @@ async function main() {
   //
   // 而**同一个网关的 HTTP 口一直是可用的**（onebotSend 发消息、fetch_ptt_text 转写都直接用它）。
   // 读接口没有理由单点依赖 WS。这里只在 WS 失败时兜底，不改变正常路径的延迟。
+  // 断电检测：启动时先看上次是不是"没正常退出"（断电/蓝屏/强杀），
+  // 然后写本次运行标记 + 起心跳。整段都在 try 里，绝不影响启动。
+  let bootIncident = null;
+  try {
+    const readJsonQuiet = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; } };
+    const prevMarker = readJsonQuiet(RUNTIME_MARKER_FILE);
+    const prevHeartbeat = readJsonQuiet(HEARTBEAT_FILE);
+    const verdict = detectUncleanShutdown({ marker: prevMarker, heartbeat: prevHeartbeat, now: Date.now(), gapMs: HEARTBEAT_GAP_MS });
+    if (verdict.unclean) {
+      bootIncident = { at: Date.now(), reason: verdict.reason, lastSeenAt: verdict.lastSeenAt, gapMs: verdict.gapMs, pid: prevMarker?.pid ?? prevHeartbeat?.pid ?? 0 };
+      appendIncident(INCIDENTS_FILE, bootIncident);
+      log(`⚠️ 检测到上次是非正常关闭（最后一次心跳 ${new Date(verdict.lastSeenAt).toLocaleString('zh-CN')}，断档 ${Math.round(verdict.gapMs / 60000)} 分钟）—— 断电/蓝屏/强杀都会这样`);
+    } else if (verdict.reason === 'fast-restart') {
+      log(`[boot] 上次是快速重启（断档 ${Math.round(verdict.gapMs / 1000)} 秒），不算异常`);
+    }
+    markRunning(RUNTIME_MARKER_FILE, { version: (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || ''; } catch { return ''; } })() });
+    writeHeartbeat(HEARTBEAT_FILE);
+    const hbTimer = setInterval(() => writeHeartbeat(HEARTBEAT_FILE), 30000);
+    if (typeof hbTimer.unref === 'function') hbTimer.unref();
+    const onCleanExit = (why) => { try { markCleanExit(RUNTIME_MARKER_FILE, { reason: why }); } catch { /* 退出路径不抛 */ } };
+    process.on('exit', () => onCleanExit('exit'));
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+      try { process.on(sig, () => { onCleanExit(sig); process.exit(0); }); } catch { /* 某些平台没有 */ }
+    }
+  } catch { /* 检测失败就当没发生 */ }
+
   async function onebotHttpAction(action, params = {}, { timeoutMs = 15000 } = {}) {
     const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
     const res = await fetch(`${httpUrl}/${action}`, {
@@ -4361,6 +4392,10 @@ async function main() {
             },
             describeImageBuffer: (buf) => describeImageBuffer(buf),
             onebotAction: (action, params, opts) => onebotHttpAction(action, params, opts || {}),
+            getBootIncident: () => bootIncident,
+            listBootIncidents: (limit) => listIncidents(INCIDENTS_FILE, { limit: limit || 10 }),
+            countBootIncidents: (days) => countRecentIncidents(INCIDENTS_FILE, { days: days || 7 }),
+            describeBootIncident: (x) => describeIncident(x),
             getProcessInfo: () => ({ pid: process.pid, uptimeMs: Math.round(process.uptime() * 1000), ready: dshReady === true, version: cfg.version || '' }),
             parseRunnerEvents: (lines) => parseRunnerEventsShared(lines),
             parseWatchdogEvents: (lines) => parseWatchdogEventsShared(lines),

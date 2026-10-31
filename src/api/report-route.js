@@ -76,6 +76,16 @@ export function handleReportRoute(ctx = {}) {
     lastError = tail.slice(-1)[0] || '';
   } catch { /* ignore */ }
 
+  // 断电/异常关机（0.4.84）：本进程启动时检测到的 + 最近 7 天的历史
+  let bootIncidents = [];
+  let boot7d = 0;
+  let bootNow = null;
+  try {
+    bootIncidents = typeof d.listBootIncidents === 'function' ? (d.listBootIncidents(5) || []) : [];
+    boot7d = typeof d.countBootIncidents === 'function' ? (d.countBootIncidents(7) || 0) : 0;
+    bootNow = typeof d.getBootIncident === 'function' ? d.getBootIncident() : null;
+  } catch { /* 读不到就算了 */ }
+
   const runtime = typeof d.getOfficialRuntime === 'function' ? (d.getOfficialRuntime() || {}) : {};
   const cfg = (typeof d.getCfg === 'function' ? d.getCfg() : {}) || {};
   const mem = process.memoryUsage();
@@ -105,6 +115,13 @@ export function handleReportRoute(ctx = {}) {
     gatewayStats: { disconnects, lastRecoverAt },
     messages: { runs: 0, errors: errorLines, lastError },
     disk: diskOf(path.resolve(process.cwd())),
+    bootWatch: {
+      uncleanThisBoot: Boolean(bootNow),
+      thisBoot: bootNow,
+      incidents7d: boot7d,
+      recent: bootIncidents,
+      describe: typeof d.describeBootIncident === 'function' ? (x) => d.describeBootIncident(x) : null
+    },
     configSummary: {
       mode: (typeof d.getMode === 'function' ? d.getMode() : '') || '',
       ownerQQ: String(cfg.ownerQQ || ''),

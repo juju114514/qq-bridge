@@ -62,6 +62,7 @@ export function buildReport({
   gatewayStats = {},
   messages = {},
   disk = null,
+  bootWatch = null,
   configSummary = {},
   repoPath = '',
   now = Date.now()
@@ -117,6 +118,22 @@ export function buildReport({
   if (errs === 0) add('ok', '近期无消息错误', '');
   else add('warn', `近期消息错误 ${errs} 条`, messages.lastError ? `最近一条：${String(messages.lastError).slice(0, 80)}` : '');
 
+  // 断电 / 异常关机（0.4.84）：这一项专门解释"为什么刚启动却说没重启过"。
+  // 断电时 runner 和看门狗都被一起干掉，24h 重启次数是 0 —— 只看那个数会误判。
+  if (bootWatch) {
+    const n7 = Number(bootWatch.incidents7d) || 0;
+    if (bootWatch.uncleanThisBoot && bootWatch.thisBoot) {
+      const desc = typeof bootWatch.describe === 'function' ? bootWatch.describe(bootWatch.thisBoot) : '';
+      add('warn', '本次启动前是非正常关闭', desc || '断电 / 蓝屏 / 强杀都会这样（runner 来不及记录退出）');
+    } else if (n7 >= 3) {
+      add('bad', `近 7 天非正常关闭 ${n7} 次`, '频繁掉电或系统不稳，建议查供电/系统日志');
+    } else if (n7 >= 1) {
+      add('warn', `近 7 天非正常关闭 ${n7} 次`, '偶发；看下面「异常关机」小节的时间点');
+    } else {
+      add('ok', '近期没有异常关机', '每次退出都有干净标记');
+    }
+  }
+
   const overall = checks.some((c) => c.level === 'bad') ? 'FAIL'
     : checks.some((c) => c.level === 'warn') ? 'WARN' : 'PASS';
   const icon = { ok: '✅', warn: '⚠️', bad: '❌' };
@@ -153,6 +170,25 @@ export function buildReport({
   L.push(`- 内存：RSS ${rss} MB · heap ${Number(processInfo.heapMb) || 0} MB`);
   if (disk) L.push(`- 磁盘：${disk.freeGb} GB 可用 / ${disk.totalGb} GB 总计`);
   L.push('');
+
+  if (bootWatch && (bootWatch.uncleanThisBoot || (Number(bootWatch.incidents7d) || 0) > 0)) {
+    L.push('## 三·五、异常关机');
+    L.push('');
+    if (bootWatch.uncleanThisBoot && bootWatch.thisBoot) {
+      const b = bootWatch.thisBoot;
+      L.push(`- 本次启动前**非正常关闭**：最后一次心跳 ${fmtTime(b.lastSeenAt)}，断档约 ${Math.round((Number(b.gapMs) || 0) / 60000)} 分钟`);
+      L.push('  （断电/蓝屏/强杀时会这样：runner 与看门狗一起被干掉，所以「24h 重启」不会记到这次）');
+    }
+    const recent = Array.isArray(bootWatch.recent) ? bootWatch.recent.slice(0, 5) : [];
+    if (recent.length) {
+      L.push(`- 近 7 天非正常关闭 **${Number(bootWatch.incidents7d) || 0}** 次，最近几次：`);
+      for (const it of recent) {
+        const desc = typeof bootWatch.describe === 'function' ? bootWatch.describe(it) : '';
+        L.push(`  - ${fmtTime(it.at)}${desc ? ' —— ' + desc : ''}`);
+      }
+    }
+    L.push('');
+  }
 
   L.push('## 四、配置摘要（已脱敏）');
   L.push('');

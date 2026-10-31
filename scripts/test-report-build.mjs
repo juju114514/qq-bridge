@@ -84,6 +84,34 @@ check('脏数据不炸（全空 / 字段类型不对）', () => {
   }
 });
 
+check('断电：本次启动前非正常关闭 → WARN，并给出断档时长', () => {
+  const r = m.buildReport({
+    ...base,
+    bootWatch: {
+      uncleanThisBoot: true,
+      thisBoot: { at: now, lastSeenAt: now - 3 * 3600 * 1000, gapMs: 3 * 3600 * 1000, reason: 'unexpected' },
+      incidents7d: 1,
+      recent: [{ at: now, lastSeenAt: now - 3 * 3600 * 1000, gapMs: 3 * 3600 * 1000 }],
+      describe: (x) => `上次心跳 ${Math.round((x.gapMs || 0) / 60000)} 分钟前`
+    }
+  });
+  assert.equal(r.overall, 'WARN');
+  assert.ok(r.checks.some((c) => c.title.includes('非正常关闭')), '应有非正常关闭检查项');
+  assert.match(r.markdown, /## 三·五、异常关机/);
+  assert.match(r.markdown, /断档约 180 分钟/);
+});
+
+check('断电：近 7 天 3 次以上 → FAIL', () => {
+  const r = m.buildReport({ ...base, bootWatch: { uncleanThisBoot: false, incidents7d: 4, recent: [] } });
+  assert.equal(r.overall, 'FAIL');
+});
+
+check('没有异常关机 → 有一条 ok，且不出现异常关机小节', () => {
+  const r = m.buildReport({ ...base, bootWatch: { uncleanThisBoot: false, incidents7d: 0, recent: [] } });
+  assert.ok(r.checks.some((c) => c.title.includes('没有异常关机')));
+  assert.ok(!r.markdown.includes('## 三·五、异常关机'));
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
