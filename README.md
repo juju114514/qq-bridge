@@ -211,7 +211,7 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 | **媒体** | 识图看表情（长图自动切片 + OCR 取字）、语音（TTS 现场合成 / 语音库）、唱歌、点歌（网易云）、合并转发、表情包管理 —— 唱歌的四条链路与踩坑见 [SINGING.md](docs/guides/SINGING.md) |
 | **视频** | **模型看不了视频，所以降维**：抽 9 帧拼成一张 3×3 故事板（每格烧时间戳）+ 音轨 ASR 转写；两种模式 `storyboard` / `transcript`。详见 [VIDEO.md](docs/guides/VIDEO.md) |
 | **视频链接** | 贴个链接就能看：**B站 / 抖音 / 快手 / 小红书 / YouTube** 白名单（其他站点一律拒）。yt-dlp 只下前 180 秒；抖音三档：`meta`（只取作者/标题/文案，**不下载**、秒回）/ `transcript`（转写）/ `storyboard`（抽帧看画面）；消息里出现抖音链接会**自动附元数据**；cookie 有体检与剩余天数 |
-| **控制台** | `127.0.0.1:3100`，按能力域分五组：**总览**（仪表盘 9 格 / `/api/overview` 单端点）· **群聊**（会话与审批、人物库、黑话词库、**空间动态**）· **对话**（二代仿真、一代仿真、人格与角色、**点歌**）· **记忆**（**记忆星图**：人物层 / 权重可改 / 遗忘时间轴）· **运维**（诊断与健康、定时任务、令牌与花费、工具参考、访问与安全、调试与运维、**守护进程**、**官方通道**、**运行报告**）。深链接 `#page`，记住上次停留页 |
+| **控制台** | `127.0.0.1:3100`，**19 个页面**（`overview` 运行总览 · `sessions` 会话与审批 · `people` 人物库 · `slang` 黑话词库 · `space` 空间动态 · `social-v2` 二代仿真 · `social-v1` 一代仿真 · `persona` 人格与角色 · `song` 点歌/唱歌 · `memory-graph` 记忆星图 · `diagnostics` 诊断与健康 · `scheduler` 定时任务 · `usage` 令牌与花费 · `reference` 工具参考 · `access` 访问与安全 · `operations` 调试与运维 · `supervisor` 守护进程 · `official` 官方通道 · `report` 运行报告），按能力域分五组：**总览**（仪表盘 9 格 / `/api/overview` 单端点）· **群聊**（会话与审批、人物库、黑话词库、**空间动态**）· **对话**（二代仿真、一代仿真、人格与角色、**点歌**）· **记忆**（**记忆星图**：人物层 / 权重可改 / 遗忘时间轴）· **运维**（诊断与健康、定时任务、令牌与花费、工具参考、访问与安全、调试与运维、**守护进程**、**官方通道**、**运行报告**）。深链接 `#page`，记住上次停留页 |
 | **异常监测** | **活动热力图 + 静默时段建议**（按真实消息算，一键采用且带护栏，可取消）；**断电/非正常关机检测**（心跳 + clean 标记 + `incidents.jsonl`，报告里直接写"上次没正常退出"） |
 | **运维** | **排错程序（GUI）**：12 个按钮各管一条命令（体检/拉起/控制台/扫码/日志/自检/检查更新/停止/快捷方式…），输出实时显示 + 桌面与开始菜单快捷方式；**安全自更新**（备份 → 覆盖 → 由计划任务重启 → 健康检查 → 失败自动回滚）；守护进程（崩溃自动拉起、单实例、退避重启）、一键安装/体检、登录自启、换机器迁移清单 |
 | **排查** | **运行报告**（`GET /api/report`）：版本/运行时长/8 项判定/三条通道/内存磁盘，**自动脱敏**，可一键复制或下载 `.md` 贴给别人 |
@@ -242,6 +242,8 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 | **记忆交接** | `src/domains/memory-handoff.js` | 换会话/换通道时把上下文摘要交接过去（≤4KB） | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
 | **社交规则 v1 / v2** | `src/domains/social-v2-rules.js` · `social-v2-store.js` | 一代（规则引擎）/ 二代（工具化）两套说话策略 | 控制台「二代仿真 / 一代仿真」 |
 | **插件 sidecar** | `src/domains/plugin-bridge-wiring.js` · `plugin-sidecar-io.js` | 插件模式与常驻 sidecar 的通信层（通道互斥、状态共享） | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
+| **QQ 空间动态** | `src/qzone-draft.js` · `qzone-styles.js` · `qzone-uploads.js` · `qzone-post-ops.js` · `/api/qzone/draft` `/uploads` `/delete` | 四子页（写 / 我的 / 好友动态 / 配图库）：AI 起草（5 种风格可多选）→ 配图上传（内容寻址）→ AI 挑图（≤2 张）→ 发布 → 删除；点赞与评论在「好友动态」子页 | 控制台「空间动态」 |
+| **Web 搜索** | `src/web-search.js` · `src/mcp-web-search-safe.js` | 联网搜索（与 DSH 同源，Bing 仅兜底）；MCP 侧的安全子集 | [COMMANDS.md](COMMANDS.md) |
 | **总量可观测** | `/api/overview`（9 格）· `/api/report`（运行报告）· `/api/supervisor` | 一眼看状态、出事能导出可贴文本、看守护链 | [RUN-REPORT.md](docs/guides/RUN-REPORT.md) |
 
 > 找不到某个能力时：先 `node scripts\find-symbol.mjs <关键词>` 查符号，再看上表对应的模块。

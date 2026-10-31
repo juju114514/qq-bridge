@@ -2,6 +2,32 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.87：能力全景补全（空间 / Web 搜索 / 控制台 19 个页面）
+
+第三轮外部核对指出「能力全景」表还漏东西。逐条核实结果：
+
+### 真漏的两行（已补）
+
+| 模块 | 代码 | 为什么漏了 |
+| --- | --- | --- |
+| **QQ 空间动态** | `src/qzone-draft.js` / `qzone-styles.js` / `qzone-uploads.js` / `qzone-post-ops.js` + 3 个端点 | 0.4.77–0.4.82 才做的，写表时只想着后端模块，忘了它整块是产品功能 |
+| **Web 搜索** | `src/web-search.js` / `src/mcp-web-search-safe.js` | 一直在用，但从没在 README 里单独列过 |
+
+### 控制台行：把 19 个页面全列出来
+
+原来只写"按能力域分五组"，现在把 `overview / sessions / people / slang / space / social-v2 /
+social-v1 / persona / song / memory-graph / diagnostics / scheduler / usage / reference /
+access / operations / supervisor / official / report` **逐个列出**——这样别人能直接数，不用猜。
+
+### 核对后**不成立**的几条
+
+外部清单把「定时任务 / 红包 / 频道模式 / 记忆交接 / 社交规则 v2 / 睡眠定时器 / 插件 sidecar」
+也列为"漏写"，但这些**在 0.4.86 的表里就已经有了**（第 1、9、11、12、13、14 行）。
+对方读的很可能还是旧版本，或者是把「功能清单」和「能力全景」两张表混了。
+
+> 这轮暴露的真问题不是"漏了几个模块"，而是**文档核对必须对着同一版**。
+> 0.4.85 起有 `check-readme-version.mjs` 守版本号，但没人守"克隆是否最新"——
+> 以后对外核对前，先让他 `git pull` 并报 `package.json` 版本。
 ## 2026-11-01 — 0.4.86：README 加「能力全景（按模块）」
 
 第二轮外部核对提了 14 个「代码里有、README 没写」的功能（定时任务引擎、token 账本、唤醒漏斗、
