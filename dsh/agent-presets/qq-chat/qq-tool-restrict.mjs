@@ -1,3 +1,4 @@
+// source-sha256: 1c2a6976df318de2164a04ce9c5ef26085a99214e23fffcd7d102fb104d1c6a1
 // QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。
 //
 import fs from 'node:fs'

@@ -2,6 +2,31 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.35：独立维护 + preset 单一真源（外部评审落地 ①②）
+
+> 采纳外部评审里**成本最低、收益最高**的两条：宣布独立维护、preset 去掉多份权威源。
+
+### ① 正式独立维护
+
+- 新增 `docs/UPSTREAM-SECURITY-REGISTER.md`：职责边界 + 13 项补丁登记 + 每月审查节奏 + 移植规则
+- README 顶部加「维护模式」声明
+- 明确：**上游修了 ≠ 我们安全了**；移植即接手
+
+### ② preset 单一真源（消除静默故障）
+
+```
+真源  plugins/qq-agent-presets/qq-tool-restrict.mjs
+  │  node scripts/build-presets.mjs
+  ├── dsh/agent-presets/qq-chat/qq-tool-restrict.mjs      ← DSH 实际加载
+  └── dsh/agent-presets/qq-chat-v2/qq-tool-restrict.mjs   ← DSH 实际加载
+```
+
+- 产物首行写入 `// source-sha256: <hash>`
+- 新增 `scripts/check-preset-fresh.mjs`：校验**运行的那份 == 真源**，且两份产物正文一致
+- 已挂进审计；反向测试有效（改真源不 build → 2 项 FAIL）
+- `check-privacy` 对生成产物放行（首行哈希不是凭证）
+
+审计 131/131。
 ## 2026-10-31 — 0.4.34：fork 现状与已知问题清单（供外部评审）
 
 > 纯文档。把仓库的**结构性问题**写成一份可直接贴给外部 AI/评审的文件。

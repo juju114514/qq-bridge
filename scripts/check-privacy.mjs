@@ -65,7 +65,10 @@ const TOKEN_ALLOW = [
   /^scripts\/test-.*\.mjs$/,
   // 审计用的 harness 里有显式构造的假令牌（AABBCCDD…），是夹具不是凭证
   /^scripts\/audit-bridge-harness\.mjs$/,
-  /^docs\//
+  /^docs\//,
+  // preset 的部署产物是**生成文件**：首行是 build-presets.mjs 写入的 source-sha256，
+  // 那是哈希不是凭证，且已由 check-preset-fresh.mjs 校验「产物 == 真源」。
+  /^dsh\/agent-presets\/[^/]+\/qq-tool-restrict\.mjs$/
 ];
 
 const problems = [];
