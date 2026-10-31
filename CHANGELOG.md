@@ -2,6 +2,45 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.21：桥接的工具限制改成「按真实工具名算的白名单」
+
+> 安全加固。上一版的 deny 名单在 DSH 0.2.1 上几乎全失效。
+
+### 现象（一直存在，没人注意到）
+
+```
+[qq-tool-restrict] restrict ok=4 failed=78
+  unknown global tool "pwsh"; known global tools: desktop_control, desktop_sequence, …
+```
+
+名单是按 **DSH 0.1.7** 的工具名写的；现在实际工具叫 `desktop_control` / `desktop_sequence` 之类，
+**78 个名字全部 unknown** → `restrict()` 全部静默失败。
+
+真正兜底的只剩 `tools.guard()`（执行期白名单）——那是最后一道，schema 里工具仍在。
+
+### 修法
+
+在 restrict 之前，先枚举**当前真实存在**的工具名，只保留白名单内的，再用 `allow` 一次性限制：
+
+```js
+const schemas = ctx.tools.schemas()
+const names = schemas.map(s => s?.name).filter(Boolean)
+const keep = names.filter(n => SAFE_EXACT.has(n) || SAFE_PREFIXES.some(p => n.startsWith(p)))
+if (keep.length < names.length) ctx.tools.restrict({ allow: keep })
+```
+
+- **不再依赖写死的名字**：新增/改名的工具默认被挡
+- 拿不到工具清单时**退回原 deny + guard**，不静默失效
+- 诊断写进 `state/tool-restrict.log`：`allow-restrict ok 保留=N/M：…`
+
+### 验证方式
+
+preset 的 apply 在**建 agent 时**才跑（≈第一条 QQ 消息到达时）。
+消息来之后看 `state/tool-restrict.log` 有没有这行：
+
+```
+allow-restrict ok 保留=3/20：ask_user_question, todo_write, mcp__snowluma__qq_ping, …
+```
 ## 2026-10-31 — 0.4.20：熔断开关 + 工具调用取证
 
 > 小更新，来自那次越权事故的两条教训。
