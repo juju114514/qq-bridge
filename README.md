@@ -244,6 +244,9 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 | **插件 sidecar** | `src/domains/plugin-bridge-wiring.js` · `plugin-sidecar-io.js` | 插件模式与常驻 sidecar 的通信层（通道互斥、状态共享） | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
 | **QQ 空间动态** | `src/qzone-draft.js` · `qzone-styles.js` · `qzone-uploads.js` · `qzone-post-ops.js` · `/api/qzone/draft` `/uploads` `/delete` | 四子页（写 / 我的 / 好友动态 / 配图库）：AI 起草（5 种风格可多选）→ 配图上传（内容寻址）→ AI 挑图（≤2 张）→ 发布 → 删除；点赞与评论在「好友动态」子页 | 控制台「空间动态」 |
 | **Web 搜索** | `src/web-search.js` · `src/mcp-web-search-safe.js` | 联网搜索（与 DSH 同源，Bing 仅兜底）；MCP 侧的安全子集 | [COMMANDS.md](COMMANDS.md) |
+| **网关自动选择 / 降级** | `src/gateway-select.js` | 默认 SnowLuma；连续 3 次探测失败才降级到 NapCat，连续 5 次成功才回切，切换后有 60 秒冷却——防止两个网关之间反复横跳（每次切换都要重连、丢消息、甚至触发 QQ 互踢）。探测只打 `get_login_info`，一次同时证明"端口通 + 令牌对 + 账号已登录" | [QUICKSTART.md](QUICKSTART.md) |
+| **系统资源可观测** | `src/system-metrics.js` | `eventLoopLagMs` / `cpuPercent` / `freeMemMb`：回答"是我们卡了，还是服务器被别的进程吃满了"。由来很具体——有人的服务器上跑了抖音自动化把 CPU 吃满，QQ 侧表现为"回得慢/不回"，当时拿不出任何资源证据只能猜 | 控制台「诊断与健康」· `/health/detail` |
+| **运行时构建指纹** | `src/build-id.js` · `src/build-info.js` | `buildId` = 运行时清单的内容哈希。为什么不用 `commit`：我们用 rsync/复制同步文件、不 commit，旧 `commit` 同步后不变等于失效；内容哈希能证明"两个部署是同一份" | 运行报告抬头 |
 | **总量可观测** | `/api/overview`（9 格）· `/api/report`（运行报告）· `/api/supervisor` | 一眼看状态、出事能导出可贴文本、看守护链 | [RUN-REPORT.md](docs/guides/RUN-REPORT.md) |
 
 > 找不到某个能力时：先 `node scripts\find-symbol.mjs <关键词>` 查符号，再看上表对应的模块。
@@ -253,7 +256,7 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 
 ## 版本怎么看
 
-> 📌 **文档版本：0.4.88**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
+> 📌 **文档版本：0.4.89**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
 > 有守卫 `check-readme-version.mjs` 校验它和代码是否一致。）
 
 
