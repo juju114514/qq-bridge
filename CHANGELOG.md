@@ -2,6 +2,67 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.41：buildId + ownerId + 健康聚合（可观测性升级）
+
+> 不动 `bridge.js` 主体结构；只补「运行时到底跑的是什么、是谁、活着没」。
+
+### ① buildId 取代「commit 当指纹」
+
+真机实测：同步文件后 `.git HEAD` 不变 → 指纹失效（截图里显示 0.4.38 就是这么来的）。
+
+```json
+{ "buildId": "sha256:<64 hex>", "sourceCommit": "929f29a7de1a", "version": "0.4.41" }
+```
+
+- `buildId` = 运行时清单（`src/`、`plugin/`、`dsh/agent-presets/`）的**内容哈希**，路径+内容一起进哈希
+- 排除：`state/`、`logs/`、`node_modules/`、`.git/`、文档
+- 跨仓库同内容 → 同 buildId；改文档 → 不变；改代码 → 必变
+- `sourceCommit` 保留，只作追溯线索
+
+### ② ownerId + procStart：PID 会被重用
+
+```json
+{ "schemaVersion": 2, "mode": "bridge", "pid": 24668,
+  "ownerId": "6f998021-…", "procStart": 1793435403385, "epoch": 6, "status": "active" }
+```
+
+- 同一进程 heartbeat：ownerId / epoch 都不变
+- 新进程接管：新 ownerId + epoch 递增
+- **同 PID 不同 ownerId → 判定为 `pid-reused`，视为新持有者，epoch +1**
+- v1 记录（无 ownerId）**平滑升级**：续期时补上 ownerId，不误判死亡、不重置 epoch
+
+### ③ 健康聚合：`/health/detail`
+
+`/health` 保持兼容；新增聚合视图，把**连接状态与所有权状态分开**：
+
+```json
+{ "process": { "status": "running", "pid": 14532, "ownerId": "…", "uptimeMs": 24550 },
+  "channel": { "mode": "bridge", "epoch": 6, "status": "active" },
+  "services": { "dsh": "connected", "snowluma": "connected",
+                "official": "connected", "console": "connected" },
+  "live": true, "ready": true }
+```
+
+- 状态取值：`starting | connected | reconnecting | degraded | stopped | failed`
+- **`live`** = 进程活着；**`ready`** = 持有通道 + DSH 连上 + 当前通道连接正常
+- Official 连接着但没持有通道时：`services.official=connected`，`ready` 仍按通道判定
+
+### 测试 8 条（全绿）
+
+```
+① 相同代码不同 Git HEAD → buildId 相同
+② 只改运行代码 → buildId 变
+②-b 只改文档 → buildId 不变
+②-c state/ 与 node_modules 不进 buildId
+③ 同一 PID、不同 ownerId → 旧进程不能继续持有（epoch+1）
+③-b v1 记录平滑续期（不误判死亡）
+④ DSH connected → reconnecting → connected，ready 跟随
+④-b 通道未持有 → ready=false（连接与所有权分离）
+```
+
+真机 `/health/detail` 已返回完整结构；通道记录 `schemaVersion: 2`、`ownerId`、`epoch` 生效。
+
+审计 136/136。
 ## 2026-10-31 — 0.4.40：6 条集成测试（含 epoch × 重试交叉）
 
 > 只加测试与它暴露的必要修复，**不拆 bridge.js**。

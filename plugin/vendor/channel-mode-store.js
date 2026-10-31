@@ -10,10 +10,17 @@
 //   如果只把 epoch 存在 channel-mode.json 里，释放时删文件、下次认领从 1 开始，
 //   那么「崩溃前 epoch=1 的旧任务」和「重启后 epoch=1 的新持有者」就会撞车。
 //   所以水位单独落盘、只增不减。
+import crypto from 'node:crypto';
 import { atomicWriteJson } from '../atomic-write.js';
 import { claimMode, shouldRelease, describeMode, assertEpochCurrent, StaleEpochError, DEFAULT_TTL_MS, SCHEMA_VERSION } from './channel-mode.js';
 
 export { StaleEpochError };
+
+// 进程身份：一个进程只生成一次，贯穿 claim / heartbeat / release / 校验
+const PROCESS_OWNER_ID = crypto.randomUUID();
+// 有些受限环境（VM/沙箱/测试桩）没有 process.uptime，缺失时退化为"现在"
+const PROC_UPTIME = typeof process.uptime === 'function' ? process.uptime() : 0;
+const PROCESS_START_MS = Math.floor(Date.now() - PROC_UPTIME * 1000);
 
 const LOCK_STALE_MS = 5_000;   // 锁超过 5s 视为遗留（进程崩了）
 const LOCK_RETRY = 40;         // 40 × 5ms = 200ms 上限
@@ -96,7 +103,10 @@ export function createChannelModeStore({ fs, path, stateDir, ttlMs = DEFAULT_TTL
   function claim(mode, { pid = process.pid, note = '' } = {}) {
     return withLock(() => {
       const current = read();
-      const r = claimMode({ current, mode, pid, ttlMs, note, floorEpoch: readEpochFloor() });
+      const r = claimMode({
+        current, mode, pid, ttlMs, note, floorEpoch: readEpochFloor(),
+        ownerId: PROCESS_OWNER_ID, procStart: PROCESS_START_MS,
+      });
       if (!r.ok) return r;
       const epoch = Number(r.record.epoch) || 0;
       // 先抬水位再写状态：即使两步之间崩溃，水位只会更高（fencing 仍安全）
@@ -113,7 +123,7 @@ export function createChannelModeStore({ fs, path, stateDir, ttlMs = DEFAULT_TTL
     return withLock(() => {
       const current = read();
       if (!current) return false;
-      if (!shouldRelease(current, { mode, pid })) return false;
+      if (!shouldRelease(current, { mode, pid, ownerId: PROCESS_OWNER_ID })) return false;
       // 续期保持 epoch 不变（不换主人）
       const next = { ...current, schemaVersion: SCHEMA_VERSION, status: 'active', at: Date.now(), note };
       return atomicWrite(file, JSON.stringify(next, null, 2) + '\n');
@@ -125,7 +135,7 @@ export function createChannelModeStore({ fs, path, stateDir, ttlMs = DEFAULT_TTL
     return withLock(() => {
       const current = read();
       if (!current) return false;
-      if (!shouldRelease(current, { mode, pid })) return false;
+      if (!shouldRelease(current, { mode, pid, ownerId: PROCESS_OWNER_ID })) return false;
       const next = { ...current, schemaVersion: SCHEMA_VERSION, status: 'released', at: Date.now() };
       // 保留 epoch，删掉 pid：既表达"没人持有"，又不让 epoch 回退
       const rec = { ...next };
@@ -143,6 +153,9 @@ export function createChannelModeStore({ fs, path, stateDir, ttlMs = DEFAULT_TTL
     read, claim, heartbeat, release, assertCurrent,
     epochFloor: readEpochFloor,
     describe: () => describeMode(read()),
+    // 进程身份（pid 会被系统重用，ownerId 不会）
+    ownerId: PROCESS_OWNER_ID,
+    procStart: PROCESS_START_MS,
     file, epochFile, lockFile,
   };
 }

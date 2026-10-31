@@ -6,6 +6,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { computeBuildId, readSourceCommit } from './build-id.js';
 
 function tryReadCommit(root) {
   // 优先读 .git/HEAD（不打子进程，秒级）；失败返回空串。
@@ -35,6 +36,10 @@ const PRESET_CANDIDATES = [
 
 export function readBuildInfo(root, version = '') {
   const commit = tryReadCommit(root);
+  const sourceCommit = readSourceCommit(root) || commit;
+  const startedAt = Math.floor(Date.now() - (typeof process.uptime === 'function' ? process.uptime() * 1000 : 0));
+  let buildId = '';
+  try { buildId = computeBuildId(root).buildId; } catch { buildId = ''; }
   let ver = version;
   if (!ver) {
     try { ver = String(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version ?? ''); } catch { ver = ''; }
@@ -44,10 +49,10 @@ export function readBuildInfo(root, version = '') {
     try {
       const buf = fs.readFileSync(abs);
       const sha = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 12);
-      return { version: ver, commit, preset: name, presetHash: sha, presetSource: rel };
+      return { version: ver, commit: sourceCommit, sourceCommit, buildId, startedAt, preset: name, presetHash: sha, presetSource: rel };
     } catch { /* 换下一个候选 */ }
   }
-  return { version: ver, commit, preset: null, presetHash: '', presetSource: '' };
+  return { version: ver, commit: sourceCommit, sourceCommit, buildId, startedAt, preset: null, presetHash: '', presetSource: '' };
 }
 
 /** 一行指纹，用于启动横幅与 /health。 */

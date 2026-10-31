@@ -61,6 +61,16 @@ export function createPluginBridgeHandler(deps = {}) {
       return true;
     }
 
+    if (p === '/health/detail') {
+      // 聚合健康：进程 / 通道所有权 / 各服务连接，分开表达（0.4.41）
+      const detail = typeof deps?.health === 'function' ? deps.health() : null;
+      if (!detail) { sendJson({ ok: false, error: 'health 不可用' }, 503); return true; }
+      // 补上 buildId 等指纹字段，便于一次请求看全
+      const fp = typeof deps?.buildInfo === 'function' ? deps.buildInfo() : null;
+      sendJson({ ...detail, ...(fp ?? {}) }, 200);
+      return true;
+    }
+
     if (p === '/snapshot' || p === '/events' || p === '/intents') {
       if (!authorized(req)) {
         sendJson({ ok: false, error: 'unauthorized' }, 401);
