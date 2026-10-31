@@ -2,6 +2,46 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.45：watchdog v3（冷却期 / port_conflict / 时钟回拨）+ 实施包
+
+> 主任务 XML 不再改（保留 `UseUnifiedSchedulingEngine=true`）。本次只动 watchdog 与工具脚本。
+
+### watchdog v3
+
+| 规则 | 实现 |
+| --- | --- |
+| `ready=false` 不重启 | 只有 `live=false` 或连不上才算故障 |
+| 15 分钟持续窗口 | **持久化时间戳**判断（5 分钟 × 3 次实际只跨 10 分钟） |
+| 恢复冷却期 | 失败后 `cooldownUntil = now + 15min`，期间不再 `/end` |
+| `port_conflict` | 占端口的不是 node → 记录并进冷却，**不重启** |
+| 时钟回拨 | `firstFailureAt > now` → 重置窗口 + `clock_adjusted` |
+| 孤儿检查 | `/end` 后须「旧 PID 不存在 **且** 端口释放」才启动 |
+| 恢复验证 | 60 秒内要求 `live && ready`，打印新旧 pid/epoch/buildId |
+
+### 实施包（新增）
+
+- `scripts/install-qq-bridge.ps1`：管理员注册任务（备份 + `schtasks /create /xml`）
+- `scripts/verify-qq-bridge.ps1`：11 条验收标准自动检查（实跑 16 项全通过）
+- `scripts/keepalive.ps1`：v3（可被环境变量覆盖，便于隔离演练）
+
+### 受控演练（未触碰生产）
+
+隔离端口 3199 + 假任务名 + 3 秒窗口：
+
+```
+第 1 次：consecutiveFailures=1，不恢复
+第 2 次：超过窗口 → 进入恢复 → 目标不存在 → recovery_failed
+        → cooldownUntil=+20s，recoveryAttempts=1
+```
+
+演练还抓到一个真 bug：日志里硬编码「3100 已释放」，改用 `$PORT`。
+
+### 真机验收
+
+`verify-qq-bridge.ps1` → **16 项通过 / 0 失败**：
+RestartOnFailure 消失、Hidden 生效、IgnoreNew、PT0S、仅 LogonTrigger、
+watchdog 无 start.bat、状态持久化、15 分钟判定、单进程、health 可访问、
+live=true、buildId/ownerId/epoch 齐全、runner.start 有记录。
 ## 2026-10-31 — 0.4.44：修掉 0.4.43 引入的两处守卫问题
 
 > 小补丁。0.4.43 真机执行后，审计红了两项，都是我自己引入的。

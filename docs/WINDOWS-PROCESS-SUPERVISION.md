@@ -189,3 +189,34 @@ Task Scheduler 的 XML 要求 `Count >= 1`、`Interval >= PT1M`。
 ```
 
 备份：`state/task-backup-20261031-164631.xml`（回滚用：`schtasks /create /xml <备份> /f`）。
+
+## 十一、watchdog v3（0.4.45）：只观察，必要时最多一次受控恢复
+
+| 规则 | 实现 |
+| --- | --- |
+| 健康判定 | `live=true` 就算健康；`ready=false` 只记日志（DSH 断线让 bridge 自己重连） |
+| 故障窗口 | **持久化时间戳**：`now - firstFailureAt >= 15 分钟` 才动手（5 分钟一次 × 3 次其实只跨 10 分钟） |
+| 冷却期 | 恢复失败后 15 分钟内不再 `/end`（`cooldownUntil`），避免每 5 分钟杀一次 |
+| 端口冲突 | 占端口的不是 node → 记 `port_conflict` 并进冷却，**不重启**（重启只会无限失败） |
+| 时钟回拨 | `firstFailureAt > now` → 重置窗口并记 `clock_adjusted`，避免负数/永久卡住 |
+| 孤儿进程 | `/end` 后最多等 30 秒，必须「旧 PID 不存在 **且** 端口不再监听」才启动新实例 |
+| 恢复验证 | 最多等 60 秒，要求 `live=true && ready=true`，并打印新旧 `pid/epoch/buildId` |
+
+状态文件 `state/watchdog-state.json`：
+
+```json
+{"consecutiveFailures":0,"firstFailureAt":0,"lastFailureAt":0,
+ "lastRecoveryAt":0,"cooldownUntil":0,"recoveryAttempts":0}
+```
+
+### 受控演练（不碰生产）
+
+用环境变量指向隔离目标，窗口缩到 3 秒：
+
+```powershell
+$env:QQB_WATCHDOG_PORT='3199'; $env:QQB_WATCHDOG_TASK='qq-bridge-DRILL'
+$env:QQB_WATCHDOG_WINDOW_MS='3000'; $env:QQB_WATCHDOG_COOLDOWN_MS='20000'
+```
+
+实测结果：第 1 次累计失败不恢复；第 2 次超过窗口 → 进入恢复流程 → 目标不存在 →
+`recovery_failed` + 冷却 20 秒 + `recoveryAttempts=1`，**生产进程与任务完全没被碰**。
