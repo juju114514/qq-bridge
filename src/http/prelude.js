@@ -108,6 +108,15 @@ export function runPrelude(ctx) {
     return null;
   }
 
+  // 2.6) sidecar 契约（插件通道）：/health /snapshot /events /intents
+  //      它们**自带** bearer 校验（state/plugin-token，缺省回退 console token），
+  //      校验在 handler 里用定长比较做。这里只放行，不再让控制台令牌先拦一刀
+  //      （否则插件永远收到 401，而且拿不到"缺少哪个 token"的信息）。
+  if (pathname === '/health' || pathname === '/snapshot'
+      || pathname === '/events' || pathname === '/intents') {
+    return null;
+  }
+
   // 3) 控制台令牌
   const suppliedToken = String(url.searchParams.get('token') ?? req.headers['x-console-token'] ?? '');
   const tokenMatches = consoleToken

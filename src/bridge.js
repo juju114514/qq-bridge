@@ -95,6 +95,9 @@ import { createPresetSimHandlers, handlePresetSimRoutes } from './api/preset-sim
 import { handleConsoleMiscRoutes } from './api/console-misc.js';
 import { handleSocialV2ExtraRoutes } from './api/socialV2-extra.js';
 import { createRoleCadence } from './domains/role-cadence.js';
+import { createPluginBridgeHandler } from './api/plugin-bridge.js';
+import { createPluginBridgeWiring } from './domains/plugin-bridge-wiring.js';
+import { startBridgeChannelGuard } from './domains/channel-mode-store.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -852,6 +855,9 @@ let modelSelectionEpoch = 0;
 // 角色卡注入节奏（默认 every=1 即每轮全量；配 socialV2.roleInjectEvery 才生效）。
 // 放模块级是为了不依赖 main() 内部声明顺序（与 modelSelectionEpoch 同理，避免 TDZ）。
 const roleCadence = createRoleCadence({ every: 1 });
+// 通道模式闸的运行时状态（N3）：认领成功才连网关，退出时释放。
+let channelModeGuard = null;
+let channelModeClaimed = false;
 const REASONING_EFFORT_OPTIONS = ['low', 'high', 'max'];
 const REASONING_EFFORT_DEFAULT = 'max';
 function normalizeReasoningEffort(value) {
@@ -3560,6 +3566,14 @@ async function main() {
     return cfg.socialV2?.tools?.[flag] !== false;
   }
 
+  // sidecar 契约（N2）的接线：token / 版本 / 已读水位 / IO 实例都在这一个对象上。
+  const pluginWiring = createPluginBridgeWiring({
+    fs, path, stateDir: STATE_DIR, root: ROOT,
+    log: (m) => log(m),
+    getSocialV2State,
+    saveSocialV2State,
+  });
+
   function startConsoleServer() {
     // 群成员查询 / 黑话提交：已拆到 src/api/group-members.js、src/api/slang-submit.js
     // 惰性创建：v2SessionAllowed / allowSlangSubmit 等是后面才定义的 const（TDZ）
@@ -3701,6 +3715,26 @@ async function main() {
       const sendJson = (obj, status = 200) => writeJson(res, obj, status);
       // 请求体读取已迁到 src/http/body.js（同样的 1MB 上限、30s 超时、四类错误文案）。
       const readBody = () => readJsonBody(req);
+      // sidecar 契约（N2）：插件 ↔ 常驻进程。见 docs/design/plugin-mode-2026-10-31.md 第 6 节。
+      // 认证用 state/plugin-token（没有就退回 console token，省得用户多配一个文件）。
+      const handlePluginBridge = createPluginBridgeHandler({
+        sendJson, readBody, log,
+        pluginToken: pluginWiring.pluginToken(),
+        consoleToken,
+        version: pluginWiring.version(),
+        mode: 'bridge',
+        getSocialV2State,
+        readRoleState,
+        roleHint: () => currentRoleHintV2(),
+        peopleSummary: (key) => peopleHintForConversation(key),
+        readMemory: (key) => pluginWiring.io().readMemory(key),
+        writeMemory: (key, text) => pluginWiring.io().writeMemory(key, text),
+        appendEvent: (e) => pluginWiring.io().appendEvent(e),
+        applyIntent: (i) => pluginWiring.io().applyIntent(i, {
+          markRead: ({ key, throughSeq }) => pluginWiring.markRead(key, throughSeq),
+          appendActivity,
+        }),
+      });
           const handleStatus = createStatusHandler({
             sendJson,
             readRoleState,
@@ -3985,6 +4019,8 @@ async function main() {
       // 按**同样的顺序**串起来；路由表还留了 exact/param/prefix 三个入口，后续把
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
+        // sidecar 契约优先：/health /snapshot /events /intents 都是裸路径，不能被别的域先吃掉
+        .chain((req, url) => handlePluginBridge(req, url))
         .chain((req, url) => handleSocialV2ExtraRoutes(req, url, {
           sendJson, readBody, res, writeJson, readJsonBody, handleImages, socialVideo,
           createSocialV2InspectHandler, getPeopleNoteHandler, getGroupMembersHandler, getSlangSubmitHandler,
@@ -10025,8 +10061,15 @@ function selfCheckSnapshot() {
     void healTokenIfStale(`error ${detail}`.trim().slice(0, 200));
   });
 
+  // ── 通道模式闸（N3）：同一份 state/ 只允许一个东西收 QQ 消息 ────────────
+  // 认领失败时**不连网关**（控制台与工具照常），避免和插件/另一个实例各自回一条。
+  channelModeGuard = startBridgeChannelGuard({
+    fs, path, stateDir: STATE_DIR, pid: process.pid, log: (m) => log(m),
+  });
+  channelModeClaimed = channelModeGuard.ok;
+
   // SnowLuma 尚未就绪时不阻塞桥接启动：SDK 自带后台重连，DSH 侧照常连接。
-  bot.connect().catch((error) => {
+  if (channelModeClaimed) bot.connect().catch((error) => {
     // 说明为什么"第一次连不上"在这里几乎是**必然**的，避免用户把它当成故障：
     // SnowLuma 的 **HTTP token（默认 3000）与 WS token（默认 3001）是两个不同的值**
     // （实测：同一个账号，两者不同；config.json 只能存一个，存的是 HTTP 那个）。
@@ -10053,11 +10096,13 @@ function selfCheckSnapshot() {
 process.on('SIGINT', () => {
   log('退出中…');
   saveState();
+  try { channelModeGuard?.stop(); } catch {}
   releaseLock();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
   saveState();
+  try { channelModeGuard?.stop(); } catch {}
   releaseLock();
   process.exit(0);
 });

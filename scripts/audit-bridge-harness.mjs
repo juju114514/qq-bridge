@@ -312,12 +312,14 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
   // 分派器」那条路径，所以缺口是隐形的。一旦某条测试请求走到那里就会
   // `roleCharStats is not defined`。这里显式注入，缺口补上。
   {
-    const roleCardRaw = fs.readFileSync(path.join(root, 'src/role-card.js'), 'utf8');
+    // 实现在 P0-β 之后搬到了 src/core/prompt.js（src/role-card.js 变成 re-export 壳）。
+// 这里读的是**实现文件**的文本 —— 读壳会拿到 `export * from ...`，eval 出来一个函数都没有。
+const roleCardRaw = fs.readFileSync(path.join(root, 'src/core/prompt.js'), 'utf8');
     const body = stripExports(stripImports(roleCardRaw));
     vm.runInContext(
       `Object.assign(globalThis, (() => {\n${body}\nreturn { parseRoleFrontMatter, buildRoleFrontMatter, slugifyRoleId, hashRoleId, parseRoleSections, selectRoleText, roleSectionReport, roleCharStats, GEN1_ROLE_LINE_RE }; })())`,
       context,
-      { filename: 'src/role-card.js' },
+      { filename: 'src/core/prompt.js' },
     );
   }
 

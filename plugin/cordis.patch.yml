@@ -1,0 +1,15 @@
+# qq-bridge 插件 · cordis.patch.yml
+#
+# 声明方式（package.json）：`dsh.bundle.patch = "./cordis.patch.yml"`
+# 宿主读它 → 把下面的 insert 条目并进 profile 层。
+#
+# 必须保持「顶层 YAML 数组」形态，否则宿主 parsePatchList 会拒。
+# name 用**裸包名**：插件由 pnpm 装进 profile 的 node_modules 后由运行时解析。
+- insert:
+  - id: qq-bridge
+    name: '@juju114514/qq-bridge-plugin'
+    # config:
+    #   enabled: true
+    #   onebotUrl: ws://127.0.0.1:3001
+    #   sidecarUrl: http://127.0.0.1:3110
+    #   allowGroups: [123456789]

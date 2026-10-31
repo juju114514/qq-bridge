@@ -1,0 +1,49 @@
+{
+  "name": "@juju114514/qq-bridge-plugin",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "description": "qq-bridge 的 DSH 插件形态（薄插件 + 复用 src/core 与 sidecar）",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/schemastery": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-session": "*"
+  },
+  "files": [
+    "index.js",
+    "inbound.js",
+    "channel.js",
+    "agent-driver.js",
+    "user-message.js",
+    "dsh.plugin.json",
+    "cordis.patch.yml",
+    "tools.js",
+    "sidecar.js",
+    "chat-log.js"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshx": {
+    "contributes": {
+      "tools": [
+        "qq_ping",
+        "qq_get_prompt",
+        "qq_send_message",
+        "qq_reply",
+        "qq_mark_read",
+        "qq_get_recent_messages",
+        "qq_get_unread_messages",
+        "qq_wait_for_messages"
+      ]
+    }
+  }
+}

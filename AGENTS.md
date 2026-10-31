@@ -1,5 +1,10 @@
 # AGENTS.md
 
+> **分支铁律（2026-10-31 起）**：仓库是公开的，**不要改一条就推 main**。
+> 所有开发提交进 `next/X.Y.Z` 分支，攒够一批再合并；合并时 bump 一次版本号并打 tag。
+> 小更新 `+0.0.1`，大更新 `+0.1.0`。细则见 [docs/guides/BRANCHING.md](docs/guides/BRANCHING.md)。
+
+
 > 给 **AI coding agent** 的入口文件。人类看 [README.md](README.md)。
 > 你（AI）被要求"装这个项目 / 修这个项目"时，**先读本文件**，再按需读链接。
 
