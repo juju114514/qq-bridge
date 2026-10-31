@@ -1,0 +1,91 @@
+// DSH 插件骨架的离线挂载测试（不需要 DSH 宿主）。
+//
+// 这个测试替代"装进 DSH 才知道能不能加载"的盲试：用假 ctx 调 apply()，
+// 断言四件事 —— 插件身份、依赖声明、工具注册、卸载清理。
+// 真正的宿主加载检查放在 P1 末尾（临时 profile 里 dsh plugin add 一次）。
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const pluginDir = path.join(here, '..', 'plugin');
+
+const results = [];
+function check(name, fn) {
+  try { fn(); results.push(['ok', name]); }
+  catch (e) { results.push(['FAIL', name + ' — ' + (e?.message ?? e)]); }
+}
+async function checkAsync(name, fn) {
+  try { await fn(); results.push(['ok', name]); }
+  catch (e) { results.push(['FAIL', name + ' — ' + (e?.message ?? e)]); }
+}
+
+const mod = await import(pathToFileURL(path.join(pluginDir, 'index.js')).href);
+
+check('插件导出 name / inject / apply（DSH 插件四项约定里的三项）', () => {
+  assert.equal(typeof mod.name, 'string');
+  assert.ok(mod.name.length > 0);
+  assert.deepEqual(mod.inject, ['tools']);
+  assert.equal(typeof mod.apply, 'function');
+});
+
+check('清单文件与入口一致（id / main / tools 声明）', async () => {
+  const fs = await import('node:fs');
+  const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, 'dsh.plugin.json'), 'utf8'));
+  assert.equal(manifest.id, mod.name);
+  assert.equal(manifest.main, './index.js');
+  assert.ok(Array.isArray(manifest.contributes?.tools));
+  assert.ok(manifest.contributes.tools.includes('qq_ping'), '清单里要声明 qq_ping，否则宿主不暴露');
+  assert.match(manifest.engines?.dsh ?? '', />=0\.2\.1/);
+});
+
+let registered = null;
+let disposed = false;
+const fakeCtx = {
+  tools: {
+    register(tool) {
+      registered = tool;
+      return () => { disposed = true; };
+    },
+  },
+};
+
+const dispose = mod.apply(fakeCtx, { sidecarUrl: 'http://127.0.0.1:9', requireMention: false });
+
+check('注册了 qq_ping，且参数/输出/execute 齐全', () => {
+  assert.ok(registered, '没有注册任何工具');
+  assert.equal(registered.name, 'qq_ping');
+  assert.equal(typeof registered.execute, 'function');
+  assert.deepEqual(registered.parameters, {});
+  assert.ok(registered.output?.schema);
+});
+
+await checkAsync('qq_ping 在 sidecar 不可达时返回 degraded=true（降级语义）', async () => {
+  const out = await registered.execute({}, {});
+  assert.equal(out.ok, true);
+  assert.equal(out.degraded, true);
+  assert.match(out.note, /sidecar 不在/);
+});
+
+check('apply 返回卸载函数，调用后释放工具', () => {
+  assert.equal(typeof dispose, 'function');
+  dispose();
+  assert.equal(disposed, true);
+});
+
+check('缺 ctx.tools.register 时必须 fail-loud（不静默挂载）', () => {
+  assert.throws(() => mod.apply({}, {}), /ctx\.tools\.register/);
+});
+
+check('配置归一化：默认值 + allowGroups 过滤非法项', () => {
+  const cfg = mod.normalizeConfigForTest({ allowGroups: ['123', 'abc', 456, null] });
+  assert.deepEqual(cfg.allowGroups, [123, 456]);
+  assert.equal(cfg.requireMention, true);
+  assert.equal(cfg.sidecarUrl, 'http://127.0.0.1:3110');
+});
+
+const failed = results.filter(([s]) => s !== 'ok');
+for (const [s, n] of results) console.log(`  ${s === 'ok' ? 'ok  ' : 'FAIL'} ${n}`);
+console.log(`\n结果：${results.length - failed.length} 通过，${failed.length} 失败`);
+process.exit(failed.length ? 1 : 0);
