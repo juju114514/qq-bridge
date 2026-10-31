@@ -1933,6 +1933,15 @@ button:active:not(:disabled) {
         <span class="meta" id="simPromptMsg"></span>
       </div>
       <div class="meta" id="simPromptRestart"></div>
+
+      <div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)">
+        <label style="flex:0 0 auto">重置会话</label>
+        <select id="resetSessionKey" style="flex:0 1 260px"></select>
+        <label style="flex:0 0 auto"><input type="checkbox" id="resetSessionBackup" checked> 先备份</label>
+        <button id="resetSessionBtn">重置该会话</button>
+        <span class="meta" id="resetSessionMsg"></span>
+      </div>
+      <div class="meta">改完预设后，正在进行的 QQ 会话仍用旧 preset；在这里重置即可（下条消息开新上下文）。备份存到 <code>state/session-backups/</code>；备份失败会中止重置，不会把上下文弄丢。</div>
     </section>
 <section id="section-social-v1" data-page="social-v1" class="card span-all">
       <h2>一代仿真模式（reserved）</h2>
@@ -6244,6 +6253,61 @@ function setSpaceTab(name) {
   if (name === 'images' && typeof spaceLoadImages === 'function') spaceLoadImages();
   try { sessionStorage.setItem('spaceTab', name); } catch (e) { /* 无所谓 */ }
 }
+// ── 重置会话（0.4.91）─────────────────────────────────────────────
+async function loadResetSessionOptions() {
+  const sel = document.getElementById('resetSessionKey');
+  if (!sel) return;
+  try {
+    const r = await api('/api/socialV2/states');
+    const keys = Object.keys((r && (r.states || r.conversations)) || {});
+    sel.innerHTML = keys.length
+      ? keys.map((k) => `<option value="${k}">${k}</option>`).join('')
+      : '<option value="">（还没有会话）</option>';
+  } catch {
+    sel.innerHTML = '<option value="">（读取会话失败）</option>';
+  }
+}
+
+function resetSessionMsg(text, bad) {
+  const el = document.getElementById('resetSessionMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = bad ? '#ff8a8a' : '';
+}
+
+async function resetSession() {
+  const sel = document.getElementById('resetSessionKey');
+  const key = sel ? sel.value : '';
+  const backup = Boolean(document.getElementById('resetSessionBackup')?.checked);
+  if (!key) { resetSessionMsg('先选一个会话', true); return; }
+  const btn = document.getElementById('resetSessionBtn');
+  if (btn) btn.disabled = true;
+  resetSessionMsg('正在重置…');
+  try {
+    const r = await api('/api/sessions/reset', 'POST', { key, backup });
+    if (r && r.ok) {
+      const name = r.backupPath ? r.backupPath.split(/[\\/]/).pop() : '';
+      resetSessionMsg(r.note + (name ? '（备份：' + name + '）' : ''));
+      loadResetSessionOptions();
+    } else {
+      resetSessionMsg((r && r.error) || '重置失败', true);
+    }
+  } catch (e) {
+    resetSessionMsg('重置失败：' + e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function bindResetSession() {
+  const btn = document.getElementById('resetSessionBtn');
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', resetSession);
+  }
+  loadResetSessionOptions();
+}
+
 function bindSpaceTabs() {
   const tabs = document.getElementById('spaceTabs');
   if (!tabs) return;

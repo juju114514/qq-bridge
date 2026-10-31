@@ -15,6 +15,7 @@ import { createOverviewHandler } from './overview.js';
 import { createSupervisorHandler } from '../supervisor-view.js';
 import { handleOfficialRoute } from './official-route.js';
 import { handleQzoneEndpoints } from './qzone-endpoints.js';
+import { handleSessionResetRoute } from './session-reset-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -84,6 +85,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // 空间域（草稿 / 上传 / 删除）—— 实现见 qzone-endpoints.js
   if (await handleQzoneEndpoints({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // POST /api/sessions/reset —— 一键重置会话（可先备份）
+  if (await handleSessionResetRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {

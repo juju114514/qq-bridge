@@ -4380,7 +4380,7 @@ async function main() {
             },
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
             getOfficialRuntime: () => ({ enabled: Boolean(officialTransport), ready: officialTransport?.ready === true, lastError: String(officialTransport?.lastError ?? '') }),
-            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads') },
+            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads'), sessionBackups: path.join(STATE_DIR, 'session-backups') },
             deliverPrompt: (key, text, opts) => deliverPromptNow(key, text, opts),
             getStickerEntries: () => {
               // 内存为空时回退读磁盘：启动时 WS 同步失败会让 stickerEntries 是空的
@@ -4393,6 +4393,16 @@ async function main() {
             describeImageBuffer: (buf) => describeImageBuffer(buf),
             onebotAction: (action, params, opts) => onebotHttpAction(action, params, opts || {}),
             getBootIncident: () => bootIncident,
+            // 一键重置会话（可选备份）
+            resetConversation: (key) => getSessionResetter().resetConversation(key),
+            snapshotConversation: (key) => {
+              try {
+                const st = socialV2.conversations.get(key);
+                const rec = { key, at: Date.now(), sessionId: state.sessions[key] || null, role: cfg.role || null, model: sessionModels.get(state.sessions[key]) || null,
+                  messages: Array.isArray(st?.messages) ? st.messages.slice(-200) : [], longTerm: Array.isArray(st?.longTermMemories) ? st.longTermMemories : [], unread: Array.isArray(st?.unread) ? st.unread.slice(-50) : [] };
+                return JSON.parse(JSON.stringify(rec, (k2, v) => (v instanceof Set ? [...v] : v)));
+              } catch { return null; }
+            },
             listBootIncidents: (limit) => listIncidents(INCIDENTS_FILE, { limit: limit || 10 }),
             countBootIncidents: (days) => countRecentIncidents(INCIDENTS_FILE, { days: days || 7 }),
             describeBootIncident: (x) => describeIncident(x),

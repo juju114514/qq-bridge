@@ -193,6 +193,7 @@ const tests = [
   'test-selfcheck.mjs',
   // /reset 清理清单：18 个集合逐个核对 + 钩子 fail-soft。
   'test-session-reset.mjs',
+  'test-session-reset-route.mjs',
   // 入站闸门：引用/空文本/待答/静默的顺序（错一步就漏消息）。
   'test-incoming-guards.mjs',
   // 清空工作区：只归档根会话 + 本地集合全清 + DSH 挂了也能清。
