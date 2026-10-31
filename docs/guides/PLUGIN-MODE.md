@@ -19,7 +19,34 @@
 
 **两者互斥**：同一份 `state/` 只允许一个东西收 QQ 消息（见 `state/channel-mode.json`）。
 
-## 二、安装（临时验证必须用独立 DSH_HOME）
+## 二、安装（三种方式，任选）
+
+### 方式 A：本地路径（最稳，推荐）
+
+先 `git clone` / `git pull` 到本地，然后「添加插件」里填**目录**：
+
+```
+<你的仓库路径>\plugin
+```
+
+### 方式 B：GitHub 子目录（验证可用，0.4.4+）
+
+```
+github:juju114514/qq-bridge#main&path:/plugin
+```
+
+- 插件已**自包含**（`plugin/vendor/` 里带了 `onebot-ws` 与通道闸），装下来就能跑
+- 前提：仓库根的 `postinstall` 已移除（0.4.4 起）——它会让 pnpm 报
+  `ERR_PNPM_IGNORED_BUILDS`，装不上
+
+### 方式 C：等 npm 发布（还没做）
+
+插件是 `private: true`、没发到 npm，**填包名会 404**。
+
+> ⚠️ 直接填仓库**根地址**（不带 `&path:/plugin`）不行：根目录是桥接应用本身，
+> 不是 DSH 插件（没有 `dsh.bundle`），只会被装成普通依赖。
+
+## 二·五、安装（临时验证必须用独立 DSH_HOME）
 
 ```powershell
 # 1) 隔离环境（千万别装在真实 ~/.dsh 里，会和桌面版抢状态文件）
