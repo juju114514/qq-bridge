@@ -88,6 +88,19 @@ check('startBridgeChannelGuard：被占用时 ok:false 且不留文件', () => {
   assert.match(logs[0], /通道被占用/);
 });
 
+check('startBridgeChannelGuard：enabled=false → sidecar-only，不认领也不写文件', () => {
+  const dir5 = fs.mkdtempSync(path.join(os.tmpdir(), 'chanmode5-'));
+  const logs = [];
+  const guard = mod.startBridgeChannelGuard({
+    fs, path, stateDir: dir5, pid: 888, enabled: false, log: (m) => logs.push(m),
+  });
+  assert.equal(guard.ok, false);
+  assert.equal(guard.disabled, true);
+  assert.equal(fs.existsSync(path.join(dir5, 'channel-mode.json')), false, '不该留认领文件');
+  assert.match(logs[0], /sidecar-only/);
+  guard.stop(); // 不应抛错
+});
+
 const failed = results.filter(([s]) => s !== 'ok');
 for (const [s, n] of results) console.log(`  ${s === 'ok' ? 'ok  ' : 'FAIL'} ${n}`);
 console.log(`\n结果：${results.length - failed.length} 通过，${failed.length} 失败`);

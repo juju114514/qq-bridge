@@ -111,6 +111,9 @@
     "longGapMinMs": 5000,
     "longGapMaxMs": 10000
   },
+  "channel": {
+    "enabled": true
+  },
   "socialV2": {
     "enabled": true,
     "autoReplyCheckMs": 30000,

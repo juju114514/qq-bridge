@@ -10063,8 +10063,13 @@ function selfCheckSnapshot() {
 
   // ── 通道模式闸（N3）：同一份 state/ 只允许一个东西收 QQ 消息 ────────────
   // 认领失败时**不连网关**（控制台与工具照常），避免和插件/另一个实例各自回一条。
+  //
+  // channel.enabled=false = **sidecar-only 模式**：只提供控制台 / sidecar 契约 / 定时器，
+  // 不连网关、也不占通道 —— 这样 DSH 插件才能拿到通道去收消息。
   channelModeGuard = startBridgeChannelGuard({
     fs, path, stateDir: STATE_DIR, pid: process.pid, log: (m) => log(m),
+    // channel.enabled=false = sidecar-only：让出通道给 DSH 插件
+    enabled: cfg.channel?.enabled !== false,
   });
   channelModeClaimed = channelModeGuard.ok;
 

@@ -66,6 +66,9 @@ export function createConfigLoader(deps = {}) {
       allowRemote: false,
       ...(file.dsh ?? {})
     },
+    // 通道开关：false = sidecar-only（只提供控制台/契约/定时器，不连网关、不占通道），
+    // 用来把通道让给 DSH 插件。默认 true。
+    channel: { enabled: file.channel?.enabled !== false },
     snowluma: { wsUrl: 'ws://127.0.0.1:3001', accessToken: '', ...(file.snowluma ?? {}) },
     // 空 => 每个会话在 state/agents/<key> 下建独立工作目录
     sessionCwd: file.sessionCwd ?? '',

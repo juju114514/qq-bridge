@@ -2,7 +2,38 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.0：qq-bridge 可以装进 DSH 了（插件模式）+ 群记忆交接
+## 2026-10-31 — 0.4.1：`channel.enabled` —— 让 sidecar 把通道让给插件
+
+> 小更新（+0.0.1）。默认行为不变（`channel.enabled` 默认 `true`，照常连网关）。
+
+### 解决什么问题
+
+0.4.0 的插件模式发布后有个卡点：**插件和常驻 bridge 只能有一个收消息**，
+但 bridge 没有"我不收消息、只当 sidecar"的开关 —— 想试插件就得把 bridge 整个关掉，
+而那意味着记忆、记账、控制台全都没了。
+
+### 现在怎么做
+
+```jsonc
+// sidecar 机器上的 config.json
+{ "channel": { "enabled": false } }
+```
+
+启动日志：
+
+```
+[bridge] sidecar-only 模式（channel.enabled=false）：不连接 QQ 网关，也不占用通道认领
+```
+
+- 控制台、sidecar 契约、定时器**全部照常**
+- `state/channel-mode.json` 不再生成 → 插件可以拿到通道（`claim(plugin) → ok=true`）
+- 想切回：改回 `true` 并重启
+
+### 验证
+
+- 真机实测：sidecar-only 启动后 `channel-mode.json` 不存在，插件侧 `claim` 成功（`reason=free`）；
+  改回 `true` 后 bridge 重新认领（`reason=free`）
+- 审计 127/127## 2026-10-31 — 0.4.0：qq-bridge 可以装进 DSH 了（插件模式）+ 群记忆交接
 
 > 这一版是**新增形态**，不是替换：`start.bat` 的常驻模式完全没变，行为一致。
 > 升级方式见 [docs/UPGRADE.md](docs/UPGRADE.md)。无破坏性变更。
