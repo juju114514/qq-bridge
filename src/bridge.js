@@ -95,6 +95,8 @@ import { createPresetSimHandlers, handlePresetSimRoutes } from './api/preset-sim
 import { handleConsoleMiscRoutes } from './api/console-misc.js';
 import { handleSocialV2ExtraRoutes } from './api/socialV2-extra.js';
 import { createRoleCadence } from './domains/role-cadence.js';
+import { createPluginBridgeHandler } from './api/plugin-bridge.js';
+import { createPluginBridgeWiring } from './domains/plugin-bridge-wiring.js';
 import { createWorkspaceResetHandler } from './api/workspace-reset.js';
 import { createGroupMembersHandler } from './api/group-members.js';
 import { createSlangSubmitHandler } from './api/slang-submit.js';
@@ -3560,6 +3562,14 @@ async function main() {
     return cfg.socialV2?.tools?.[flag] !== false;
   }
 
+  // sidecar 契约（N2）的接线：token / 版本 / 已读水位 / IO 实例都在这一个对象上。
+  const pluginWiring = createPluginBridgeWiring({
+    fs, path, stateDir: STATE_DIR, root: ROOT,
+    log: (m) => log(m),
+    getSocialV2State,
+    saveSocialV2State,
+  });
+
   function startConsoleServer() {
     // 群成员查询 / 黑话提交：已拆到 src/api/group-members.js、src/api/slang-submit.js
     // 惰性创建：v2SessionAllowed / allowSlangSubmit 等是后面才定义的 const（TDZ）
@@ -3701,6 +3711,26 @@ async function main() {
       const sendJson = (obj, status = 200) => writeJson(res, obj, status);
       // 请求体读取已迁到 src/http/body.js（同样的 1MB 上限、30s 超时、四类错误文案）。
       const readBody = () => readJsonBody(req);
+      // sidecar 契约（N2）：插件 ↔ 常驻进程。见 docs/design/plugin-mode-2026-10-31.md 第 6 节。
+      // 认证用 state/plugin-token（没有就退回 console token，省得用户多配一个文件）。
+      const handlePluginBridge = createPluginBridgeHandler({
+        sendJson, readBody, log,
+        pluginToken: pluginWiring.pluginToken(),
+        consoleToken,
+        version: pluginWiring.version(),
+        mode: 'bridge',
+        getSocialV2State,
+        readRoleState,
+        roleHint: () => currentRoleHintV2(),
+        peopleSummary: (key) => peopleHintForConversation(key),
+        readMemory: (key) => pluginWiring.io().readMemory(key),
+        writeMemory: (key, text) => pluginWiring.io().writeMemory(key, text),
+        appendEvent: (e) => pluginWiring.io().appendEvent(e),
+        applyIntent: (i) => pluginWiring.io().applyIntent(i, {
+          markRead: ({ key, throughSeq }) => pluginWiring.markRead(key, throughSeq),
+          appendActivity,
+        }),
+      });
           const handleStatus = createStatusHandler({
             sendJson,
             readRoleState,
@@ -3985,6 +4015,8 @@ async function main() {
       // 按**同样的顺序**串起来；路由表还留了 exact/param/prefix 三个入口，后续把
       // 剩余的老 if 分支逐组搬进来即可，不必再改这一段。
       const domainRouter = createRouter()
+        // sidecar 契约优先：/health /snapshot /events /intents 都是裸路径，不能被别的域先吃掉
+        .chain((req, url) => handlePluginBridge(req, url))
         .chain((req, url) => handleSocialV2ExtraRoutes(req, url, {
           sendJson, readBody, res, writeJson, readJsonBody, handleImages, socialVideo,
           createSocialV2InspectHandler, getPeopleNoteHandler, getGroupMembersHandler, getSlangSubmitHandler,
