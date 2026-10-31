@@ -2,6 +2,67 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.42：生命周期规范 + 结构化启动摘要 + Windows 重启根因
+
+> 只有文档、摘要与少量日志/脚本改动，**不拆 bridge.js**。
+
+### ① `docs/STARTUP-LIFECYCLE.md`
+
+六个阶段（启动 / 认领 / 连接 / 就绪 / 运行 / 关闭），每阶段写清：谁负责、失败怎么办、允不允许 ready。
+**顺序是按代码实际跑出来的**（指纹先于认领；释放所有权必须在保存状态之后）。
+
+关键原则写进文档：`ready` 只看「持有通道 + DSH + 该通道连接」，**不是**「所有服务都 connected」。
+
+### ② 结构化启动摘要（`startup.summary`）
+
+```json
+{"event":"startup.summary","bootId":"43c26da5","version":"0.4.42",
+ "buildId":"sha256:…","sourceCommit":"…","startupDurationMs":826,
+ "process":{"pid":21892,"ownerId":"…","uptimeMs":1316},
+ "channel":{"mode":"bridge","epoch":9,"status":"active"},
+ "services":{"dsh":"connected","snowluma":"connected","official":"stopped","console":"connected"},
+ "live":true,"ready":true,"stages":[{"name":"channel-claim","status":"ok","durationMs":0}]}
+```
+
+- 第一次 `ready=true` 时打；10 秒兜底一次；只打一次
+- 失败也留证：`startup.incomplete`（带 reason + 已执行阶段 + aborted 标注）
+- **不含任何凭证**（只记 buildId / ownerId / epoch）
+
+### ③ 关闭顺序规范化
+
+```
+draining（先失去 ready）→ saveState → shutdown.summary → 释放通道 → releaseLock → exit
+```
+
+**释放所有权必须是最后一步** —— 否则另一个进程可能立刻接管，而旧进程还在写 `state/`。
+
+### ④ Windows「窗口自动重启」根因（`docs/WINDOWS-PROCESS-SUPERVISION.md`）
+
+实测证据：
+
+| 证据 | 结论 |
+| --- | --- |
+| 父链 `node ← powershell ← svchost` | 由计划任务拉起 |
+| 任务 `RestartOnFailure=PT1M × 999`、无隐藏窗口 | **每次任务实例结束都会 1 分钟后重拉可见窗口** |
+| `state/runner.log` 只有启动行、**没有**「bridge 退出（code X）」 | 不是脚本循环重启，是整进程被结束 |
+| 间隔 42–49 秒 ≈ 1 分钟 | 与 `PT1M` 吻合 |
+
+修法：`scripts/harden-scheduled-task.ps1`（关掉 RestartOnFailure / `-WindowStyle Hidden` / `IgnoreNew` / 无超时）。
+**需要管理员执行一次**（普通权限 `Register-ScheduledTask` 会 `Access is denied`）。
+
+### ⑤ 退出诊断
+
+`run-bridge.ps1` 现在每次 node 退出写 `state/exit.log`：
+
+```
+[2026-10-31 16:40:12] exit code=0（主动退出） 运行 123.4s
+[2026-10-31 16:41:03] exit code=2（发现已有实例） 运行 0.8s
+```
+
+### 测试
+
+`test-boot-report.mjs`：summary 只打一次 / incomplete 留证 / **摘要里不得出现凭证** / shutdown 单独成事件。
+审计 137/137。
 ## 2026-10-31 — 0.4.41：buildId + ownerId + 健康聚合（可观测性升级）
 
 > 不动 `bridge.js` 主体结构；只补「运行时到底跑的是什么、是谁、活着没」。

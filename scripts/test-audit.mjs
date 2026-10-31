@@ -255,6 +255,7 @@ const tests = [
   'test-channel-epoch.mjs',
   'test-integration.mjs',
   'test-characterization.mjs',
+  'test-boot-report.mjs',
   'test-build-and-health.mjs',
   'test-build-info.mjs',
   'check-lock.mjs',

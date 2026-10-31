@@ -32,6 +32,8 @@
 | [guides/UPGRADE-FROM-OLD.md](guides/UPGRADE-FROM-OLD.md) | **从旧版本升级**：0.2.x/0.3.x → 0.4.x 要做什么、新增配置项对照表、行为变化、state 兼容性、回滚方法、自查清单 | ✅ 2026-10-31 |
 | [guides/AWESOME-SUBMISSION.md](guides/AWESOME-SUBMISSION.md) | **提交到 awesome-dsh-plugin** 的收录草稿：条目 YAML、门槛逐条核对、为什么用 `tree/main/plugin` 这种 URL | ✅ 2026-10-31 |
 | [guides/PLUGIN-MODE.md](guides/PLUGIN-MODE.md) | **插件模式**（路线 B）真实完整版：两条路对照、**安全边界（必读）**、三种安装方式、真机踩坑清单、降级语义、排障 | ✅ 2026-10-31 |
+| [STARTUP-LIFECYCLE.md](STARTUP-LIFECYCLE.md) | **启动与关闭生命周期**：六阶段职责/失败策略/ready 判定/关闭顺序/结构化启动摘要 | ✅ 2026-10-31 |
+| [WINDOWS-PROCESS-SUPERVISION.md](WINDOWS-PROCESS-SUPERVISION.md) | **Windows 进程监督与「窗口自动重启」诊断**：根因（任务 RestartOnFailure）×证据×修法×排查顺序 | ✅ 2026-10-31 |
 | [../LOCK.md](../LOCK.md) | 🔒 **仓库锁**：Official 通道上锁原因、解锁条件、「只锁 git 口径、不锁本地运行」的边界 | ✅ 2026-10-31 |
 | [audits/official-channel-audit-2026-10-31.md](audits/official-channel-audit-2026-10-31.md) | **Official 通道专项审计**：确认它是否真与 SnowLuma 共用会话/记忆/prompt —— 结论：共享核心，但身份写错、管理员失效、重投未去重 3 个缺口 | ✅ 2026-10-31 |
 | [reports/2026-10-31-session.md](reports/2026-10-31-session.md) | **2026-10-31 工作纪要**：11 个静默 bug 清单、越权事故复盘、凭据轮换、遗留待办 | ✅ 2026-10-31 |
