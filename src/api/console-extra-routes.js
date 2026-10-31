@@ -11,6 +11,7 @@
 //     每个请求都求值会在测试环境（VM 注入不全）里直接 ReferenceError —— 真实踩过。
 
 import { createDiagnosticsHandler } from './console-diagnostics.js';
+import { createOverviewHandler } from './overview.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
 
@@ -27,6 +28,26 @@ export async function handleExtraRoutes(ctx = {}) {
   if (url.pathname === '/api/scheduler' || url.pathname.startsWith('/api/scheduler/')) {
     schedulerRoutes ??= createSchedulerRoutes(resolveDeps());
     await schedulerRoutes.handle({ req, url, sendJson, readBody: ctx.readBody });
+    return true;
+  }
+
+
+  // GET /api/overview —— 总览仪表盘（只读聚合，一个时间戳 + 每项自己的 at）
+  if (req.method === 'GET' && url.pathname === '/api/overview') {
+    const d = resolveDeps();
+    const handler = createOverviewHandler({
+      sendJson,
+      log: d.log,
+      getMode: d.getMode,
+      isDshReady: d.isDshReady,
+      getOfficialStatus: d.getOfficialStatus,
+      getTokenSeries: d.getTokenSeries,
+      getConversations: d.getConversations,
+      getQuietHours: d.getQuietHours,
+      readFile: d.readFile,
+      files: d.files
+    });
+    await handler.handle();
     return true;
   }
 

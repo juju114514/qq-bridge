@@ -2,6 +2,42 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.58：总览「本程序仪表盘」（9 格，一个端点）
+
+### 为什么要一个聚合端点，而不是前端拼 5 个接口
+
+1. **统一时间戳**：8~9 个指标来自不同来源，各自刷新时间不同，用户会把"5 分钟前的花费"当成现在
+2. **避免 N+1**：记忆条数要遍历所有会话，前端做就是十几次请求
+3. **失败语义统一**：任一来源失败只能标 `unavailable`，**绝不能用 0 冒充"没有"**
+
+`GET /api/overview` 返回 `{ generatedAt, metrics: { ... } }`，每项带 `status` 与自己的 `at`。
+
+### 九格（口径写死）
+
+| 格 | 来源 | 口径 |
+| --- | --- | --- |
+| 运行模式 | `/api/status.mode` | |
+| DSH 连接 | `/api/status.dshReady` | |
+| 官方通道 | `officialTransport.ready` | disabled / disconnected / connected |
+| 最近 24h 花费 | `/api/tokens/series(hours=24)` | **最近 24 小时**（不是自然日） |
+| 未读 | 各会话 `unread.length` 求和 | |
+| 长期记忆 | 各会话原子数 | **条数 + 有记忆会话数 + 会话总数**；缺原子时用 `migrateFromLegacy` 同源合成 |
+| 静默时段 | `cfg.socialV2.quietHours` | null = 未启用 |
+| 守护进程 | `runner.log` / `watchdog.log` | 24h 重启数、上次退出码；**日志来源，非权威存活** |
+| 异常 | `watchdog.log` | **当前 = 15 分钟内 / 历史 = 全部**，旧日志不能说"现在还坏" |
+
+### 前端的三个硬要求
+
+- 每格标「来源 · 时间」
+- 取不到 → 「暂不可用」+ 原因，**不出 0**
+- 单源失败不拖垮整页（后端逐项 try/catch，前端逐格渲染）
+
+### 测到两个真 bug（都修了）
+
+1. `official` 一开始读 `officialState`（不存在）→ 永远 unavailable；改用 `officialTransport.ready`，与 health 口径一致
+2. `memory` 一开始读裸 `longTermMemories` → 显示 0 条，但星图有 58 条 —— 因为读端点会用 `migrateFromLegacy` 现场合成。现在同源，实测 **58 条 / 7 个会话 / 14 总**，与星图一致
+
+新增 `scripts/test-overview.mjs`（7 条：全可用 / 全失败不出 0 / 单源失败不拖垮 / 日志解析 / 当前与历史 / 脏数据）。
 ## 2026-10-31 — 0.4.57.1：三层守护补齐（运维加固，无代码变更）
 
 ### 补了两个缺口

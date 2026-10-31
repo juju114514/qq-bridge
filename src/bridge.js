@@ -97,6 +97,7 @@ import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
 import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
+import { migrateFromLegacy } from './memory-store.js';
 import { decideNoAction } from './turn-guard.js';
 import { atomicWriteJson, atomicWriteText, renameWithRetry } from './atomic-write.js';
 import { finalizeTurn } from './turn-finalize.js';
@@ -4302,7 +4303,32 @@ async function main() {
         if (await handleExtraRoutes({
           req, url, sendJson, readBody,
           // 惰性：只在命中路由时求值（否则每请求一次，VM 注入不全时会 ReferenceError）
-  deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, sendToQQ, onebotSend, allowed, resolveMode: () => currentMode })
+  deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, sendToQQ, onebotSend, allowed, resolveMode: () => currentMode,
+            // 总览仪表盘（/api/overview）用的访问器
+            getMode: () => currentMode,
+            isDshReady: () => dshReady,
+            getOfficialStatus: () => {
+              if (!officialTransport) return 'disabled';
+              return officialTransport.ready === true ? 'connected' : 'disconnected';
+            },
+            getTokenSeries: (opts) => tokenLedger.series({ hours: opts?.hours || 24, maxBuckets: 48 }),
+            getConversations: () => [...socialV2.conversations.entries()].map(([key, st]) => {
+              let longTermCount = Array.isArray(st.longTermMemories) ? st.longTermMemories.length : 0;
+              if (!longTermCount) {
+                // 读端点在没有长期原子时会用 migrateFromLegacy 现场合成（只读不落盘），
+                // 这里同源，否则总览会显示 0 条、打开星图却有一堆 —— 口径必须一致。
+                try { longTermCount = migrateFromLegacy(st).length; } catch { longTermCount = 0; }
+              }
+              return {
+                key,
+                unreadCount: Array.isArray(st.unread) ? st.unread.length : 0,
+                longTermCount
+              };
+            }),
+            getQuietHours: () => (cfg.socialV2 ? (cfg.socialV2.quietHours ?? null) : null),
+            readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
+            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log') },
+          })
         })) return;
 
 

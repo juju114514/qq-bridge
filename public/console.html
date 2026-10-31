@@ -1793,7 +1793,17 @@ button:active:not(:disabled) {
         <div class="search-wrap"><label class="sr-only" for="consoleSearch">搜索功能或参数</label><input id="consoleSearch" type="search" placeholder="搜索功能或参数…" autocomplete="off" aria-controls="searchResults" aria-expanded="false"><div id="searchResults" class="search-results" hidden></div></div>
       </div>
       <div id="connectionAlert" class="connection-alert" role="alert" hidden></div>
-      <div id="overviewSummary" class="overview-summary span-all" data-page="overview">
+      <section data-page="overview" class="card span-all" id="section-dashboard">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <h2 data-note="一个端点聚合，统一时间戳">本程序仪表盘</h2>
+      <div class="meta">数据来自 <code>/api/overview</code>：8 项指标一次取回。每格标注来源与时间；取不到时显示「暂不可用」，不会用 0 冒充。</div>
+    </div>
+    <button class="btn" id="dashboardRefresh" type="button">刷新</button>
+  </div>
+  <div id="appDashboard" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px">（加载中…）</div>
+</section>
+<div id="overviewSummary" class="overview-summary span-all" data-page="overview">
         <div class="metric"><span>DSH 连接</span><strong id="metricDsh">连接中</strong><small id="metricDshHint">等待服务响应</small></div>
         <div class="metric"><span>SnowLuma 上游</span><strong id="metricSnowluma">读取中</strong><small id="metricSnowlumaHint">等待网关健康上报</small></div>
         <div class="metric"><span>当前运行模式</span><strong id="metricMode">—</strong><small id="metricRole">正在读取角色</small></div>
@@ -5306,6 +5316,59 @@ async function loadToolHealth() {
     box.textContent = '读取失败：' + (e && e.message ? e.message : e);
   }
 }
+
+// ── 本程序仪表盘（0.4.58）──────────────────────────────────────────────
+const DASH_META = [
+  { key: 'mode', label: '运行模式', source: '/api/status', fmt: function (v) { return String(v); } },
+  { key: 'dsh', label: 'DSH 连接', source: '/api/status', fmt: function (v) { return v === 'connected' ? '已连接' : '未连接'; } },
+  { key: 'official', label: '官方通道', source: '/health/detail', fmt: function (v) { return String(v); } },
+  { key: 'cost24h', label: '最近 24h 花费', source: '/api/tokens/series', fmt: function (v, m) { return (m.currency || '¥') + Number(v).toFixed(2); } },
+  { key: 'unread', label: '未读消息', source: '/api/socialV2/states', fmt: function (v, m) { return v + (m.conversations ? ' / ' + m.conversations + ' 会话' : ''); } },
+  { key: 'memory', label: '长期记忆', source: '会话状态', fmt: function (v) { return v.atoms + ' 条 / ' + v.sessionsWithMemory + ' 会话'; } },
+  { key: 'quiet', label: '静默时段', source: '/api/socialV2/config', fmt: function (v) {
+      if (!v) return '未启用';
+      const p = function (n) { return String(n).padStart(2, '0'); };
+      return p(v[0]) + ':00–' + p(v[1]) + ':00';
+    } },
+  { key: 'supervisor', label: '守护进程', source: 'runner.log / watchdog.log', fmt: function (v) {
+      const exit = v.lastExit ? ('上次退出 ' + v.lastExit.code) : '无退出记录';
+      return '24h 重启 ' + v.restarts24h + ' 次 · ' + exit;
+    } },
+  { key: 'alert', label: '异常（15 分钟）', source: 'watchdog.log', fmt: function (v) { return '当前 ' + v.current + ' · 历史 ' + v.historical; } }
+];
+function fmtClock(ts) {
+  if (!ts) return '';
+  const d = new Date(Number(ts));
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+}
+async function loadOverview() {
+  const box = document.getElementById('appDashboard');
+  if (!box) return;
+  try {
+    const r = await api('/api/overview');
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    const metrics = r.metrics || {};
+    box.innerHTML = DASH_META.map(function (def) {
+      const m = metrics[def.key];
+      const isOk = m && m.status === 'ok';
+      const value = isOk ? def.fmt(m.value, m) : '暂不可用';
+      const color = isOk ? '#e8f0ff' : '#ffb27a';
+      const sub = isOk
+        ? (def.source + ' · ' + fmtClock(m.at))
+        : ((m && m.error ? m.error : '数据源不可用') + ' · ' + fmtClock(m && m.at));
+      const alertish = def.key === 'alert' && isOk && Number(m.value.current) > 0;
+      const border = alertish ? 'rgba(255,140,110,.55)' : 'rgba(120,160,220,.22)';
+      return '<div style="border:1px solid ' + border + ';border-radius:9px;padding:9px 11px;background:rgba(22,34,56,.55)">'
+        + '<div style="font-size:11px;opacity:.65">' + def.label + '</div>'
+        + '<div style="font-size:16px;color:' + color + ';margin-top:3px;word-break:break-all">' + value + '</div>'
+        + '<div style="font-size:10px;opacity:.5;margin-top:4px">' + sub + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="color:#ffb27a;font-size:12px">仪表盘读取失败：' + (e && e.message ? e.message : e) + '</div>';
+  }
+}
+
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -5332,12 +5395,14 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'scheduler' && typeof loadScheduler === 'function') loadScheduler();
   if (page === 'memory-graph' && typeof loadMemoryGraph === 'function') loadMemoryGraph();
   if (page === 'usage' && typeof loadUsageStructure === 'function') loadUsageStructure();
+  if (page === 'overview' && typeof loadOverview === 'function') loadOverview();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
   }
 }
+document.getElementById('dashboardRefresh')?.addEventListener('click', () => { if (typeof loadOverview === 'function') loadOverview(); });
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => {
   setConsolePage(button.dataset.view, { focus: true, target: button.dataset.target });
 }));
