@@ -176,7 +176,7 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 ## 版本怎么看
 
 > **以 `git tag` 和 [CHANGELOG.md](CHANGELOG.md) 为准** —— GitHub 的 Releases 页只是里程碑，
-> 可能落后于 `main`。当前：**v0.4.0**（2026-10-31，[Release](https://github.com/juju114514/qq-bridge/releases/tag/v0.4.0)）。
+> 可能落后于 `main`。当前：**v0.4.1**（2026-10-31，[Release](https://github.com/juju114514/qq-bridge/releases/tag/v0.4.1)）。
 >
 > 想知道两个版本之间改了什么：`git log v0.3.0..v0.3.1 --oneline`。
 
