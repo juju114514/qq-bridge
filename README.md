@@ -10,6 +10,7 @@
 > **第一次用（没写过代码）？** → [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)（零基础八步：每步都写了「应该看到什么 / 没看到怎么办」）
 > **想直接跑起来（会命令行）？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
 > **想让 AI 替你装？** → [docs/guides/INSTALL-SKILL.md](docs/guides/INSTALL-SKILL.md)（把手册给你的 AI 助手，它照着装）
+> **想自己选「谁收 QQ」？** → 两条路可随时切换：[docs/guides/PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md)（常驻 bridge / DSH 插件；`node scripts/switch-mode.mjs status|bridge|plugin`）
 > **只想让 AI 在群里答问题、不想碰个人号？** → QQ 官方插件 3 步搞定、无封号风险 →
 > [docs/guides/OFFICIAL-VS-BRIDGE.md](docs/guides/OFFICIAL-VS-BRIDGE.md)（官方 vs 本仓库，诚实对照）
 >
@@ -161,6 +162,28 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 
 ---
 
+## 两条路：谁收 QQ，你自己选
+
+| | 路线 A：常驻 bridge | 路线 B：DSH 插件 |
+| --- | --- | --- |
+| 谁收 QQ | 独立进程 `src/bridge.js` | DSH 进程内的 `qq-bridge` 插件 |
+| 控制台/记忆/工具 | bridge 自己提供 | bridge 降为 sidecar-only |
+| 适合 | 长期 24/7 挂机 | 已经在用 DSH，想让 QQ 成为入口 |
+| 安全 | 工具白名单 + 执行期 guard | 同上 + 插件侧 allowlist + **2 秒熔断** |
+
+```powershell
+node scripts/switch-mode.mjs status   # 看现在谁在收
+node scripts/switch-mode.mjs bridge   # 走路线 A
+node scripts/switch-mode.mjs plugin   # 走路线 B
+```
+
+Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模式.bat`。
+**顺序**：切 A 先重启 DSH，切 B 先重启桥接；反了会空窗或双回复。
+
+> ⚠️ 路线 B 的前提是工具边界真的生效。启用后确认 `state/plugin.log` 里有
+> `已对 agent 应用工具白名单` 和 `agent 已建：preset=qq-chat-v2`，否则**不要**把通道交给插件。
+> 见 [PLUGIN-MODE.md 的安全边界一节](docs/guides/PLUGIN-MODE.md)。
+
 ## 它现在能干什么
 
 | 类别 | 能力 |
@@ -187,11 +210,23 @@ QQ（官方 Bot）──► q.qq.com WebSocket ──┘        ▲             
 ## 版本怎么看
 
 > **以 `git tag` 和 [CHANGELOG.md](CHANGELOG.md) 为准** —— GitHub 的 Releases 页只是里程碑，
-> 可能落后于 `main`。当前：**v0.4.1**（2026-10-31，[Release](https://github.com/juju114514/qq-bridge/releases/tag/v0.4.1)）。
+> 可能落后于 `main`。当前：**v0.4.26**（2026-10-31，[Release](https://github.com/juju114514/qq-bridge/releases/tag/v0.4.26)）。
 >
-> 想知道两个版本之间改了什么：`git log v0.3.0..v0.3.1 --oneline`。
+> 想知道两个版本之间改了什么：`git log v0.4.19..v0.4.26 --oneline`（把标签换成你想比的两端）。
 
 ## 最近更新
+
+### 2026-10-31：插件模式可用 + 一次越权事故的加固（0.4.16 → 0.4.26）
+
+- **插件模式真的能用了**：群里 @ 它 → 回话（11 个静默 bug 逐个修掉，清单在
+  [docs/reports/2026-10-31-session.md](docs/reports/2026-10-31-session.md)）
+- **安全修复（0.4.19）**：插件模式早期没挂 `agentPreset`，群友可以命令 agent 操作本机；
+  现在有三层边界（注册期白名单 / 执行期 guard / 插件侧 allowlist）+ **2 秒熔断**
+- **两条路可切换**：`switch-mode.mjs`（bridge / plugin），切错顺序会空窗或双回复
+- **僵尸认领修复（0.4.24）**：进程被杀后新实例不再"静默不收消息"
+- **干净/脏环境各测一遍**：抓出 pnpm 锁文件误判、僵尸认领两个真问题
+
+
 
 | 日期 | 内容 | 看这里 |
 | --- | --- | --- |
@@ -275,6 +310,20 @@ cd qq-bridge
 > 两者的区别：`first-run` 只编排权威工具、每一步都可单独重跑，失败会直接给出文档锚点。
 
 ## 出问题了先看哪
+
+**出大事要立刻停**：双击 `熔断-停插件.bat`（写 `state/plugin-kill`，插件 2 秒内断开 QQ 通道并释放认领；
+恢复用 `恢复-插件.bat`）。桥接模式不受影响。
+
+| 现象 | 先看 |
+| --- | --- |
+| 插件不干活 | `state/plugin.log`（每条日志都落盘） |
+| 工具被挡 | `state/tool-restrict.log` 里的 `allow-restrict ok 保留=N/M` |
+| 通道被谁占 | `state/channel-mode.json` |
+| 桥接活着吗 | `GET http://127.0.0.1:3100/health` |
+| 换 SnowLuma token | `node scripts/sync-snowluma-token.mjs`（WS/HTTP 分别写对） |
+| 桥接自启/守护 | 计划任务 `qq-bridge` + `scripts/run-bridge.ps1`（找 node、崩溃 5 秒重启） |
+
+
 
 | 症状 | 去哪 |
 | --- | --- |

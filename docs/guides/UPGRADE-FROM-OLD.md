@@ -27,8 +27,24 @@ npm install
 | 0.3.1 | `socialV2.notifyAgentErrors` | `true` | 技术报错是否推到 QQ | 建议设 `false`（换模型时不再刷屏） |
 | 0.3.1 | `socialV2.roleInjectEvery` | `1` | 角色卡每 N 轮注入一次（省 token） | 想省钱设 `8` |
 | 0.4.1 | `channel.enabled` | `true` | `false` = 不连网关、只当 sidecar | 只有用插件模式才要设 |
+| 0.4.15+ | `snowluma.homeDir` | 空 | SnowLuma 安装目录，token 自愈/同步要用 | 换 token 后建议填 |
+| 0.4.18 | `agentPreset`（插件配置） | `qq-chat-v2` | 决定 agent 的人格与工具面 | 别删，删了就没有人设与工具边界 |
+| 0.4.19 | 插件工具白名单 | 内置 | 只允许 `qqb_*` + 2 个无害工具 | 这是安全边界，**别为了"让它更能干"去放宽** |
 
 > **一个都不改也能正常运行** —— 这些默认值就是老行为。
+
+## 二·五、0.4.x 的新东西（可选，不装不影响）
+
+| 能力 | 怎么用 |
+| --- | --- |
+| **两条路切换**（bridge / DSH 插件） | `node scripts/switch-mode.mjs status\|bridge\|plugin` |
+| **2 秒熔断** | 双击 `熔断-停插件.bat`（恢复 `恢复-插件.bat`） |
+| **换 token 不手改** | `node scripts/sync-snowluma-token.mjs`（WS→accessToken，HTTP→httpToken） |
+| **插件日志落盘** | `<stateDir>/plugin.log`（桌面版看不到 stdout） |
+| **工具调用取证** | `plugin.log` 里会写 `工具调用：<名字> <参数摘要>` |
+
+> 插件模式的安全前提：启用后确认 `plugin.log` 有 `已对 agent 应用工具白名单` 与
+> `agent 已建：preset=qq-chat-v2`。没有这两行就不要把 QQ 通道交给插件。
 
 ## 三、行为变化（不需要改配置，但你会感觉到）
 

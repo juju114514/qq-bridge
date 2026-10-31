@@ -34,6 +34,14 @@
 
 ## QQ 会话 agent 的硬边界
 
+> 落地位置（两条路都覆盖）：
+> - 桥接模式：`qq-chat-v2` preset 的 `qq-tool-restrict`（注册期 allow 白名单 + 执行期 guard）
+> - 插件模式：`plugin/index.js` 的 `tools.restrict({ allow: [...] })`（10 个工具）+ 同一个 preset
+> - 兜底：`熔断-停插件.bat` → `state/plugin-kill`，2 秒内断开通道
+>
+> 排障：`state/tool-restrict.log` 里 `allow-restrict ok 保留=N/M` 就是白名单生效的证据。
+
+
 1. **无本地工具**：qq-chat / qq-chat-v2 预设不挂载 bash/pwsh、文件读写、子代理、工作流——群友无论如何诱导，agent 物理上无法操作本机。
 2. **QQ 动作安全子集**：只允许 `mcp__snowluma__*`、`mcp__snowluma-host__*`、`mcp__web-search-safe__*` 三个命名空间下的工具，以及 `ask_user_question` / `todo_write`；其他工具（含 `dev_*` 开发/管理工具）在执行期会被 `qq-tool-restrict.mjs` 拒绝。QQ 动作无禁言、踢人、文件上传下载等管理操作。
 3. **只读联网搜索**：`qq-chat` / `qq-chat-v2` 预设已关闭 DSH 内置 `tool-web` 的 `search` / `fetch`，联网统一走 `src/mcp-web-search-safe.js` 提供的 `mcp__web-search-safe__web_search/web_fetch`。不暴露本地文件、命令执行、写操作。
