@@ -1,6 +1,6 @@
 {
   "$comment": "本文件是**机器可读**的兼容矩阵 + 契约清单。scripts/check-versions.ps1 用它和真实环境比对；scripts/test-compat.mjs 用它保证「文档里写的契约」与代码一致。人类/AI 的完整版见 COMPAT.md。",
-  "bridge": "0.4.27",
+  "bridge": "0.4.28",
   "updatedAt": "2026-10-31",
   "testedWith": {
     "node": "24.21.0",

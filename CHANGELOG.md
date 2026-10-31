@@ -2,7 +2,39 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.27：文档全面对齐（README / 升级 / AI 指南）
+## 2026-10-31 — 0.4.28：Official 通道专项审计
+
+> 纯文档版本（+ 索引）。回答一个问题：**官方通道到底是不是同一套系统？**
+
+### 结论
+
+**是同一套核心**，不是"只共用 DSH API 的两套系统"：
+
+```
+官方消息 → handleIncoming(kind, id, oneBotEvent)  ← 与 SnowLuma 同一个函数
+        → convKey → socialV2 状态 → 会话/记忆/prompt/人设/黑话/控制台 全部共用
+```
+
+代码证据：`bridge.js` L9869 分派点、`official-transport.js` L38 `toOneBotEvent()`。
+
+### 但有 3 个真实缺口
+
+| # | 缺口 | 后果 |
+| --- | --- | --- |
+| 1 | prompt 的「你的身份」用的是 SnowLuma 的号（官方通道从不设置 `selfDisplayName/selfUserId`） | 模型拿错身份说话；只跑官方通道时身份行整段消失 |
+| 2 | `ownerQQ` 是数字 QQ 号，官方 `user_id` 是 openid → 永不相等 | **管理员在官方通道没有任何管理能力**（审批/切角色/封闭模式全失效） |
+| 3 | 官方入站 `msgSeq` 恒为 0，且没有按 `message_id` 去重 | 重连重投时**可能重复处理、重复回复** |
+
+### 修复优先级
+
+1. 官方通道写入正确身份（半天）
+2. `official.ownerOpenid` → owner 判定支持 openid（半天）
+3. 按 `message_id` 去重（2 小时）
+4. 文档补「记忆键是 openid，与个人号是两份」（1 小时）
+
+**上线前必须修 1 与 2。**
+
+文档：`docs/audits/official-channel-audit-2026-10-31.md`## 2026-10-31 — 0.4.27：文档全面对齐（README / 升级 / AI 指南）
 
 > 纯文档版本。把今天 25 个版本带来的东西补进所有入口文档。
 
