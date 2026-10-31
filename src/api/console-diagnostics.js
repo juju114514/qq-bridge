@@ -7,6 +7,9 @@
 // 只读、无副作用：不改状态、不触发重试、不 spawn 除 yt-dlp --version 之外的任何东西
 // （yt-dlp 那次也有 10 分钟缓存）。
 
+
+import { buildWakeFunnel } from '../wake-funnel.js';
+
 export function createDiagnosticsHandler(baseDeps = {}) {
   const {
     log = () => {},

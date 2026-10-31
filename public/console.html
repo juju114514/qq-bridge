@@ -1819,6 +1819,17 @@ button:active:not(:disabled) {
       <h2>会话映射</h2>
       <div id="sessionList">加载中…</div>
     </section>
+<section data-page="sessions" class="card span-all" hidden id="section-heatmap">
+  <h2 data-note="口径：各会话最近 100 条消息的时间分布">活跃热力图</h2>
+  <div class="meta">7×24 网格：行 = 星期，列 = 小时，越亮消息越多。用来判断静默时段该设几点、哪个群在半夜活跃。</div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:12px;margin-top:10px">
+    <div>
+      <canvas id="heatCanvas" style="display:block;width:100%;height:240px"></canvas>
+      <div style="font-size:11px;opacity:.65;margin-top:6px">暗 → 亮：消息密度（对数刻度）</div>
+    </div>
+    <div id="heatTop" style="font-size:12px;color:#c8d4ea">（加载中…）</div>
+  </div>
+</section>
 <section id="section-pending" data-page="sessions" class="card span-all">
       <h2>挂起审批 / 提问</h2>
       <div id="pendingList">加载中…</div>
@@ -2482,6 +2493,11 @@ button:active:not(:disabled) {
         <div id="peopleBody" style="margin-top:12px"><div class="meta">正在读取…</div></div>
         <div id="peopleNotes" style="margin-top:16px"></div>
       </section>
+      <section data-page="diagnostics" class="card span-all" hidden id="section-wake-funnel">
+        <h2 data-note="口径：最近一窗决策（缓冲上限 80 条）">唤醒漏斗</h2>
+        <div class="meta">每条消息为什么没被唤醒 —— 从「收到」到「进模型」，逐段看流失点。数据来自决策链缓冲，不是全量统计。</div>
+        <div id="wakeFunnel" style="margin-top:12px;font-size:13px;color:#c8d4ea">（打开诊断页后加载）</div>
+      </section>
       <section id="section-diagnostics" data-page="diagnostics" class="card span-all">
         <h2>自助诊断</h2>
         <div class="meta">数据来自桥接的 <code>/api/diagnostics</code>（与 QQ 里的 <code>/自检</code>、<code>/诊断</code> 同源）。
@@ -2494,6 +2510,11 @@ button:active:not(:disabled) {
         <div id="diagBody" style="margin-top:12px">
           <div class="meta">正在读取…</div>
         </div>
+      </section>
+      <section data-page="reference" class="card span-all" hidden id="section-tool-health">
+        <h2 data-note="口径：tool-calls.jsonl 最近 1000 条">工具体检</h2>
+        <div class="meta">按 p95 耗时排序；失败数来自 result 条目里的 error。红条 = 有失败。</div>
+        <div id="toolHealth" style="margin-top:10px;font-size:12px;color:#c8d4ea">（打开页面后加载）</div>
       </section>
       <section id="section-reference" data-page="reference" class="card span-all">
       <h2>DSH 侧 MCP 工具</h2>
@@ -2633,6 +2654,7 @@ button:active:not(:disabled) {
       </div>
     </section>
 <section id="section-usage" data-page="usage" class="card span-all">
+  <div id="usageStructure" style="margin-top:14px;font-size:12px;color:#c8d4ea">（打开页面后加载）</div>
       <h2 data-note="每 3 秒自动同步">令牌与花费</h2>
       <div class="meta">数据来源是 DSH 会话事件里的 provider usage。<b>累计总量</b>取 <code>tokenUsage</code> 投影（整条会话日志的权威累计，含桥接启动前的历史）；<b>逐轮明细</b>由 <code>assistant/message</code> 的 usage 折叠而来，能追溯到多深取决于会话开场快照带回的历史条数。金额按 DeepSeek 官方价目表折算，区分高峰 / 空闲时段（高峰单价为空闲的 2 倍）。</div>
       <div class="overview-summary" id="usageSummary">
@@ -4872,6 +4894,237 @@ document.getElementById('diagCopy')?.addEventListener('click', async () => {
   }
 });
 
+
+// ── 唤醒漏斗（0.4.53）──────────────────────────────────────────────────
+function renderWakeFunnel(funnel) {
+  const box = document.getElementById('wakeFunnel');
+  if (!box) return;
+  if (!funnel || !Array.isArray(funnel.stages) || !funnel.stages.length) {
+    box.textContent = '还没有决策记录：让群里有人发几条消息再看';
+    return;
+  }
+  const max = Math.max(1, funnel.stages[0].count || 0);
+  const rows = funnel.stages.map(function (s, i) {
+    const pct = Math.round(((s.count || 0) / max) * 100);
+    const prev = i > 0 ? funnel.stages[i - 1].count : s.count;
+    const lost = i > 0 ? Math.max(0, (prev || 0) - (s.count || 0)) : 0;
+    return '<div style="margin:6px 0">'
+      + '<div style="display:flex;justify-content:space-between;font-size:12px;opacity:.85">'
+      + '<span>' + s.stage + '</span>'
+      + '<span>' + s.count + (lost ? ' <span style="color:#ff9d7a">(−' + lost + ')</span>' : '') + '</span>'
+      + '</div>'
+      + '<div style="height:14px;background:rgba(40,58,86,.55);border-radius:7px;overflow:hidden;margin-top:3px">'
+      + '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#3f73c9,#78b3ff)"></div>'
+      + '</div></div>';
+  }).join('');
+  const reasons = (funnel.topReasons || []).length
+    ? '<div style="margin-top:14px"><div style="opacity:.7;margin-bottom:6px">主要流失原因</div>'
+      + funnel.topReasons.map(function (r) {
+        return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed rgba(90,120,160,.25)">'
+          + '<span style="opacity:.9">' + r.text + '</span><span style="color:#ffb27a">' + r.count + '</span></div>';
+      }).join('') + '</div>'
+    : '';
+  box.innerHTML = rows + reasons;
+}
+function loadWakeFunnel() {
+  api('/api/diagnostics').then(function (r) {
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    renderWakeFunnel(r.funnel);
+  }).catch(function (e) {
+    const box = document.getElementById('wakeFunnel');
+    if (box) box.textContent = '读取失败：' + (e && e.message ? e.message : e);
+  });
+}
+
+// ── 会话活跃热力图（0.4.53）────────────────────────────────────────────
+let heatCache = null;
+async function loadHeatmap() {
+  const canvas = document.getElementById('heatCanvas');
+  if (!canvas) return;
+  const box = document.getElementById('heatTop');
+  if (box) box.textContent = '（加载中…）';
+  try {
+    const states = await api('/api/socialV2/states');
+    const keys = ((states && states.conversations) || []).map(function (c) { return c.key; }).filter(Boolean).slice(0, 20);
+    const grid = [];
+    for (let d = 0; d < 7; d += 1) grid.push(new Array(24).fill(0));
+    const perKey = [];
+    for (const key of keys) {
+      let r = null;
+      try { r = await api('/api/socialV2/recent?key=' + encodeURIComponent(key) + '&limit=100'); } catch (e) { r = null; }
+      const msgs = (r && Array.isArray(r.messages)) ? r.messages : [];
+      const local = [];
+      for (let d = 0; d < 7; d += 1) local.push(new Array(24).fill(0));
+      msgs.forEach(function (m) {
+        const ts = Number(m.time || 0);
+        if (!ts) return;
+        const dt = new Date(ts);
+        const wd = (dt.getDay() + 6) % 7;
+        grid[wd][dt.getHours()] += 1;
+        local[wd][dt.getHours()] += 1;
+      });
+      const flat = [];
+      local.forEach(function (row, wd) { row.forEach(function (n, hr) { if (n) flat.push({ wd: wd, hr: hr, n: n }); }); });
+      flat.sort(function (a, b) { return b.n - a.n; });
+      perKey.push({ key: key, total: msgs.length, top: flat.slice(0, 3) });
+    }
+    heatCache = { grid: grid, perKey: perKey };
+    drawHeatmap();
+    renderHeatTop();
+  } catch (e) {
+    if (box) box.textContent = '读取失败：' + (e && e.message ? e.message : e);
+  }
+}
+function drawHeatmap() {
+  const canvas = document.getElementById('heatCanvas');
+  if (!canvas || !heatCache) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 700, h = canvas.clientHeight || 240;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const left = 42, top = 18, cellW = (w - left - 6) / 24, cellH = (h - top - 20) / 7;
+  let max = 1;
+  heatCache.grid.forEach(function (row) { row.forEach(function (n) { if (n > max) max = n; }); });
+  const days = ['一', '二', '三', '四', '五', '六', '日'];
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(180,200,230,.7)';
+  ctx.textAlign = 'right';
+  days.forEach(function (d, i) { ctx.fillText(d, left - 6, top + i * cellH + cellH * 0.7); });
+  ctx.textAlign = 'center';
+  for (let hr = 0; hr < 24; hr += 3) ctx.fillText(String(hr), left + hr * cellW + cellW / 2, top - 5);
+  for (let d = 0; d < 7; d += 1) {
+    for (let hr = 0; hr < 24; hr += 1) {
+      const n = heatCache.grid[d][hr];
+      const t = n ? Math.min(1, Math.log2(1 + n) / Math.log2(1 + max)) : 0;
+      ctx.fillStyle = 'rgb(' + Math.round(22 + 60 * t) + ',' + Math.round(34 + 150 * t) + ',' + Math.round(56 + 170 * t) + ')';
+      ctx.fillRect(left + hr * cellW + 1, top + d * cellH + 1, cellW - 2, cellH - 2);
+    }
+  }
+}
+function renderHeatTop() {
+  const box = document.getElementById('heatTop');
+  if (!box || !heatCache) return;
+  const wdNames = ['一', '二', '三', '四', '五', '六', '日'];
+  const rows = heatCache.perKey
+    .filter(function (k) { return k.total > 0; })
+    .sort(function (a, b) { return b.total - a.total; })
+    .slice(0, 8)
+    .map(function (k) {
+      const top = k.top.map(function (x) {
+        return '周' + wdNames[x.wd] + ' ' + String(x.hr).padStart(2, '0') + '点×' + x.n;
+      }).join('、');
+      return '<div style="padding:4px 0;border-bottom:1px dashed rgba(90,120,160,.25)">'
+        + '<div style="opacity:.95">' + String(k.key).replace(/^(group:|private:)/, '')
+        + ' <span style="opacity:.55">(' + k.total + ')</span></div>'
+        + '<div style="opacity:.7;font-size:11px">' + (top || '—') + '</div></div>';
+    }).join('');
+  box.innerHTML = '<div style="opacity:.7;margin-bottom:6px">会话活跃时段 Top 8</div>' + (rows || '（没有消息）');
+}
+// ── 花费结构（0.4.53）：按会话 Top N + 高峰/空闲占比 ──────────────────
+async function loadUsageStructure() {
+  const box = document.getElementById('usageStructure');
+  if (!box) return;
+  box.textContent = '（加载中…）';
+  try {
+    const s = await api('/api/tokens/summary');
+    if (!s || s.ok === false) throw new Error((s && s.error) || '读取失败');
+    const list = Array.isArray(s.conversations) ? s.conversations.slice() : [];
+    list.sort(function (a, b) { return (b.cost || 0) - (a.cost || 0); });
+    const top = list.slice(0, 8);
+    const maxCost = Math.max(1e-9, top.length ? (top[0].cost || 0) : 0);
+    const total = Number((s.totals && s.totals.cost) || 0) || 1;
+    const sym = s.symbol || '¥';
+    const bars = top.map(function (c) {
+      const pct = Math.max(2, Math.round(((c.cost || 0) / maxCost) * 100));
+      const share = Math.round(((c.cost || 0) / total) * 100);
+      return '<div style="margin:5px 0">'
+        + '<div style="display:flex;justify-content:space-between;font-size:12px">'
+        + '<span style="opacity:.9">' + String(c.key).replace(/^(group:|private:)/, '')
+        + ' <span style="opacity:.5">' + (c.turns || 0) + ' 轮</span></span>'
+        + '<span>' + sym + (c.cost || 0).toFixed(2) + ' <span style="opacity:.5">' + share + '%</span></span>'
+        + '</div>'
+        + '<div style="height:10px;background:rgba(40,58,86,.55);border-radius:5px;overflow:hidden;margin-top:2px">'
+        + '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#3f73c9,#78b3ff)"></div>'
+        + '</div></div>';
+    }).join('');
+    const tier = (s.totals && s.totals.byTier) || {};
+    const peak = Number(tier.peak || 0);
+    const off = Number(tier.off || 0);
+    const tierTotal = Math.max(1e-9, peak + off);
+    const peakPct = Math.round((peak / tierTotal) * 100);
+    const donut = '<div style="margin-top:14px">'
+      + '<div style="opacity:.7;font-size:12px;margin-bottom:4px">高峰 / 空闲（高峰单价是空闲的 2 倍）</div>'
+      + '<div style="display:flex;gap:10px;align-items:center">'
+      + '<div style="width:74px;height:74px;border-radius:50%;background:conic-gradient(#ffb27a 0 ' + peakPct + '%,#4a7fd0 ' + peakPct + '% 100%)"></div>'
+      + '<div style="font-size:12px;line-height:1.7">'
+      + '<div><span style="color:#ffb27a">●</span> 高峰 ' + sym + peak.toFixed(2) + '（' + peakPct + '%）</div>'
+      + '<div><span style="color:#4a7fd0">●</span> 空闲 ' + sym + off.toFixed(2) + '</div>'
+      + '<div style="opacity:.6">错峰全走空闲可省 ' + sym + (peak / 2).toFixed(2) + '</div>'
+      + '</div></div></div>';
+    box.innerHTML = '<div style="opacity:.7;font-size:12px;margin-bottom:6px">按会话 Top 8（合计 ' + sym + total.toFixed(2) + '）</div>'
+      + (bars || '（还没有用量）') + donut;
+  } catch (e) {
+    box.textContent = '读取失败：' + (e && e.message ? e.message : e);
+  }
+}
+// ── 工具体检（0.4.53）：调用次数 / 失败 / 估算耗时 p50·p95 ──────────────
+function mgPct(arr, p) {
+  if (!arr.length) return 0;
+  const s = arr.slice().sort(function (a, b) { return a - b; });
+  const i = Math.min(s.length - 1, Math.max(0, Math.round((p / 100) * (s.length - 1))));
+  return s[i];
+}
+async function loadToolHealth() {
+  const box = document.getElementById('toolHealth');
+  if (!box) return;
+  box.textContent = '（加载中…）';
+  try {
+    const r = await api('/api/socialV2/tool-log?limit=1000');
+    const entries = (r && Array.isArray(r.entries)) ? r.entries : [];
+    if (!entries.length) { box.textContent = '还没有工具调用记录'; return; }
+    const pending = {};
+    const stats = {};
+    for (const e of entries) {
+      const tool = String(e.tool || '?');
+      const at = Date.parse(e.time || '') || 0;
+      const slot = tool + '|' + String(e.key || '');
+      if (e.type === 'call') { pending[slot] = at; continue; }
+      if (e.type !== 'result') continue;
+      if (!stats[tool]) stats[tool] = { calls: 0, errors: 0, durs: [] };
+      stats[tool].calls += 1;
+      if (e.error) stats[tool].errors += 1;
+      const t0 = pending[slot];
+      if (t0 && at >= t0) {
+        stats[tool].durs.push(at - t0);
+        delete pending[slot];
+      }
+    }
+    const rows = Object.keys(stats).map(function (tool) {
+      const s = stats[tool];
+      return { tool: tool, calls: s.calls, errors: s.errors, p50: mgPct(s.durs, 50), p95: mgPct(s.durs, 95), n: s.durs.length };
+    }).sort(function (a, b) { return b.p95 - a.p95 || b.calls - a.calls; }).slice(0, 12);
+    const maxP95 = Math.max(1, rows.length ? rows[0].p95 : 1);
+    box.innerHTML = '<div style="opacity:.7;font-size:12px;margin-bottom:6px">按 p95 耗时排序（call→result 配对估算，样本 ' + rows.reduce(function (a, b) { return a + b.n; }, 0) + ' 次）</div>'
+      + rows.map(function (x) {
+        const w = Math.max(3, Math.round((x.p95 / maxP95) * 100));
+        const err = x.errors ? ' <span style="color:#ff7a7a">失败 ' + x.errors + '</span>' : '';
+        return '<div style="margin:6px 0">'
+          + '<div style="display:flex;justify-content:space-between;font-size:12px">'
+          + '<span style="opacity:.92">' + x.tool.replace(/^mcp__[a-z-]+__/, '') + err + '</span>'
+          + '<span style="opacity:.75">' + (x.p50 || 0) + ' / ' + (x.p95 || 0) + ' ms · ' + x.calls + ' 次</span>'
+          + '</div>'
+          + '<div style="height:9px;background:rgba(40,58,86,.55);border-radius:5px;overflow:hidden;margin-top:2px">'
+          + '<div style="height:100%;width:' + w + '%;background:linear-gradient(90deg,' + (x.errors ? '#b45252,#ff8a8a' : '#3f73c9,#78b3ff') + ')"></div>'
+          + '</div></div>';
+      }).join('');
+  } catch (e) {
+    box.textContent = '读取失败：' + (e && e.message ? e.message : e);
+  }
+}
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -4891,9 +5144,13 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
   if (page === 'social-v2' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
   if (page === 'diagnostics' && typeof loadDiagnostics === 'function') loadDiagnostics();
+  if (page === 'diagnostics' && typeof loadWakeFunnel === 'function') loadWakeFunnel();
+  if (page === 'sessions' && typeof loadHeatmap === 'function') loadHeatmap();
   if (page === 'people' && typeof loadPeople === 'function') loadPeople();
   if (page === 'scheduler' && typeof loadScheduler === 'function') loadScheduler();
   if (page === 'memory-graph' && typeof loadMemoryGraph === 'function') loadMemoryGraph();
+  if (page === 'usage' && typeof loadUsageStructure === 'function') loadUsageStructure();
+  if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
