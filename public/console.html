@@ -1771,6 +1771,7 @@ button:active:not(:disabled) {
         <button data-view="sessions" class="nav-item"><span class="nav-icon" aria-hidden="true">☷</span>会话与审批<span class="nav-count" id="pendingCount">—</span></button>
         <button data-view="people" class="nav-item"><span class="nav-icon" aria-hidden="true">☺</span>人物库</button>
         <button data-view="slang" class="nav-item"><span class="nav-icon" aria-hidden="true">▤</span>黑话词库</button>
+        <button data-view="space" class="nav-item"><span class="nav-icon" aria-hidden="true">◍</span>空间动态</button>
 
         <div class="nav-label">对话</div>
         <button data-view="social-v2" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>二代仿真<span class="nav-note">V2</span></button>
@@ -2728,7 +2729,41 @@ button:active:not(:disabled) {
       <div class="overview-footnote" data-page="overview"><span id="accessSummary">正在读取访问范围…</span><button class="text-button" data-view="access">管理访问范围 →</button></div>
       <footer class="page-footer"><span>QQ Bridge · 连接日常，保持自主</span><span id="lastUpdated">等待首次同步</span></footer>
 
-      <section data-page="memory-graph" class="card span-all" hidden>
+      <section data-page="space" class="card span-all" hidden id="section-space">
+  <h2 data-note="写操作会真的发到 QQ 空间">QQ 空间</h2>
+  <div class="meta">发说说、看好友动态、点赞与评论。所有写操作都要二次确认；每日配额由后端限制（说说 5 条 / 评论 20 条 / 点赞 50 条）。</div>
+
+  <div style="margin-top:12px;padding:10px;border:1px solid rgba(120,160,220,.22);border-radius:9px;background:rgba(22,34,56,.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <strong style="font-size:13px">发说说</strong>
+      <span id="spaceQuota" style="font-size:11px;opacity:.6">—</span>
+    </div>
+    <textarea id="spaceText" maxlength="300" rows="3" placeholder="说点什么…（≤300 字）"
+      style="width:100%;margin-top:8px;box-sizing:border-box;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:7px;color:#dbe6ff;padding:8px;font-size:13px"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <span id="spaceCount" style="font-size:11px;opacity:.55">0 / 300</span>
+      <button class="btn" id="spacePublish" type="button">发布到 QQ 空间</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong style="font-size:13px">我的说说</strong>
+        <button class="btn" id="spaceMineRefresh" type="button">刷新</button>
+      </div>
+      <div id="spaceMine" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong style="font-size:13px">好友动态</strong>
+        <button class="btn" id="spaceFeedsRefresh" type="button">刷新</button>
+      </div>
+      <div id="spaceFeeds" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
+    </div>
+  </div>
+</section>
+<section data-page="memory-graph" class="card span-all" hidden>
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div>
             <strong>记忆星图</strong>
@@ -4588,6 +4623,7 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
+  space: ['空间动态', '让关心的人看到。', '发说说、看好友动态、点赞与评论（写操作需确认）。'],
   'memory-graph': ['记忆星图', '记忆星图', '把长期记忆画成星点：权重、新鲜度、关联一目了然'],
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看 QQ 与 DSH 的会话映射，以及等待你回复的审批和提问。'],
@@ -5387,6 +5423,169 @@ async function loadOverview() {
   }
 }
 
+// ── QQ 空间（0.4.60）──────────────────────────────────────────────────
+// 契约（src/api/socialV2-qzone.js）：
+//   POST /api/socialV2/qzone            { key, action:'list'|'publish', content }
+//   POST /api/socialV2/qzone-feeds      { key, pos, num }
+//   POST /api/socialV2/qzone-like       { key, tid, targetUin, abstime, unlike }
+//   POST /api/socialV2/qzone-comment    { key, tid, targetUin, content }
+// 全部仅 reserved2 可用；publish 还要求 key === private:<ownerQQ>。
+let spaceOwnerKey = '';
+let spaceMode = '';
+
+function spaceFmtTime(ts) {
+  const n = Number(ts) || 0;
+  if (!n) return '';
+  const d = new Date(n * 1000);
+  const p = function (x) { return String(x).padStart(2, '0'); };
+  return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function spaceBanner(text, kind) {
+  const color = kind === 'error' ? '#ff9d7a' : '#9fd6a0';
+  return '<div style="margin:6px 0;padding:6px 9px;border-radius:7px;font-size:12px;color:' + color
+    + ';border:1px solid rgba(120,160,220,.25);background:rgba(22,34,56,.6)">' + text + '</div>';
+}
+async function spaceInit() {
+  const quota = document.getElementById('spaceQuota');
+  try {
+    const st = await api('/api/status');
+    spaceMode = String(st.mode || '');
+    spaceOwnerKey = 'private:' + String(st.ownerQQ || '');
+    if (quota) {
+      quota.textContent = spaceMode === 'reserved2'
+        ? ('身份 ' + spaceOwnerKey + ' · 说说每日 5 条')
+        : ('当前模式 ' + spaceMode + '：空间接口仅 reserved2 可用');
+    }
+  } catch (e) {
+    if (quota) quota.textContent = '身份读取失败：' + (e && e.message ? e.message : e);
+  }
+  const ta = document.getElementById('spaceText');
+  const cnt = document.getElementById('spaceCount');
+  if (ta && cnt && !ta.dataset.bound) {
+    ta.dataset.bound = '1';
+    ta.addEventListener('input', function () { cnt.textContent = ta.value.length + ' / 300'; });
+  }
+}
+async function spacePublish() {
+  const ta = document.getElementById('spaceText');
+  const box = document.getElementById('spaceMine');
+  const text = (ta && ta.value || '').trim();
+  if (!text) { alert('说说正文不能为空'); return; }
+  if (text.length > 300) { alert('超过 300 字上限'); return; }
+  if (!spaceOwnerKey || spaceOwnerKey === 'private:') { alert('读不到管理员 QQ，无法发布'); return; }
+  const ok = confirm('即将发布到你的 QQ 空间：\n\n' + text.slice(0, 120) + (text.length > 120 ? '…' : '') + '\n\n这是真实发布，好友能看到。确认发布？');
+  if (!ok) return;
+  const btn = document.getElementById('spacePublish');
+  if (btn) { btn.disabled = true; btn.textContent = '发布中…'; }
+  try {
+    const r = await api('/api/socialV2/qzone', 'POST', { key: spaceOwnerKey, action: 'publish', content: text });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '发布失败');
+    if (ta) ta.value = '';
+    const cnt = document.getElementById('spaceCount');
+    if (cnt) cnt.textContent = '0 / 300';
+    if (typeof showConsoleToast === 'function') showConsoleToast('已发布到 QQ 空间');
+    await spaceLoadMine();
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (box) box.innerHTML = spaceBanner('发布失败：' + msg, 'error') + box.innerHTML;
+    alert('发布失败：' + msg);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '发布到 QQ 空间'; }
+  }
+}
+async function spaceLoadMine() {
+  const box = document.getElementById('spaceMine');
+  if (!box) return;
+  box.textContent = '（加载中…）';
+  try {
+    const r = await api('/api/socialV2/qzone', 'POST', { key: spaceOwnerKey || ('private:' + ''), action: 'list' });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    const posts = Array.isArray(r.posts) ? r.posts : [];
+    if (!posts.length) { box.innerHTML = spaceBanner('空间里还没有说说'); return; }
+    box.innerHTML = posts.map(function (p) {
+      return '<div style="padding:7px 0;border-bottom:1px dashed rgba(90,120,160,.25)">'
+        + '<div style="opacity:.55;font-size:11px">' + spaceFmtTime(p.time) + (p.images ? ' · 图 ' + p.images + ' 张' : '') + '</div>'
+        + '<div style="margin-top:2px;white-space:pre-wrap">' + String(p.content || '').slice(0, 300) + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = spaceBanner('读取失败：' + (e && e.message ? e.message : e), 'error');
+  }
+}
+async function spaceLoadFeeds() {
+  const box = document.getElementById('spaceFeeds');
+  if (!box) return;
+  box.textContent = '（加载中…）';
+  try {
+    const r = await api('/api/socialV2/qzone-feeds', 'POST', { key: spaceOwnerKey || ('private:' + ''), pos: 0, num: 5 });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    const feeds = Array.isArray(r.feeds) ? r.feeds : [];
+    if (!feeds.length) { box.innerHTML = spaceBanner('没有新动态'); return; }
+    box.innerHTML = feeds.map(function (f, i) {
+      const id = 'feed' + i;
+      return '<div id="' + id + '" style="padding:8px 0;border-bottom:1px dashed rgba(90,120,160,.25)">'
+        + '<div style="font-size:11px;opacity:.55">' + String(f.nickname || f.uin || '') + ' · ' + spaceFmtTime(f.time)
+        + (f.images && f.images.length ? ' · 图 ' + f.images.length + ' 张' : '') + (f.liked ? ' · 已赞' : '') + '</div>'
+        + '<div style="margin-top:2px;white-space:pre-wrap">' + String(f.preview || '') + '</div>'
+        + (f.imageDesc ? '<div style="font-size:11px;opacity:.6;margin-top:2px">图：' + f.imageDesc + '</div>' : '')
+        + '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">'
+        + '<button class="btn" type="button" data-space-like="' + id + '">' + (f.liked ? '取消赞' : '点赞') + '</button>'
+        + '<input placeholder="评论（≤120 字）" maxlength="120" style="flex:1;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:4px 7px;font-size:12px">'
+        + '<button class="btn" type="button" data-space-comment="' + id + '">评论</button>'
+        + '</div></div>';
+    }).join('');
+    feeds.forEach(function (f, i) {
+      const row = document.getElementById('feed' + i);
+      if (!row) return;
+      const likeBtn = row.querySelector('[data-space-like]');
+      const cmtBtn = row.querySelector('[data-space-comment]');
+      const input = row.querySelector('input');
+      if (likeBtn) likeBtn.addEventListener('click', function () { spaceLike(f, likeBtn); });
+      if (cmtBtn) cmtBtn.addEventListener('click', function () { spaceComment(f, input, cmtBtn); });
+    });
+  } catch (e) {
+    box.innerHTML = spaceBanner('读取失败：' + (e && e.message ? e.message : e), 'error');
+  }
+}
+async function spaceLike(f, btn) {
+  const unlike = !!f.liked;
+  if (!confirm(unlike ? '取消这条动态的赞？' : '给这条动态点赞？（真会出现在对方空间）')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('/api/socialV2/qzone-like', 'POST', { key: spaceOwnerKey, tid: f.tid, targetUin: f.uin, abstime: f.time, unlike: unlike });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '操作失败');
+    f.liked = !unlike;
+    if (typeof showConsoleToast === 'function') showConsoleToast((r.note || '完成') + '（今日第 ' + r.todayCount + ' 次）');
+    await spaceLoadFeeds();
+  } catch (e) {
+    alert('点赞失败：' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+async function spaceComment(f, input, btn) {
+  const text = (input && input.value || '').trim();
+  if (!text) { alert('评论内容不能为空'); return; }
+  if (text.length > 120) { alert('评论超过 120 字'); return; }
+  if (!confirm('评论这条动态：\n\n' + text + '\n\n会以你的身份公开发布，确认？')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('/api/socialV2/qzone-comment', 'POST', { key: spaceOwnerKey, tid: f.tid, targetUin: f.uin, content: text });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '评论失败');
+    if (input) input.value = '';
+    if (typeof showConsoleToast === 'function') showConsoleToast((r.note || '已评论') + '（今日第 ' + r.todayCount + ' 条）');
+  } catch (e) {
+    alert('评论失败：' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+function bindSpace() {
+  document.getElementById('spacePublish')?.addEventListener('click', spacePublish);
+  document.getElementById('spaceMineRefresh')?.addEventListener('click', spaceLoadMine);
+  document.getElementById('spaceFeedsRefresh')?.addEventListener('click', spaceLoadFeeds);
+}
+bindSpace();
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -5414,6 +5613,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'memory-graph' && typeof loadMemoryGraph === 'function') loadMemoryGraph();
   if (page === 'usage' && typeof loadUsageStructure === 'function') loadUsageStructure();
   if (page === 'overview' && typeof loadOverview === 'function') loadOverview();
+  if (page === 'space' && typeof spaceInit === 'function') spaceInit();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
