@@ -3,6 +3,9 @@
 > 这份是给**没写过代码**的人看的。每一步都写清三件事：
 > **做什么 → 你应该看到什么 → 没看到怎么办**。
 >
+> **不想自己敲命令？** 把 [INSTALL-SKILL.md](INSTALL-SKILL.md) 给一个能执行命令的 AI 助手，
+> 让它照着装 —— 你只在三处动手：扫码登录、填白名单、点确认。
+>
 > 已经会命令行的人可以看更快的 [QUICKSTART.md](../../QUICKSTART.md)；
 > 踩坑细节在 [FRESH-INSTALL.md](FRESH-INSTALL.md)。
 

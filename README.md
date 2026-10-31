@@ -8,6 +8,7 @@
 > **已经装过、要升级？** → [docs/UPGRADE.md](docs/UPGRADE.md)（按版本看要做什么，含回滚）
 > **第一次用（没写过代码）？** → [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)（零基础八步：每步都写了「应该看到什么 / 没看到怎么办」）
 > **想直接跑起来（会命令行）？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
+> **想让 AI 替你装？** → [docs/guides/INSTALL-SKILL.md](docs/guides/INSTALL-SKILL.md)（把手册给你的 AI 助手，它照着装）
 >
 ### 你已经装了什么？不用换，直接用
 
