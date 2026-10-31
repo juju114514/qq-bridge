@@ -108,6 +108,12 @@ function findPowerShell() {
 }
 
 await checkAsync('DryRun 在真实仓库上成功且不改动 config.json', async () => {
+  // deploy/first-run.ps1 是 **Windows 部署脚本**（路径、注册表、计划任务语义）。
+  // GitHub 的 ubuntu runner 自带 pwsh，会被误当成"能跑"——但目标平台不成立，必须按平台跳过。
+  if (process.platform !== 'win32') {
+    console.log('       （非 Windows：跳过 PowerShell 脚本行为断言 —— 它是 Windows 专用部署脚本）');
+    return;
+  }
   const exe = findPowerShell();
   if (!exe) { console.log('       （环境里没有 PowerShell，跳过行为断言）'); return; }
   const cfg = path.join(root, 'config.json');
@@ -133,6 +139,12 @@ await checkAsync('DryRun 在真实仓库上成功且不改动 config.json', asyn
 });
 
 await checkAsync('空仓库里 DryRun 以非 0 退出，且不会偷偷创建 config.json', async () => {
+  // deploy/first-run.ps1 是 **Windows 部署脚本**（路径、注册表、计划任务语义）。
+  // GitHub 的 ubuntu runner 自带 pwsh，会被误当成"能跑"——但目标平台不成立，必须按平台跳过。
+  if (process.platform !== 'win32') {
+    console.log('       （非 Windows：跳过 PowerShell 脚本行为断言 —— 它是 Windows 专用部署脚本）');
+    return;
+  }
   const exe = findPowerShell();
   if (!exe) { console.log('       （环境里没有 PowerShell，跳过行为断言）'); return; }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-firstrun-'));
