@@ -13,6 +13,8 @@
 // 心跳新鲜度用 TTL（默认 60s），bridge 每 20s 刷新一次。
 
 export const DEFAULT_TTL_MS = 60_000;
+// 状态文件格式版本：以后改结构时靠它做兼容分支
+export const SCHEMA_VERSION = 1;
 export const MODE_BRIDGE = 'bridge';
 export const MODE_PLUGIN = 'plugin';
 
@@ -28,16 +30,71 @@ export function isFresh(record, now = Date.now(), ttlMs = DEFAULT_TTL_MS) {
  * @returns {{ ok: true, record: object, reason: 'free'|'refresh'|'stale' }
  *         | { ok: false, reason: 'other-active', holder: object }}
  */
-export function claimMode({ current, mode, pid, now = Date.now(), ttlMs = DEFAULT_TTL_MS, note = '' }) {
-  const record = { mode, pid, at: now, note };
-  if (!current) return { ok: true, record, reason: 'free' };
-  if (!isFresh(current, now, ttlMs)) return { ok: true, record, reason: 'stale' };
+/**
+ * 尝试认领通道。
+ *
+ * epoch 是 **fencing token**：每次「重新取得所有权」（free / stale / 从别的 mode 抢过来）都 +1，
+ * 而**同一持有者的续期（refresh）不 +1** —— 续期不是换主人。
+ *
+ * 单调性要求：epoch 一旦用过就永远不能再用（即使进程崩溃、文件被释放）。
+ * 因此 `floorEpoch` 由调用方传入（读自持久化的 epoch 水位文件），
+ * 保证「文件被删了再重建」也不会把 12 退回 1。
+ */
+export function claimMode({
+  current, mode, pid, now = Date.now(), ttlMs = DEFAULT_TTL_MS, note = '', floorEpoch = 0,
+}) {
+  const base = Math.max(Number(current?.epoch) || 0, Number(floorEpoch) || 0);
+  const build = (epoch, status = 'active') => ({
+    schemaVersion: SCHEMA_VERSION, mode, pid, epoch, status, at: now, note,
+  });
+  if (!current) return { ok: true, record: build(base + 1), reason: 'free' };
+  // 已显式释放的认领等于"空闲"，但它带着 epoch 水位 → 新主人从 base+1 起算
+  if (String(current.status ?? 'active') === 'released') {
+    return { ok: true, record: build(base + 1), reason: 'released' };
+  }
+  if (!isFresh(current, now, ttlMs)) return { ok: true, record: build(base + 1), reason: 'stale' };
   if (current.mode === mode) {
-    // 同模式：同 pid 就是续期；不同 pid 说明上一个同类实例还活着 → 也拒绝
-    if (String(current.pid) === String(pid)) return { ok: true, record, reason: 'refresh' };
+    // 同模式：同 pid 就是续期（epoch 不变）；不同 pid 说明上一个同类实例还活着 → 拒绝
+    if (String(current.pid) === String(pid)) {
+      return { ok: true, record: { ...current, schemaVersion: SCHEMA_VERSION, at: now, note, status: 'active' }, reason: 'refresh' };
+    }
     return { ok: false, reason: 'other-active', holder: current, sameMode: true };
   }
   return { ok: false, reason: 'other-active', holder: current, sameMode: false };
+}
+
+/** 旧 epoch / 非 active / mode 不符 → 抛这个（调用方决定降级还是中止）。 */
+export class StaleEpochError extends Error {
+  constructor(message, detail = {}) {
+    super(message);
+    this.name = 'StaleEpochError';
+    this.code = 'STALE_EPOCH';
+    this.detail = detail;
+  }
+}
+
+/**
+ * 副作用边界守卫：在「真的要做一件不可撤销的事」之前调用。
+ *
+ * 注意：**这不是原子操作**。校验通过到副作用之间仍可能发生切换（竞态窗口），
+ * 所以它只能把窗口从「整段处理耗时」缩小到「一次读文件」，
+ * 真正的串行化由调用方的队列/单进程假设保证。
+ */
+export function assertEpochCurrent(current, { mode, epoch } = {}) {
+  if (!current || typeof current !== 'object') {
+    throw new StaleEpochError('通道状态不存在（可能已被释放）', { mode, epoch });
+  }
+  if (String(current.status ?? 'active') !== 'active') {
+    throw new StaleEpochError(`通道状态不是 active：${current.status}`, { mode, epoch, status: current.status });
+  }
+  if (mode && String(current.mode) !== String(mode)) {
+    throw new StaleEpochError(`通道已切换：${current.mode} ≠ ${mode}`, { mode, epoch, actual: current.mode });
+  }
+  const cur = Number(current.epoch) || 0;
+  if (epoch != null && cur !== Number(epoch)) {
+    throw new StaleEpochError(`epoch 已过期：${epoch} ≠ ${cur}`, { mode, epoch, actual: cur });
+  }
+  return true;
 }
 
 /** 释放：只有持有者能删（避免把别人的认领删掉）。 */
@@ -50,5 +107,6 @@ export function shouldRelease(current, { mode, pid }) {
 export function describeMode(record) {
   if (!record) return '无（没有通道在认领）';
   const age = Math.max(0, Math.round((Date.now() - (Number(record.at) || 0)) / 1000));
-  return `${record.mode}（pid ${record.pid}，${age}s 前心跳${record.note ? '，' + record.note : ''}）`;
+  const epoch = record.epoch != null ? `，epoch ${record.epoch}` : '';
+  return `${record.mode}（pid ${record.pid}${epoch}，${age}s 前心跳${record.note ? '，' + record.note : ''}）`;
 }

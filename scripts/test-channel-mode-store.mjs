@@ -42,12 +42,17 @@ check('不同 mode 抢 → 拒绝并给出持有者', () => {
   assert.equal(r.holder.mode, 'bridge');
 });
 
-check('release：非持有者删不掉', () => {
+check('release：非持有者不能释放；持有者释放后状态是 released（保留 epoch）', () => {
   const s = mk();
   assert.equal(s.release('bridge', { pid: 999 }), false);
-  assert.ok(fs.existsSync(path.join(tmp, 'channel-mode.json')));
+  const before = JSON.parse(fs.readFileSync(path.join(tmp, 'channel-mode.json'), 'utf8'));
+  assert.ok(before.epoch >= 1, '认领时必须有 epoch');
   assert.equal(s.release('bridge', { pid: 100 }), true);
-  assert.equal(fs.existsSync(path.join(tmp, 'channel-mode.json')), false);
+  const after = JSON.parse(fs.readFileSync(path.join(tmp, 'channel-mode.json'), 'utf8'));
+  // 0.4.39 起：文件保留（epoch 是 fencing token，不能随释放消失）
+  assert.equal(after.status, 'released');
+  assert.equal(after.pid, undefined, 'released 状态不该还有持有者 pid');
+  assert.equal(after.epoch, before.epoch, '释放不能让 epoch 回退');
 });
 
 check('心跳过期后可以被抢占（崩溃残留）', () => {
@@ -72,8 +77,12 @@ check('startBridgeChannelGuard：拿到时启动心跳、stop 时释放', () => 
   });
   assert.equal(guard.ok, true);
   assert.equal(ticks, 1);
+  assert.ok(guard.epoch >= 1, 'guard 要暴露本次持有的 epoch');
   guard.stop();
-  assert.equal(fs.existsSync(path.join(dir3, 'channel-mode.json')), false);
+  // 0.4.39 起释放写 status=released（保留 epoch），不再删文件
+  const after = JSON.parse(fs.readFileSync(path.join(dir3, 'channel-mode.json'), 'utf8'));
+  assert.equal(after.status, 'released');
+  assert.equal(after.epoch, guard.epoch);
 });
 
 check('startBridgeChannelGuard：被占用时 ok:false 且不留文件', () => {

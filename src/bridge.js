@@ -1,5 +1,29 @@
 let runtimeFingerprint = null;
+// 通道 epoch（fencing token）：只有本实例持有通道时才有值；sidecar-only 时为 null
+let channelEpoch = null;
+let channelStore = null;
+
+/**
+ * 副作用边界守卫（0.4.39）。返回 true=可以继续，false=已过期应中止。
+ *
+ * 注意：这不是原子操作 —— 校验通过到真正执行之间仍有竞态窗口（一次读文件的时间）。
+ * 它把窗口从「整段处理」缩小到「毫秒级」，真正的串行化靠单通道持有假设。
+ */
+function epochGuard(stage) {
+  if (channelEpoch == null || !channelStore) return true; // sidecar-only / 未认领：不拦
+  try {
+    channelStore.assertCurrent({ mode: 'bridge', epoch: channelEpoch });
+    return true;
+  } catch (error) {
+    if (error instanceof StaleEpochError) {
+      log(`⚠️ [epoch] ${stage} 前发现通道已易主（本实例 epoch=${channelEpoch}），中止该次操作：${error.message}`);
+      return false;
+    }
+    throw error;
+  }
+}
 import { readBuildInfo as buildInfo, fingerprintLine } from './build-info.js';
+import { StaleEpochError } from './domains/channel-mode.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
 // 链路：
@@ -4321,6 +4345,11 @@ async function main() {
   const lastSendAtByKey = new Map();
 
   function sendToQQ(key, msg) {
+    // 0.4.39：发送是不可撤销副作用，先过 epoch 守卫（通道易主就别发了）
+    if (!epochGuard('QQ 发送')) {
+      lastSendFailed.set(key, true);
+      return Promise.resolve({ ok: false, stale: true });
+    }
     const assertSendAllowed = captureSendGuard(key);
     const safeMsg = redactKnownTokensOnly(msg);
     const [kind, id] = key.split(':');
@@ -6415,6 +6444,8 @@ async function main() {
   }
 
   function appendMemoryV2(st, category, content, extra = {}) {
+    // 0.4.39：记忆是不可撤销副作用，通道易主后旧任务不该再写
+    if (!epochGuard('记忆写入')) return false;
     if (!st) return;
     const text = redactKnownTokensOnly(String(content ?? '')).trim();
     const cat = String(category || '').trim();
@@ -6779,7 +6810,8 @@ async function main() {
     if (opts.farewell) social.exitingSessions.add(sessionId);
     let accepted;
     try {
-      accepted = await api.sessions.prompt({ sessionId, mode: 'queue', content });
+      if (!epochGuard('DSH 提交')) return { ok: true, stale: true };
+    accepted = await api.sessions.prompt({ sessionId, mode: 'queue', content });
     } catch (error) {
       if (opts.farewell) social.exitingSessions.delete(sessionId);
       throw error;
@@ -10109,6 +10141,9 @@ function selfCheckSnapshot() {
     // channel.enabled=false = sidecar-only：让出通道给 DSH 插件
     enabled: cfg.channel?.enabled !== false,
   });
+  // 0.4.39：记下本次持有的 epoch，供副作用边界校验
+  channelStore = channelModeGuard.store ?? null;
+  channelEpoch = Number.isFinite(channelModeGuard.epoch) ? channelModeGuard.epoch : null;
   channelModeClaimed = channelModeGuard.ok;
   if (!channelModeClaimed) {
     // 真机事故（2026-10-31 12:44）：日志写了 "sidecar-only"，但 3001 上仍有一条属于

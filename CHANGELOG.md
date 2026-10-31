@@ -2,6 +2,62 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.39：双轨 epoch（fencing token）+ 副作用边界守卫
+
+> 只做 epoch / 所有权 / fencing，**不拆 bridge.js、不改 prompt 行为**。
+
+### 状态结构（`state/channel-mode.json`）
+
+```json
+{ "schemaVersion": 1, "mode": "bridge", "pid": 24668,
+  "epoch": 1, "status": "active", "at": 1793434238476, "note": "sidecar 通道" }
+```
+
+- `epoch` 是 **fencing token**：每次「重新取得所有权」+1；同一持有者**续期不 +1**
+- 新文件 `state/channel-mode-epoch` 保存**只增不减的水位** —— 这样即使认领文件被删，
+  epoch 也不会从 12 退回 1，旧任务永远无法「碰巧匹配」
+- `release()` 不再删文件，改为写 `status: "released"`（保留 epoch，pid 清空）
+
+### 原子更新与跨进程互斥
+
+- 复用仓内唯一实现 `src/atomic-write.js`（唯一临时名 + EPERM/EBUSY 退避重试）
+- 新增 `state/channel-mode.lock`：`wx` 创建；残留锁按 mtime（>5s）判定后抢占；最多重试 200ms
+- `claim / heartbeat / release` 全部走 `withLock(read → 改 → 原子写)`，避免「读旧快照再递增」
+
+### 副作用边界守卫（`channelStore.assertCurrent`）
+
+| 位置 | 行为 |
+| --- | --- |
+| DSH 提交前 | 过期则**不提交**（返回 `{stale:true}`） |
+| QQ 发送前 | 过期则**不发送**，并标记该 key 失败 |
+| 记忆写入前 | 过期则**不写记忆** |
+
+> 诚实说明：校验到副作用之间仍有**毫秒级竞态窗口**（一次读文件）。它不是原子操作，
+> 只是把窗口从「整段处理」压到最小；真正的串行化靠「单通道持有」这个前提。
+
+### 测试（7 条，全部通过）
+
+```
+① 旧 epoch 任务在模式切换后被拒绝
+② 旧 epoch 任务不会提交 DSH 请求（次数=0）
+③ 旧 epoch 任务不会发出 QQ 消息（次数=0）
+④ 进程崩溃重启后，旧 epoch 不能重新有效
+⑤ 并发认领：只有一个赢家，epoch 单调递增（4 个真实子进程）
+⑥ 旧 epoch 任务不会写入记忆
+⑦ 旧 epoch 任务不会执行工具
+```
+
+### 真机验证
+
+```
+通道模式：bridge（free，epoch 1）
+当前状态: {"mode":"bridge","epoch":1,"status":"active","pid":24668}
+✅ 当前 epoch 通过校验
+✅ 旧 epoch 被拒: STALE_EPOCH
+✅ 错误 mode 被拒: STALE_EPOCH
+```
+
+0.4.38 的 9 条行为基线仍全绿；审计 134/134。
 ## 2026-10-31 — 0.4.38：Characterization Test（3 条 P0 行为基线）
 
 > 为后续「拆 bridge.js」「改 epoch」提供**可复用的行为边界**。
