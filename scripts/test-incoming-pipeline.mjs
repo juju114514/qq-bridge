@@ -93,7 +93,13 @@ await check('静默时段 + 只有概率触发 → 不唤醒', async () => {
     socialV2: {
       enabled: true,
       // 静默时段是**数组** [startHour, endHour]（0~23 整数，start===end 视为关闭）
-      quietHours: [0, 23],
+      // 区间左闭右开：[0,23) 只静默到 22:59，23 点那一小时是醒的 ——
+      // 写死 [0,23] 会让这条测试在 23:00 之后必红（2026-10-31 23:01 实测到）。
+      // 改成「包含当前时刻的两小时窗口」，与运行时间无关。
+      quietHours: (function () {
+        const h = new Date().getHours();
+        return [h, (h + 2) % 24];
+      })(),
       wake: { batchWindowMs: 1000, alwaysKeywords: [] }
     }
   });

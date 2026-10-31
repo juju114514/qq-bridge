@@ -2,6 +2,11 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.52.2：人物印象是对象，不是字符串
+
+`memberImpressions` 的值是 `{ traits:[...], interactionCount, lastSeenAt }`，早先直接
+`String()` 就变成 `[object Object]`。现在按 `traits.join('、') + 交互 N 次 + 最近日期` 格式化，
+兜底再按 key:value 展开，不会再出现 `[object Object]`。
 ## 2026-10-31 — 0.4.52.1：修「星图看得到、改权重 404」
 
 读端点 `/api/socialV2/memory` 在没有 `longTermMemories` 时，会用 `migrateFromLegacy` **现场合成**

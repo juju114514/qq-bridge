@@ -5534,6 +5534,32 @@ function mgEffAt(n) {
   return Number(n.weight || 1) * Math.pow(0.5, ageDays / MG_HALF_LIFE);
 }
 const MG_ARCHIVE_WEIGHT = 0.05;
+function mgImpressionText(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map(function (x) { return String(x); }).join('、');
+  if (typeof v === 'object') {
+    const parts = [];
+    const traits = v.traits || v.tags;
+    if (Array.isArray(traits) && traits.length) parts.push(traits.join('、'));
+    else if (typeof traits === 'string' && traits) parts.push(traits);
+    if (v.interactionCount) parts.push('交互 ' + v.interactionCount + ' 次');
+    if (v.lastSeenAt) {
+      const d = new Date(Number(v.lastSeenAt));
+      if (!Number.isNaN(d.getTime())) parts.push('最近 ' + d.toLocaleDateString());
+    }
+    if (!parts.length) {
+      Object.keys(v).forEach(function (k) {
+        const val = v[k];
+        if (val === null || val === undefined || val === '') return;
+        parts.push(k + ':' + (typeof val === 'object' ? JSON.stringify(val) : String(val)));
+      });
+    }
+    return parts.join('；');
+  }
+  return String(v);
+}
+
 function mgVisible(n) {
   if (n.kind === 'hub') return true;
   if (n.kind === 'person') return MG.showPeople;
@@ -5560,7 +5586,7 @@ async function loadMemoryGraph() {
       names.forEach(function (name) {
         nodes.push({
           id: 'p:' + key + ':' + name, kind: 'person', key: key, label: name,
-          text: String(people[name] || ''), weight: 0, eff: 0, tags: [String(name).toLowerCase()],
+          text: mgImpressionText(people[name]), weight: 0, eff: 0, tags: [String(name).toLowerCase()],
           createdAt: 0, lastHitAt: 0, hits: 0,
         });
       });
