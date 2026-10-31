@@ -20,6 +20,7 @@ import { createTools } from './tools.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createChatLog } from './chat-log.js';
+import { mdToPlain } from './vendor/md-to-plain.js';
 
 // 宿主用 defineTool() 把「参数说明」编译成 JSON Schema；直接把裸对象丢给
 // ctx.tools.register 的话，register 不会编译 —— 供应商侧看到的是 `type: null`，
@@ -94,7 +95,23 @@ export async function probeSidecar(sidecarUrl, { timeoutMs = 1500 } = {}) {
 
 export function apply(ctx, rawConfig) {
   const config = normalizeConfig(rawConfig);
-  const log = (msg) => console.log('[qq-plugin] ' + msg);
+  // 日志同时写文件：插件跑在 DSH 进程里，桌面版的 stdout 用户看不到 ——
+  // 出问题时只能靠 `<stateDir>/plugin.log` 还原现场（今天排查全靠猜，够了）。
+  let logFile = null;
+  try { logFile = path.join(config.stateDir, 'plugin.log'); } catch { logFile = null; }
+  const log = (msg) => {
+    const line = '[qq-plugin] ' + msg;
+    console.log(line);
+    if (!logFile) return;
+    try {
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      // 简单截断：超过 512KB 就轮转一份，避免无限长
+      try {
+        if (fs.statSync(logFile).size > 512 * 1024) fs.renameSync(logFile, logFile + '.1');
+      } catch { /* 文件还不存在 */ }
+      fs.appendFileSync(logFile, new Date().toISOString() + ' ' + msg + '\n', 'utf8');
+    } catch { /* 写日志失败不能影响主流程 */ }
+  };
 
   const disposers = [];
   const state = { startedAt: Date.now(), config, sidecar: { ok: null } };
@@ -214,7 +231,20 @@ export function apply(ctx, rawConfig) {
         try {
           const mod = await import('./vendor/channel-mode-store.js');
           const store = mod.createChannelModeStore({ fs: await import('node:fs'), path: await import('node:path'), stateDir: config.stateDir });
-          const claim = store.claim('plugin', { pid: process.pid, note: 'DSH 插件通道' });
+          let claim = store.claim('plugin', { pid: process.pid, note: 'DSH 插件通道' });
+          if (!claim.ok) {
+            // 真机事故（2026-10-31 13:02）：DSH 重启后旧插件的认领还在 60s 心跳窗口内，
+            // 新插件被判"通道被占用"→ 干脆不连 QQ，群里 @ 它毫无反应。
+            // 死了的持有者不该拦人：这里按 pid 存活性自己做一次抢占。
+            const holderPid = Number(claim?.holder?.pid ?? 0);
+            let holderAlive = false;
+            try { if (holderPid > 0) { process.kill(holderPid, 0); holderAlive = true; } } catch { holderAlive = false; }
+            if (holderPid > 0 && !holderAlive) {
+              try { fs.rmSync(store.file, { force: true }); } catch { /* ignore */ }
+              log('通道持有者 pid ' + holderPid + ' 已退出，接管通道');
+              claim = store.claim('plugin', { pid: process.pid, note: 'DSH 插件通道' });
+            }
+          }
           if (!claim.ok) {
             log('⚠️ 通道被占用：' + store.describe() + ' —— 插件不连接 QQ（要切到插件模式，请先停掉 bridge）。');
             return;
@@ -226,8 +256,42 @@ export function apply(ctx, rawConfig) {
         } catch (e) {
           log('通道模式闸不可用（继续启动）：' + (e?.message ?? e));
         }
+        // 拿宿主默认模型：不装的话 agent 不会跑（没有 provider/model → 无 turn、无报错）
+        let selection = null;
+        let installSelection = null;
+        try {
+          const svc = typeof ctx.get === 'function' ? ctx.get('agentDefaultModel') : null;
+          if (svc && typeof svc.currentSelection === 'function') selection = svc.currentSelection();
+          const agentMod = await import('@deepseek-ai/dsh-agent');
+          installSelection = typeof agentMod.installModelSelection === 'function' ? agentMod.installModelSelection : null;
+        } catch (e) {
+          log('取默认模型失败（agent 可能不跑）：' + (e?.message ?? e));
+        }
+        if (selection) log(`默认模型：${selection.provider}/${selection.model}`);
+        else log('⚠️ 没取到默认模型：agent 可能起不了 turn');
+
         driver = createAgentDriver({
           agents: ctx.agents,
+          fsForCwd: fs, pathForCwd: path,
+          // ⚠️ Windows 不允许文件名里有 ':' —— 保留它会让 mkdir 直接 ENOENT（真机踩过）
+          cwdOf: (chatKey) => path.join(config.stateDir, 'agents', String(chatKey).replace(/[^a-zA-Z0-9_-]/g, '_')),
+          agentOptions: selection ? { provider: selection.provider, model: selection.model } : {},
+          setup: (agentCtx) => {
+            try {
+              if (selection && installSelection) installSelection(agentCtx, { current: selection, assembled: undefined });
+            } catch (e) { log('installModelSelection 失败：' + (e?.message ?? e)); }
+            // 插件会把 assistant 文本自动转发到 QQ —— 模型不需要（也不该）再调发送工具。
+            // 真机教训：它会先试 qqb_send_message / qq_send_message，报错后再绕一圈，白烧 30+ 步。
+            try {
+              agentCtx?.tools?.restrict?.({ deny: [
+                'qqb_send_message', 'qqb_reply',
+                'qq_send_message', 'qq_reply', 'qq_send_group_message', 'qq_send_private_message', 'qq_send_burst',
+              ] });
+              log('已对 agent 禁用发送类工具（回复走自动转发）');
+            } catch (e) {
+              log('禁用发送工具失败（不影响使用，只是会多发几步）：' + (e?.message ?? e));
+            }
+          },
           loadCreateUserMessage: async () => (await import('@deepseek-ai/dsh-llm')).createUserMessage,
           log: (m) => log(m),
           meta: { plugin: name },
@@ -236,15 +300,29 @@ export function apply(ctx, rawConfig) {
         const bySession = new Map(); // sessionId -> chatKey
 
         // 助手回复 → QQ（DSH 的会话事件总线）
+        // Agent 侧的错误以前完全看不到 —— 加一条监听，直接落进 plugin.log
+        if (typeof ctx.on === 'function') {
+          disposers.push(ctx.on('agent/error', ({ agent: subject, error } = {}) => {
+            log('❌ agent 错误：' + (error?.message ?? String(error)));
+          }));
+        }
         if (typeof ctx.on === 'function') {
           disposers.push(ctx.on('session/event', (session, event) => {
+            if (bySession.has(session?.id)) log(`会话事件：${event?.type ?? '?'}`);
             const chatKey = bySession.get(session?.id);
             if (!chatKey) return;
             if (event?.type !== 'assistant/message') return;
             const blocks = event?.data?.message?.content ?? [];
             const text = blocks.filter((b) => b?.type === 'text').map((b) => b.text).join('');
             if (!text.trim()) return;
-            channel?.send(chatKey, text).catch((e) => log('发送失败：' + (e?.message ?? e)));
+            // QQ 不渲染 Markdown：先把 ```/`**` 之类去掉，否则群友看到一堆符号
+            let outgoing = text;
+            try { outgoing = mdToPlain(text); } catch { /* 转换失败就发原文 */ }
+            log(`助手回复 → ${chatKey}（${String(text).length} 字，转纯文本 ${String(outgoing).length} 字）`);
+            // OneBotWsClient.call() 返回的就是 response.data
+            channel?.send(chatKey, outgoing)
+              .then((r) => log(`发送成功 ${chatKey} message_id=${r?.message_id ?? r?.data?.message_id ?? JSON.stringify(r ?? null).slice(0, 60)}`))
+              .catch((e) => log(`❌ 发送失败 ${chatKey}：` + (e?.message ?? e)));
           }));
         }
 
@@ -263,9 +341,30 @@ export function apply(ctx, rawConfig) {
               chatLog.append(key, { text, userId: String(event.user_id ?? ''), self: String(event.user_id) === String(event.self_id) });
             }
             const r = gate(event, { selfId: state.selfId ?? event?.self_id });
-            if (!r.handle) return;
-            bySession.set(sessionIdOf(r.key), r.key);
-            driver.deliver(r.key, r.text).catch((e) => log('投递给 Agent 失败：' + (e?.message ?? e)));
+            if (!r.handle) {
+              // 静默丢弃是今天最大的坑：至少留一行痕迹
+              if (r.reason !== 'self' && r.reason !== 'not-message') {
+                log(`入站丢弃（${r.reason}）key=${event?.group_id ? 'group:' + event.group_id : 'private:' + event?.user_id} uid=${event?.user_id}`);
+              }
+              return;
+            }
+            log(`入站投递 ${r.key} uid=${r.userId}`);
+            // ⚠️ 必须等 deliver 返回**真实**的 sessionId：会话 id 撞车时 driver 会用 fallback，
+            // 这时用原始 id 建映射，assistant/message 永远匹配不上（真机踩过）。
+            driver.deliver(r.key, r.text)
+              .then((entry) => {
+                bySession.set(entry.sessionId, r.key);
+                const a = entry.agent;
+                log(`会话映射建立 session=${entry.sessionId} → ${r.key}`);
+                log(`agent 初始：status=${a?.status ?? '?'} seq=${a?.session?.seq ?? '?'} agentId=${a?.id ?? '?'}`);
+                // 3 秒后再看一次：seq 不动 = agent loop 没跑；动了但没 assistant = 模型侧问题
+                setTimeout(() => {
+                  try {
+                    log(`agent 3s 后：status=${a?.status ?? '?'} seq=${a?.session?.seq ?? '?'}`);
+                  } catch (e) { log('agent 状态读取失败：' + (e?.message ?? e)); }
+                }, 3000).unref?.();
+              })
+              .catch((e) => log('投递给 Agent 失败：' + (e?.message ?? e)));
           },
         });
         await channel.start();

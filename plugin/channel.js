@@ -24,13 +24,13 @@ export function createChannel({
     const params = kind === 'group'
       ? { group_id: Number(id), message: body }
       : { user_id: Number(id), message: body };
-    return client.action(action, params);
+    return client.call(action, params);
   }
 
   /** 通用 OneBot action（工具层要用 reply 段、发送数组消息等，不止纯文本）。 */
   function call(action, params) {
     if (!client) throw new Error('通道未启动：先 start()');
-    return client.action(action, params);
+    return client.call(action, params);
   }
 
   async function start() {
