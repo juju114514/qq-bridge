@@ -17,7 +17,14 @@ const pick = (name) => {
   }
   return html.slice(start, i + 1);
 };
-const sandbox = new Function(pick('suggestQuietWindow') + '\n' + pick('quietWindowScore') + '\nreturn { suggestQuietWindow, quietWindowScore };')();
+const sandbox = new Function(
+  'const DEEP_NIGHT = [2, 3, 4, 5];'
+  + pick('coversDeepNight') + '\n'
+  + pick('suggestQuietWindow') + '\n'
+  + pick('quietWindowScore') + '\n'
+  + pick('suggestQuietCandidates') + '\n'
+  + 'return { coversDeepNight, suggestQuietWindow, quietWindowScore, suggestQuietCandidates };',
+)();
 
 let failures = 0;
 const check = (name, fn) => {
@@ -69,6 +76,26 @@ check('脏数据不炸', () => {
   const r = sandbox.suggestQuietWindow([[], undefined, null], 8);
   assert.equal(r.total, 0);
   assert.equal(typeof r.start, 'number');
+});
+
+check('护栏开关：默认只给覆盖 02–06 的窗口', () => {
+  const g = emptyGrid();
+  // 白天 09–17 忙、深夜空 → 关掉护栏时会选到白天窗口
+  for (let d = 0; d < 7; d += 1) { for (let hr = 9; hr < 17; hr += 1) g[d][hr] = 4; }
+  const withGuard = sandbox.suggestQuietCandidates(g, 8, { requireDeepNight: true });
+  const without = sandbox.suggestQuietCandidates(g, 8, { requireDeepNight: false });
+  assert.ok(withGuard.length > 0, '应该还有覆盖深夜的候选');
+  for (const c of withGuard) assert.ok(sandbox.coversDeepNight(c.start, 8), '开启护栏后每个候选都必须覆盖 02–06');
+  assert.ok(without[0].total <= withGuard[0].total, '关掉护栏时最优解不会更差');
+  assert.equal(without[0].total, 0, '不限深夜时应能选到 0 条窗口');
+});
+
+check('coversDeepNight：边界', () => {
+  assert.equal(sandbox.coversDeepNight(2, 8), true, '02 起 8 小时含 2–5');
+  assert.equal(sandbox.coversDeepNight(22, 8), true, '22 起跨零点到 6，含 2–5');
+  assert.equal(sandbox.coversDeepNight(5, 8), false, '05 起不含 2 点');
+  assert.equal(sandbox.coversDeepNight(2, 4), true, '正好 02–06');
+  assert.equal(sandbox.coversDeepNight(3, 4), false, '3–7 缺 2 点');
 });
 
 console.log('');

@@ -1825,6 +1825,7 @@ button:active:not(:disabled) {
   <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:12px;margin-top:10px">
     <div>
       <canvas id="heatCanvas" style="display:block;width:100%;height:240px"></canvas>
+<div id="quietSuggest" style="margin-top:12px"></div>
       <div style="font-size:11px;opacity:.65;margin-top:6px">暗 → 亮：消息密度（对数刻度）</div>
     </div>
     <div id="heatTop" style="font-size:12px;color:#c8d4ea">（加载中…）</div>
@@ -4967,7 +4968,36 @@ function quietWindowScore(grid, start, end) {
   while (hr !== e && guard < 24) { total += col[hr]; hr = (hr + 1) % 24; guard += 1; }
   return total;
 }
+
+// 静默窗口必须覆盖深夜（02:00–06:00 全含）：只优化"消息最少"会选出白天窗口，
+// 那等于上班时间关机，不是"静默"。
+const DEEP_NIGHT = [2, 3, 4, 5];
+function coversDeepNight(start, len) {
+  const inWin = {};
+  for (let k = 0; k < len; k += 1) inWin[(start + k) % 24] = true;
+  return DEEP_NIGHT.every(function (h) { return inWin[h] === true; });
+}
+// 返回按消息量升序的候选窗口（默认只看满足护栏的）
+function suggestQuietCandidates(grid, hours, opts) {
+  const L = Math.max(1, Math.min(12, Number(hours) || 8));
+  const requireDeep = !opts || opts.requireDeepNight !== false;
+  const col = new Array(24).fill(0);
+  for (let d = 0; d < 7; d += 1) {
+    for (let hr = 0; hr < 24; hr += 1) col[hr] += Number((grid[d] && grid[d][hr]) || 0);
+  }
+  const out = [];
+  for (let s = 0; s < 24; s += 1) {
+    if (requireDeep && !coversDeepNight(s, L)) continue;
+    let sum = 0;
+    for (let k = 0; k < L; k += 1) sum += col[(s + k) % 24];
+    out.push({ start: s, end: (s + L) % 24, total: sum });
+  }
+  out.sort(function (a, b) { return a.total - b.total || a.start - b.start; });
+  return out;
+}
+
 let heatCache = null;
+let heatSpan = { count: 0, from: 0, to: 0, keys: 0 };
 async function loadHeatmap() {
   const canvas = document.getElementById('heatCanvas');
   if (!canvas) return;
@@ -4976,6 +5006,7 @@ async function loadHeatmap() {
   try {
     const states = await api('/api/socialV2/states');
     const keys = ((states && states.conversations) || []).map(function (c) { return c.key; }).filter(Boolean).slice(0, 20);
+    heatSpan = { count: 0, from: 0, to: 0, keys: keys.length };
     const grid = [];
     for (let d = 0; d < 7; d += 1) grid.push(new Array(24).fill(0));
     const perKey = [];
@@ -4988,17 +5019,25 @@ async function loadHeatmap() {
       msgs.forEach(function (m) {
         const ts = Number(m.time || 0);
         if (!ts) return;
+        // 口径：只算**入站**消息。机器人自己的回复不算"群活跃"——实测占样本 40%，
+        // 会把"我说得多"误当成"群里热闹"。
+        if (m.isSelf) return;
+        const plain = String(m.plain || m.text || '').trim();
+        if (plain.startsWith('/')) return;
         const dt = new Date(ts);
         const wd = (dt.getDay() + 6) % 7;
         grid[wd][dt.getHours()] += 1;
         local[wd][dt.getHours()] += 1;
+        heatSpan.count += 1;
+        if (!heatSpan.from || ts < heatSpan.from) heatSpan.from = ts;
+        if (!heatSpan.to || ts > heatSpan.to) heatSpan.to = ts;
       });
       const flat = [];
       local.forEach(function (row, wd) { row.forEach(function (n, hr) { if (n) flat.push({ wd: wd, hr: hr, n: n }); }); });
       flat.sort(function (a, b) { return b.n - a.n; });
       perKey.push({ key: key, total: msgs.length, top: flat.slice(0, 3) });
     }
-    heatCache = { grid: grid, perKey: perKey };
+    heatCache = { grid: grid, perKey: perKey, span: heatSpan };
     drawHeatmap();
     renderHeatTop();
   } catch (e) {
@@ -5035,6 +5074,117 @@ function drawHeatmap() {
     }
   }
 }
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+function quietDeepNightPref() {
+  try { return localStorage.getItem('quietRequireDeepNight') !== '0'; } catch { return true; }
+}
+function quietHourLabel(h) { return pad2(h) + ':00'; }
+function renderQuietSuggestion() {
+  const box = document.getElementById('quietSuggest');
+  if (!box || !heatCache) return;
+  const requireDeep = quietDeepNightPref();
+  const cands = suggestQuietCandidates(heatCache.grid, 8, { requireDeepNight: requireDeep });
+  const all = suggestQuietCandidates(heatCache.grid, 8, { requireDeepNight: false });
+  const best = cands[0] || null;
+  const span = heatCache.span || { count: 0, keys: 0, from: 0, to: 0 };
+  const fmtTime = function (ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    return (d.getMonth() + 1) + '-' + d.getDate() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  };
+  const sample = '样本：入站 <b>' + span.count + '</b> 条 / ' + span.keys + ' 会话 / ' + fmtTime(span.from) + ' → ' + fmtTime(span.to);
+  const chip = '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;user-select:none">'
+    + '<input type="checkbox" id="quietRequireDeepNight" ' + (requireDeep ? 'checked' : '') + ' style="margin-top:2px">'
+    + '<span><b>只推荐覆盖深夜（02:00–06:00）的窗口</b>'
+    + '<span style="display:block;opacity:.66;font-size:11px;margin-top:2px">'
+    + (requireDeep
+        ? '开：候选窗口必须完整包含 02–06 点，避免算法挑出「白天全静默」（上午有人 @ 也不醒）。'
+        : '关：不限深夜，只看消息最少 —— 可能选出白天窗口，机器人会在上班时间保持沉默。')
+    + '</span></span></label>';
+  if (!best) {
+    box.innerHTML = '<div style="padding:9px 11px;border:1px solid rgba(255,160,120,.4);border-radius:8px;background:rgba(60,36,28,.35);font-size:12px">'
+      + '<div style="margin-bottom:8px;padding:7px 9px;border:1px solid rgba(120,160,220,.22);border-radius:7px;background:rgba(20,32,52,.5)">' + chip + '</div>'
+      + (requireDeep ? '这组数据里没有覆盖深夜的安静窗口。把上面的开关关掉，可以看看"不限深夜"的候选。' : '这组数据里没有可用的窗口。')
+      + '</div>';
+    bindQuietToggle();
+    return;
+  }
+  const candText = cands.slice(0, 3).map(function (c) {
+    return quietHourLabel(c.start) + '–' + quietHourLabel(c.end) + '（' + c.total + '）';
+  }).join(' · ');
+  const warn = (!coversDeepNight(best.start, 8))
+    ? '<div style="font-size:11px;color:#ffb27a;margin-top:4px">⚠ 该窗口不覆盖深夜：' + quietHourLabel(best.start) + '–' + quietHourLabel(best.end)
+      + ' 期间机器人不会回复，白天有人 @ 它也不醒。</div>'
+    : '';
+  const alt = all.length && all[0] && all[0].start !== best.start
+    ? '<div style="font-size:11px;opacity:.55;margin-top:4px">不限深夜时最安静的是 ' + quietHourLabel(all[0].start) + '–' + quietHourLabel(all[0].end) + '（' + all[0].total + ' 条）</div>'
+    : '';
+  box.innerHTML = '<div style="padding:9px 11px;border:1px solid rgba(120,180,255,.28);border-radius:8px;background:rgba(28,44,72,.45)">'
+    + '<div style="font-size:12px;opacity:.8;margin-bottom:8px">静默时段建议</div>'
+    + '<div style="padding:7px 9px;border:1px solid rgba(120,160,220,.22);border-radius:7px;background:rgba(20,32,52,.5);margin-bottom:8px;font-size:12px">' + chip + '</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'
+    + '<div></div>'
+    + '<button class="btn" id="quietAdopt" type="button">采用建议（' + quietHourLabel(best.start) + '–' + quietHourLabel(best.end) + '）</button>'
+    + '</div>'
+    + '<div style="font-size:13px;margin-top:6px">建议 <b>' + quietHourLabel(best.start) + '–' + quietHourLabel(best.end) + '</b>'
+    + ' <span style="opacity:.6;font-size:11px">窗口内 ' + best.total + ' 条</span></div>'
+    + warn + alt
+    + '<div style="font-size:11px;opacity:.6;margin-top:6px">候选：' + candText + '</div>'
+    + '<div style="font-size:11px;opacity:.6;margin-top:2px">' + sample + '</div>'
+    + '<div style="font-size:11px;opacity:.5;margin-top:2px">口径：只统计入站消息（不含机器人自己发的与斜杠命令）；窗口越少越适合静默</div>'
+    + '</div>';
+  bindQuietToggle();
+  const btn = document.getElementById('quietAdopt');
+  if (btn) btn.addEventListener('click', function () { adoptQuietHours(best); });
+}
+function bindQuietToggle() {
+  const cb = document.getElementById('quietRequireDeepNight');
+  if (!cb) return;
+  cb.addEventListener('change', function (e) {
+    try { localStorage.setItem('quietRequireDeepNight', e.target.checked ? '1' : '0'); } catch { /* 忽略 */ }
+    renderQuietSuggestion();
+  });
+}
+async function adoptQuietHours(clicked) {
+  try {
+    // 点击时**重新拉数据重算**，绝不把页面打开时的旧建议直接写进去
+    await loadHeatmap();
+    const requireDeep = quietDeepNightPref();
+    const best = suggestQuietCandidates(heatCache.grid, 8, { requireDeepNight: requireDeep })[0];
+    if (!best) { alert('没有可用建议：数据里没有合适的窗口。'); return; }
+    if (best.start !== clicked.start || best.end !== clicked.end) {
+      renderQuietSuggestion();
+      alert('建议已更新为 ' + quietHourLabel(best.start) + '–' + quietHourLabel(best.end)
+        + '（基于最新数据）。已刷新，请再看一眼后重新点击采用。');
+      return;
+    }
+    const cfg = await api('/api/socialV2/config');
+    const cur = (cfg && cfg.config && Array.isArray(cfg.config.quietHours)) ? cfg.config.quietHours : null;
+    if (cur && cur[0] === best.start && cur[1] === best.end) { alert('当前配置已经是这个窗口，无需修改。'); return; }
+    const from = cur ? '[' + cur.join(', ') + ']' : '未启用';
+    const ok = confirm('将 socialV2.quietHours 从 ' + from + ' 改为 [' + best.start + ', ' + best.end + ']。\n\n'
+      + quietHourLabel(best.start) + '–' + quietHourLabel(best.end) + ' 期间，符合静默规则的群消息将不再唤醒机器人。\n'
+      + '（样本：入站 ' + heatCache.span.count + ' 条 / ' + heatCache.span.keys + ' 会话）\n\n是否应用？');
+    if (!ok) return;
+    const r = await api('/api/socialV2/config', 'POST', { quietHours: [best.start, best.end] });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '写入失败');
+    const after = await api('/api/socialV2/config');
+    const now = (after && after.config && Array.isArray(after.config.quietHours)) ? after.config.quietHours : null;
+    if (!now || now[0] !== best.start || now[1] !== best.end) throw new Error('写入后回读不一致');
+    if (typeof showConsoleToast === 'function') showConsoleToast('静默时段已更新为 ' + quietHourLabel(best.start) + '–' + quietHourLabel(best.end));
+  } catch (e) {
+    // 失败回滚：把读到的旧值写回去（旧值为 null 就写 null = 关闭）
+    try {
+      const cfg2 = await api('/api/socialV2/config');
+      const cur2 = (cfg2 && cfg2.config && Array.isArray(cfg2.config.quietHours)) ? cfg2.config.quietHours : null;
+      await api('/api/socialV2/config', 'POST', { quietHours: cur2 });
+    } catch (e2) { /* 回滚失败也要把原始错误报出来 */ }
+    alert('应用失败：' + (e && e.message ? e.message : e) + '\n已尝试恢复原配置。');
+  }
+  renderQuietSuggestion();
+}
+
 function renderHeatTop() {
   const box = document.getElementById('heatTop');
   if (!box || !heatCache) return;
@@ -5052,15 +5202,8 @@ function renderHeatTop() {
         + ' <span style="opacity:.55">(' + k.total + ')</span></div>'
         + '<div style="opacity:.7;font-size:11px">' + (top || '—') + '</div></div>';
     }).join('');
-  const sug = suggestQuietWindow(heatCache.grid, 8);
-  const pad = function (n) { return String(n).padStart(2, '0'); };
-  const suggest = '<div style="margin-top:12px;padding:8px 10px;border:1px solid rgba(120,180,255,.28);border-radius:8px;background:rgba(28,44,72,.45)">'
-    + '<div style="font-size:12px;opacity:.75;margin-bottom:4px">静默时段建议</div>'
-    + '<div style="font-size:13px">建议 <b>' + pad(sug.start) + ':00 – ' + pad(sug.end) + ':00</b>'
-    + ' <span style="opacity:.6;font-size:11px">（该窗口共 ' + sug.total + ' 条）</span></div>'
-    + '<div style="font-size:11px;opacity:.6;margin-top:4px">口径：按最近消息统计，窗口内消息越少越适合静默</div>'
-    + '</div>';
-  box.innerHTML = suggest + '<div style="opacity:.7;margin-bottom:6px;margin-top:12px">会话活跃时段 Top 8</div>' + (rows || '（没有消息）');
+  box.innerHTML = '<div style="opacity:.7;margin-bottom:6px">会话活跃时段 Top 8</div>' + (rows || '（没有消息）');
+  renderQuietSuggestion();
 }
 // ── 花费结构（0.4.53）：按会话 Top N + 高峰/空闲占比 ──────────────────
 async function loadUsageStructure() {
