@@ -99,6 +99,7 @@ import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { migrateFromLegacy } from './memory-store.js';
 import { captureReply as captureQzoneDraft } from './qzone-draft.js';
+import { readRoleAppearance, appearancePromptLine } from './role-image.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -4380,7 +4381,7 @@ async function main() {
             },
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
             getOfficialRuntime: () => ({ enabled: Boolean(officialTransport), ready: officialTransport?.ready === true, lastError: String(officialTransport?.lastError ?? '') }),
-            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads'), sessionBackups: path.join(STATE_DIR, 'session-backups') },
+            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads'), sessionBackups: path.join(STATE_DIR, 'session-backups'), roleImages: path.join(STATE_DIR, 'role-images') },
             deliverPrompt: (key, text, opts) => deliverPromptNow(key, text, opts),
             getStickerEntries: () => {
               // 内存为空时回退读磁盘：启动时 WS 同步失败会让 stickerEntries 是空的
@@ -7255,7 +7256,11 @@ async function main() {
   function roleHintForMode(mode, key) {
     const selected = selectRoleText(roleRawContent(key), mode, [...roleActiveNeedTags]);
     if (!selected) return '';
-    return selected.length > roleInjectMaxChars ? truncateText(selected, roleInjectMaxChars) : selected;
+    const body = selected.length > roleInjectMaxChars ? truncateText(selected, roleInjectMaxChars) : selected;
+    // 外观照片（0.4.97）：只注入一句话描述，不塞图（一张图 ≈ 上千 token，每轮都发会烧钱）
+    let appearance = '';
+    try { const r = String(readRoleState()?.role ?? ''); if (r) appearance = appearancePromptLine(readRoleAppearance(path.join(STATE_DIR, 'role-images'), r)); } catch { /* 读不到就不加 */ }
+    return appearance ? `${body}\n\n${appearance}` : body;
   }
   /**
    * 「按需」小节的开关：人格卡里标了 〔按需：唱歌,说话〕 的大段内容，

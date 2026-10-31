@@ -2,6 +2,50 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.97：人物卡可以配一张「外观照片」
+
+用户："人物卡升级，允许引用一张照片来定义自己，照片由用户提供，具体和小鲸鱼那个实施差不多"
+
+小鲸鱼那套的关键取舍是：**图片不进每轮提示词，只把一句话描述注入**。这里照抄：
+
+| 做法 | 原因 |
+| --- | --- |
+| 原图存 `state/role-images/<roleId>.<ext>` | 图片是资产，不该塞进提示词 |
+| 视觉模型生成一句描述，存 `<roleId>.desc.txt` | "你长什么样"一天问不了几次，缓存够用 |
+| 提示词只加一行「你的外貌（来自用户提供的照片）：…」 | 一张图 ≈ 上千 token，每轮发会烧钱 |
+
+### 端点 `GET / POST / DELETE /api/roles/image`
+
+| 动作 | 行为 |
+| --- | --- |
+| GET `?role=x` | `{has, ext, desc}`；`&raw=1` 直接返回图片字节（控制台预览） |
+| POST `{role, dataBase64}` | 保存（文件头嗅探 png/jpg/webp/gif，≤4MB；换图自动删旧图并作废旧描述） |
+| POST `{role, action:'describe'}` | 让视觉模型写一句外貌描述并缓存 |
+| POST `{role, action:'delete'}` 或 `DELETE` | 删图 + 删描述 |
+
+### 控制台：人格与角色页多了「外观照片」折叠块
+
+上传 → 预览（96×96）→ 「识别外貌」→ 显示"外貌描述：…"。切换角色卡时预览自动跟着换。
+
+### 实测
+
+```
+GET  （无图）→ {"ok":true,"has":false,"desc":""}
+POST 上传 1×1 PNG → {"ok":true,"ext":"png","bytes":66}
+GET  → {"ok":true,"has":true,"ext":"png"}
+POST describe → 502 {"error":"描述失败：HTTP 400"}（1×1 纯色图视觉接口拒收，符合预期）
+POST action:delete → {"ok":true,"removed":true}
+```
+
+CDP 验证 UI：区块存在、空状态文案正确、没选文件点上传提示"先选一张图片文件"、JS 异常 0。
+
+### 一个坑：DELETE 被全局 415 挡了
+
+控制台的 `api()` 发 DELETE 时不带 `Content-Type`，而桥接要求非 GET 请求必须是 `application/json` →
+**415 Unsupported Media Type**。所以补了 `POST {action:'delete'}` 这条等价路径，UI 改走它。
+
+> 测试 9 条（`test-role-image.mjs`）：安全文件名 / 文件头嗅探 / 4MB 上限 / 换图只留一张 /
+> 换图作废旧描述 / 删除清干净 / 提示词行空描述返回空串。
 ## 2026-11-01 — 0.4.96：页面钩子收口（把"迟早漏"堵上）
 
 连着三次同样的坑：

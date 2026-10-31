@@ -1918,6 +1918,23 @@ button:active:not(:disabled) {
         </div>
       </details>
 
+      <details class="settings-group">
+        <summary>外观照片（定义「你长什么样」）</summary>
+        <div class="settings-content">
+          <div class="meta">给当前角色卡配一张照片（用户自己提供）。它不会每轮发给模型——只把它的一句话描述注入提示词，省 token。上传后点「识别外貌」让视觉模型写一句描述。</div>
+          <div class="row" style="margin-top:10px;align-items:center;gap:10px">
+            <img id="roleImagePreview" alt="外观照片预览" style="display:none;width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15)">
+            <div id="roleImageEmpty" class="meta" style="flex:1">当前角色还没有照片</div>
+            <input type="file" id="roleImageFile" accept="image/png,image/jpeg,image/webp,image/gif" style="max-width:220px">
+            <button id="roleImageUpload">上传</button>
+            <button id="roleImageDescribe">识别外貌</button>
+            <button id="roleImageClear">删除</button>
+          </div>
+          <div class="meta" id="roleImageMsg"></div>
+          <div class="meta" id="roleImageDesc" style="white-space:pre-wrap"></div>
+        </div>
+      </details>
+
       <h3 class="layer-heading">仿真提示词（预设内置）<span class="meta" id="simPromptStatus">加载中…</span></h3>
       <div class="row" style="margin-bottom:8px">
         <label style="flex:0 0 auto">仿真代次</label>
@@ -3392,6 +3409,103 @@ document.getElementById('closedPreset').addEventListener('change', async () => {
   const mode = active ? active.dataset.mode : 'chat';
   await saveMode(mode);
 });
+// ── 人物卡外观照片（0.4.97）──────────────────────────────────────
+function currentRoleId() {
+  const sel = document.getElementById('rolePick');
+  const picked = sel ? sel.value : '';
+  if (picked && picked !== '__custom__') return picked;
+  const st = (window.__lastStatus || {});
+  return String(st.role || st.roleId || '');
+}
+
+function roleImageMsg(text, bad) {
+  const el = document.getElementById('roleImageMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = bad ? '#ff8a8a' : '';
+}
+
+async function loadRoleImage() {
+  const role = currentRoleId();
+  const img = document.getElementById('roleImagePreview');
+  const empty = document.getElementById('roleImageEmpty');
+  const desc = document.getElementById('roleImageDesc');
+  if (!img) return;
+  if (!role) {
+    img.style.display = 'none';
+    if (empty) { empty.style.display = ''; empty.textContent = '先在下面选一个角色'; }
+    if (desc) desc.textContent = '';
+    return;
+  }
+  try {
+    const r = await api('/api/roles/image?role=' + encodeURIComponent(role));
+    if (r && r.has) {
+      img.src = '/api/roles/image?role=' + encodeURIComponent(role) + '&raw=1&t=' + Date.now();
+      img.style.display = '';
+      if (empty) empty.style.display = 'none';
+    } else {
+      img.style.display = 'none';
+      if (empty) { empty.style.display = ''; empty.textContent = '当前角色还没有照片'; }
+    }
+    if (desc) desc.textContent = (r && r.desc) ? '外貌描述：' + r.desc : '';
+  } catch (e) {
+    roleImageMsg('读取失败：' + e.message, true);
+  }
+}
+
+async function uploadRoleImage() {
+  const role = currentRoleId();
+  const file = document.getElementById('roleImageFile')?.files?.[0];
+  if (!role) { roleImageMsg('先选一个角色卡', true); return; }
+  if (!file) { roleImageMsg('先选一张图片文件', true); return; }
+  if (file.size > 4 * 1024 * 1024) { roleImageMsg('图片超过 4MB', true); return; }
+  roleImageMsg('上传中…');
+  const dataBase64 = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || '').split(',')[1] || '');
+    fr.onerror = () => reject(new Error('读取文件失败'));
+    fr.readAsDataURL(file);
+  });
+  const r = await api('/api/roles/image', 'POST', { role, dataBase64 });
+  if (r && r.ok) {
+    roleImageMsg('已保存（' + r.ext + '，' + Math.round(r.bytes / 1024) + ' KB）；点「识别外貌」生成描述');
+    loadRoleImage();
+  } else {
+    roleImageMsg((r && r.error) || '上传失败', true);
+  }
+}
+
+async function describeRoleImage() {
+  const role = currentRoleId();
+  if (!role) { roleImageMsg('先选一个角色卡', true); return; }
+  roleImageMsg('识别中…（走视觉接口，几秒）');
+  const r = await api('/api/roles/image', 'POST', { role, action: 'describe' });
+  if (r && r.ok) { roleImageMsg('好啦，描述已写入'); loadRoleImage(); }
+  else roleImageMsg((r && r.error) || '识别失败', true);
+}
+
+async function clearRoleImage() {
+  const role = currentRoleId();
+  if (!role) return;
+  if (!confirm('删掉这个角色的照片与外貌描述？')) return;
+  await api('/api/roles/image', 'POST', { role, action: 'delete' });
+  roleImageMsg('已删除');
+  loadRoleImage();
+}
+
+function bindRoleImage() {
+  const up = document.getElementById('roleImageUpload');
+  if (up && !up.dataset.bound) {
+    up.dataset.bound = '1';
+    up.addEventListener('click', uploadRoleImage);
+    document.getElementById('roleImageDescribe')?.addEventListener('click', describeRoleImage);
+    document.getElementById('roleImageClear')?.addEventListener('click', clearRoleImage);
+    document.getElementById('roleImageFile')?.addEventListener('change', () => roleImageMsg('已选择文件，点「上传」'));
+    document.getElementById('rolePick')?.addEventListener('change', () => loadRoleImage());
+  }
+  loadRoleImage();
+}
+
 // 人格下拉：列出已有角色卡；选「自定义…」才显示输入框
 async function loadRolePick() {
   const sel = document.getElementById('rolePick');
@@ -6564,7 +6678,7 @@ async function spaceDeletePost(tid, btn) {
     reference: ['loadToolHealth'],
     'social-v2': ['loadVoiceLibrary'],
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
-    persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick']
+    persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage']
   };
 
   function runPageHooks(page) {
