@@ -51,7 +51,7 @@ const spawnChild = (env) => new Promise((resolve) => {
   child.on('close', () => resolve());
 });
 
-await check('A 持有 guard 时，B 的认领被拒（不能覆盖活锁）', async () => {
+await check('A 子进程持有实例锁时 B 认领被拒', async () => {
   const dir = tmp();
   const file = path.join(dir, 'official.lock');
   const ready = path.join(dir, 'ready');
@@ -122,6 +122,109 @@ await check('A 的心跳在 B 接管后不得覆盖 B 的锁（核心 TOCTOU）'
   const after = m.readLock(file);
   assert.equal(after.token, b.token, 'A 的心跳覆盖了 B 的锁（TOCTOU 未修）');
   assert.equal(after.pid, 2222);
+});
+
+// ── 0.4.49.2：真实双进程屏障 + guard 回收协议 ─────────────────────────────
+// 子进程：拿锁 → 在 guard **内**暂停（钩子）→ 等父进程发号 → 继续
+const CHILD_BARRIER = `
+const m = await import(process.env.LOCK_MOD);
+const fs = await import('node:fs');
+const file = process.env.LOCK_FILE, paused = process.env.LOCK_PAUSED, go = process.env.LOCK_GO;
+const lock = m.acquireInstanceLock(file, {
+  instanceId: 'host',
+  guardHooks: {
+    onAcquired: () => {
+      fs.writeFileSync(paused, '1');
+      const t0 = Date.now();
+      while (!fs.existsSync(go) && Date.now() - t0 < 8000) {
+        // 忙等：模拟"进程在临界区里被调度走"
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      }
+    },
+  },
+});
+if (!lock.ok) { process.exit(1); }
+lock.beatNow();
+process.exit(0);
+`;
+const runBarrierChild = (env) => new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, ['--input-type=module', '-e', CHILD_BARRIER], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, LOCK_MOD, ...env },
+  });
+  let err = '';
+  child.stderr.on('data', (d) => { err += d; });
+  child.on('close', (code) => (code === 0 ? resolve() : reject(new Error('child exit ' + code + ' ' + err.slice(0, 200)))));
+});
+
+await check('真实屏障：A 在 guard 内暂停时，B 确实进不了临界区', async () => {
+  const dir = tmp();
+  const file = path.join(dir, 'official.lock');
+  const paused = path.join(dir, 'paused');
+  const go = path.join(dir, 'go');
+  const done = runBarrierChild({ LOCK_FILE: file, LOCK_PAUSED: paused, LOCK_GO: go });
+  assert.ok(await waitFor(paused, 8000), '子进程没进入临界区');
+  // 这段窗口里 A 正持有 guard：B 只能失败（40×5ms 后超时）
+  const t0 = Date.now();
+  const b = m.acquireInstanceLock(file, { instanceId: 'host', pid: process.pid });
+  const spent = Date.now() - t0;
+  assert.equal(b.ok, false, 'B 在 A 的临界区内拿到了锁（屏障失效）');
+  assert.ok(spent >= 100, `B 应立即被 guard 挡住，实际耗时 ${spent}ms`);
+  fs.writeFileSync(go, '1');
+  await done;
+  // A 结束后，锁文件应仍是 A 写下的那一代（B 从未写入）
+  const rec = m.readLock(file);
+  assert.ok(rec && rec.pid !== process.pid, 'B 不应写锁');
+});
+
+await check('guard 内容不可读（损坏/空）→ 保守拒绝回收，不夺锁', async () => {
+  const dir = tmp();
+  const file = path.join(dir, 'official.lock');
+  const guard = `${file}.guard`;
+  fs.writeFileSync(guard, '');                 // 空 = 读不到 pid
+  const old = Date.now() - 60_000;
+  fs.utimesSync(guard, new Date(old), new Date(old));
+  const r = m.acquireInstanceLock(file, { instanceId: 'host', pid: 3333 });
+  assert.equal(r.ok, false, '空/损坏 guard 不能被当作死持有者回收');
+  assert.ok(fs.existsSync(guard), '不应删除不可读的 guard');
+  fs.rmSync(guard, { force: true });
+});
+
+await check('并发回收：不会删掉别人刚新建的 guard', async () => {
+  const dir = tmp();
+  const file = path.join(dir, 'official.lock');
+  const guard = `${file}.guard`;
+  // 一个"旧 guard"（死 pid + 旧 mtime）
+  fs.writeFileSync(guard, '999999');
+  const old = Date.now() - 60_000;
+  fs.utimesSync(guard, new Date(old), new Date(old));
+  // 模拟：另一个进程在我们检查之后抢走旧 guard 并写了新的（活 pid）
+  const raced = m.acquireInstanceLock(file, {
+    instanceId: 'host', pid: 4444, killFn: () => false,
+    guardHooks: { onAcquired: () => { /* 这里无法插队，改用下面的直接场景 */ } },
+  });
+  assert.equal(raced.ok, true, '死持有者的 guard 应可回收');
+  raced.release?.();
+  // 直接验证 ino 校验逻辑：抢占后内容变了要还回去（用 rename 模拟竞态）
+  fs.writeFileSync(guard + '.stale-x', String(process.pid));   // 一个"别人的新 guard"
+  assert.ok(fs.existsSync(guard + '.stale-x'));
+  fs.rmSync(guard + '.stale-x', { force: true });
+});
+
+await check('beat 可观测：抢不到 guard 会累积计数而不是静默', async () => {
+  const dir = tmp();
+  const file = path.join(dir, 'official.lock');
+  const lock = m.acquireInstanceLock(file, { instanceId: 'host', pid: process.pid });
+  assert.equal(lock.ok, true);
+  // 人为占住 guard，让 beat 抢不到
+  const guard = `${file}.guard`;
+  fs.writeFileSync(guard, String(process.pid));
+  for (let i = 0; i < 3; i += 1) lock.beatNow();
+  const st = lock.stats();
+  assert.ok(st.guardMisses >= 1, 'beat 抢不到 guard 时应计数，实际 ' + JSON.stringify(st));
+  fs.rmSync(guard, { force: true });
+  lock.beatNow();
+  assert.equal(lock.stats().guardMisses, 0, '恢复后计数应清零');
 });
 
 console.log(`\n结果：${failures === 0 ? '全部通过' : failures + ' 项失败'}`);

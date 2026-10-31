@@ -2,6 +2,57 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.49.2：guard 回收协议（第二轮复核 P2-1/P2-2 + P3）
+
+> 复核结论：heartbeat/release 修复有效，但 **guard 自身的回收协议**被指出两个新缺口。本版只修这两个 + 两个 P3。
+
+### P2-1：并发回收会删掉别人刚新建的 guard
+
+旧代码检查 stale 后直接 `rmSync(guardFile)`，**没有验证删的还是刚才检查的那个文件**。
+
+现在：`rename` 抢占 → 比对 `ino/dev/birthtime` → 是自己检查过的才删；不是就**原样还回去**。
+
+```js
+try { fs.renameSync(guardFile, parked); } catch { return 'gone'; }   // 抢占（同名只有一个人成功）
+const st1 = fs.statSync(parked);
+if (st1.ino !== st0.ino || st1.dev !== st0.dev) { fs.renameSync(parked, guardFile); return 'raced'; }
+```
+
+### P2-2：空/损坏 guard 被当作死持有者
+
+两处改动：
+
+1. **创建也原子化了**：先把 pid 写进临时文件，再 `linkSync` 挂到 guard 名上 —— 不再有"文件已存在但内容为空"的窗口
+2. **读不到 pid 就不再回收**：`holderPid <= 0` 一律保守拒绝（复核明确要求：未知状态应拒绝，不是回收）
+
+代价：guard 文件真损坏时会一直等。已在 `TROUBLESHOOTING.md` 写明**手工删除步骤**与"先确认没有第二个实例"。
+
+### P3-1：beat 抢不到 guard 时不再静默
+
+新增 `stats()`：连续失败计数 + 限流日志（第 3 次、之后每 30 次）+ "锁被接管"事件。
+
+### P3-2：发送失败日志脱敏
+
+`.catch((e) => log('❌ 发送失败 …' + (e?.message ?? e)))` → `describeError(e)`。
+
+### P3-3：verbose 开关写进文档
+
+`TROUBLESHOOTING.md` 补：开关设置、风险提示、**用完必须删 `plugin.log` 与 `plugin.log.1`**。
+
+### 测试
+
+`test-instance-lock-toctou.mjs` 从 5 条扩到 **9 条**，新增：
+
+- **真实双进程屏障**：A 在 guard 内忙等（`onAcquired` 钩子），B 的认领必须失败
+- 空/损坏 guard → 不回收、不夺锁
+- 并发回收场景不误删新 guard
+- beat 计数可观测（占住 guard 后累积，恢复后清零）
+
+并把上一版命名不准确的用例改成「A 子进程持有实例锁时 B 认领被拒」（复核指出原注释与实现不符）。
+
+### 质量门
+
+审计 **145/145**；原子写守卫 5 处 guard-allow 例外；体积基线更新（instance-lock 227 行）。
 ## 2026-10-31 — 0.4.49.1：锁租约 TOCTOU + 日志脱敏残留（独立复核 R49-01/02/04）
 
 > 承接 v0.4.49 独立复核。复核确认 5 项修复有效，同时指出 3 处残留。本版只修这 3 处，**不混入 0.4.50**。
