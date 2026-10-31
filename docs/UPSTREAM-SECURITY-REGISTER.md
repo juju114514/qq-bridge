@@ -59,12 +59,12 @@
 ## 五、为什么不整体追平
 
 ```
-git rev-list --count upstream/main..origin/main   → 401   （我们独有）
+git rev-list --count upstream/main..origin/main   → 429   （我们独有；0.4.49 实测，数字会变，以命令输出为准）
 git rev-list --count origin/main..upstream/main   → 92    （落后）
 ```
 
-401 vs 92 的规模下，`git merge upstream/main` 合的不是"92 个独立更新"，
-而是"92 个更新 × 我们 401 个提交"的交互 —— 冲突不一定表现为 Git 冲突，
+429 vs 92 的规模下，`git merge upstream/main` 合的不是"92 个独立更新"，
+而是"92 个更新 × 我们 429 个提交"的交互 —— 冲突不一定表现为 Git 冲突，
 更可能是**行为冲突**（尤其 `bridge.js` / preset / 会话状态都已高度定制）。
 
 结论：**独立维护 + 定向移植**。

@@ -174,8 +174,11 @@ export function runPrelude(ctx) {
   if (agentToken && pathname.startsWith('/api/socialV2/') && getMode() !== 'reserved2') {
     return deny(403, '该接口仅 reserved2 模式可用');
   }
+  // 0.4.49（外部审查 P2-1）：initial-prompt 原来只拒 GET，POST（保存/删除）放行。
+  // 结果是：持有效会话令牌的智能体可以改写"初始提示词"——那会被注入后续每个会话。
+  // 现在把它并入管理端集合，**与 method 无关**一律拒绝。
   if (agentToken && (ADMIN_ONLY_V2_PATHS.includes(pathname)
-    || (pathname === '/api/socialV2/initial-prompt' && req.method === 'GET'))) {
+    || pathname === '/api/socialV2/initial-prompt')) {
     return deny(403, '该接口仅控制台可用');
   }
   if (agentToken && (pathname === '/api/stickers' || pathname.startsWith('/api/stickers/'))) {

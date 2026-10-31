@@ -43,7 +43,8 @@ node scripts/test-dsh-contracts.mjs      # DSH 接口契约（需要 DSH 在跑�
 
 ## 4. 提交 PR
 
-- 分支：`next/<版本号>`（例如 `next/0.4.47`）；hotfix 可以直接在 `main`
+- 分支：**一律** `next/<版本号>`（例如 `next/0.4.49`）；**没有 hotfix 直推 main 的例外**
+  （`AGENTS.md` 的「分支铁律」优先：main 只接受 `--no-ff` 合并的发布提交）
 - 一个 PR **只做一类事**（修 bug / 加测试 / 文档）；不要混重构和功能
 - Commit message 建议 `type(scope): 说明`（`fix` / `feat` / `docs` / `test` / `chore`）
 - PR 描述里写：**改了什么、为什么、怎么验证的**（贴命令和输出）

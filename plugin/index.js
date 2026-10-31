@@ -97,6 +97,92 @@ export async function probeSidecar(sidecarUrl, { timeoutMs = 1500 } = {}) {
   }
 }
 
+/**
+ * 把工具白名单真正落到 agent 上；**任何一步不成立都抛错**（0.4.49 fail-closed）。
+ *
+ * 为什么不能只 catch 后记日志：QQ 会话来自陌生人，agent 默认带 bash/read/write/edit。
+ * 白名单没生效 = 陌生人拿到本机工具 = 提权。宁可这个 agent 建不起来，也不能放行。
+ */
+export function applyToolAllowlist(agentCtx, allow, log = () => {}) {
+  const restrict = agentCtx?.tools?.restrict;
+  if (typeof restrict !== 'function') {
+    throw new Error('宿主缺少 tools.restrict（无法限制工具，拒绝建 Agent）');
+  }
+  if (!Array.isArray(allow) || allow.length === 0) {
+    throw new Error('白名单为空（拒绝建 Agent：空名单不等于全禁，宿主可能理解为不过滤）');
+  }
+  restrict({ allow });
+  log('已对 agent 应用工具白名单（' + allow.length + ' 个；本地工具全部不可见）');
+  return true;
+}
+
+/** 插件侧 PID 存活性：只有 ESRCH 才算"进程不存在"（0.4.49，与 bridge 侧同语义）。 */
+export function pidAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return false;
+  try { process.kill(n, 0); return true; }
+  catch (error) { return String(error?.code ?? '') !== 'ESRCH'; }
+}
+
+// ── 日志脱敏（0.4.49，外部审查 P2-4）─────────────────────────────────────────
+// 旧行为：把工具参数的 JSON（200 字）和结果的 JSON（160 字）直接写进 plugin.log。
+// qqb_send_message 的参数就是**消息正文** —— 等于把群聊/私聊内容长期留在磁盘上。
+// 现在默认只写「工具名 + 参数键名 + 各字段长度」，正文一律不进日志。
+// 需要原始取证时显式开 `QQ_PLUGIN_LOG_VERBOSE=1`（文档里写明风险与清理方式）。
+const SENSITIVE_KEY = /(message|text|content|prompt|reply|body|msg|quote|history|args|result|output|data)/i;
+
+/** 允许 verbatim 落盘字（开关打开时才用）。 */
+export function verboseLogEnabled(env = process.env) {
+  return String(env?.QQ_PLUGIN_LOG_VERBOSE ?? '') === '1';
+}
+
+/**
+ * 把工具参数压成"键名 + 长度"，绝不带正文。
+ * @returns {string} 形如 `qqb_send_message {key:"group:123"(9), text:12字}`
+ */
+export function describeToolArgs(name, args, { maxFields = 6 } = {}) {
+  let obj = args;
+  if (typeof obj === 'string') {
+    try { obj = JSON.parse(obj); } catch { obj = null; }
+  }
+  if (!obj || typeof obj !== 'object') return `${name} (无参数)`;
+  const parts = [];
+  for (const [k, v] of Object.entries(obj).slice(0, maxFields)) {
+    if (typeof v === 'string') {
+      // 敏感键只给长度；非敏感键最多展示 24 字（如 key="group:123456"）
+      parts.push(SENSITIVE_KEY.test(k) ? `${k}:${v.length}字` : `${k}:"${v.slice(0, 24)}"`);
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      parts.push(`${k}:${v}`);
+    } else if (Array.isArray(v)) {
+      parts.push(`${k}:[${v.length}]`);
+    } else if (v && typeof v === 'object') {
+      parts.push(`${k}:{${Object.keys(v).length}键}`);
+    } else {
+      parts.push(`${k}:${String(v)}`);
+    }
+  }
+  const extra = Object.keys(obj).length > maxFields ? ` +${Object.keys(obj).length - maxFields}键` : '';
+  return `${name} {${parts.join(', ')}${extra}}`;
+}
+
+/**
+ * 工具结果同样只写"结构信息"：是否 ok、长度、错误摘要（错误里也可能带正文，只取首行）。
+ */
+export function describeToolResult(name, result, { maxErr = 120 } = {}) {
+  let r = result;
+  if (typeof r === 'string') {
+    return `${name} → ${r.length}字`;
+  }
+  if (r && typeof r === 'object') {
+    const ok = r.ok === true ? 'ok' : (r.ok === false ? 'fail' : '?');
+    const err = typeof r.error === 'string' ? ` err:"${r.error.split('\n')[0].slice(0, maxErr)}"` : '';
+    let size = '';
+    try { size = ` ${JSON.stringify(r).length}字`; } catch { size = ''; }
+    return `${name} → ${ok}${size}${err}`;
+  }
+  return `${name} → ${String(r)}`;
+}
+
 export function apply(ctx, rawConfig) {
   const config = normalizeConfig(rawConfig);
   // 日志同时写文件：插件跑在 DSH 进程里，桌面版的 stdout 用户看不到 ——
@@ -118,6 +204,8 @@ export function apply(ctx, rawConfig) {
   };
 
   const disposers = [];
+  // 白名单失败标记（0.4.49）：非空 = 入站一律拒绝，避免"宿主吞了 setup 异常继续跑"
+  let toolsUnsafe = '';
   const state = { startedAt: Date.now(), config, sidecar: { ok: null } };
   // 工具在挂载时注册（宿主只给一次机会），通道稍后才启动 —— 所以用可变 holder。
   // 注意：必须在 createTools() 之前声明，否则 getter 会踩 TDZ（Cannot access before initialization）。
@@ -241,8 +329,8 @@ export function apply(ctx, rawConfig) {
             // 新插件被判"通道被占用"→ 干脆不连 QQ，群里 @ 它毫无反应。
             // 死了的持有者不该拦人：这里按 pid 存活性自己做一次抢占。
             const holderPid = Number(claim?.holder?.pid ?? 0);
-            let holderAlive = false;
-            try { if (holderPid > 0) { process.kill(holderPid, 0); holderAlive = true; } } catch { holderAlive = false; }
+            // 0.4.49：EPERM/未知错误不能当"已退出"（否则双实例抢 QQ）
+            const holderAlive = pidAlive(holderPid);
             if (holderPid > 0 && !holderAlive) {
               try { fs.rmSync(store.file, { force: true }); } catch { /* ignore */ }
               log('通道持有者 pid ' + holderPid + ' 已退出，接管通道');
@@ -300,11 +388,18 @@ export function apply(ctx, rawConfig) {
               'qqb_send_message', 'qqb_reply',
               'todo_write', 'ask_user_question',
             ];
+            // 0.4.49（外部审查 P1-1）：白名单必须 **fail-closed**。
+            //   旧代码用 `agentCtx?.tools?.restrict?.(...)` + 无条件成功日志：
+            //   宿主没有 restrict 时静默跳过，日志却写着"已应用"——这是假的安全信号。
+            //   现在：缺能力/抛错都抛出去（让宿主建 agent 失败），并置 toolsUnsafe，
+            //   入站侧再拒一次（双保险，防止宿主吞掉 setup 的异常继续跑）。
             try {
-              agentCtx?.tools?.restrict?.({ allow: ALLOW });
-              log('已对 agent 应用工具白名单（' + ALLOW.length + ' 个；本地工具全部不可见）');
+              applyToolAllowlist(agentCtx, ALLOW, log);
+              toolsUnsafe = '';
             } catch (e) {
-              log('⚠️ 工具白名单应用失败（危险，请检查）：' + (e?.message ?? e));
+              toolsUnsafe = String(e?.message ?? e);
+              log('🛑 工具白名单无法生效，拒绝该 Agent 处理 QQ 消息：' + toolsUnsafe);
+              throw e;
             }
           },
           loadCreateUserMessage: async () => (await import('@deepseek-ai/dsh-llm')).createUserMessage,
@@ -326,16 +421,27 @@ export function apply(ctx, rawConfig) {
             if (bySession.has(session?.id)) {
               const ty = event?.type ?? '?';
               if (ty === 'tool/call') {
-                // 取证需要：哪个工具、什么参数（截断）。真机事故里只记 "tool/call"
-                // 完全看不出它调的是 desktop_sequence + win+r。
+                // 0.4.49：默认脱敏 —— 只记工具名 + 参数键名/长度，不记正文。
+                // 真机事故里"调的是什么工具"仍然看得出来（这才是取证重点）。
                 const nm = event?.data?.name ?? event?.data?.toolName ?? '?';
-                let args = '';
-                try { args = JSON.stringify(event?.data?.args ?? event?.data?.arguments ?? {}); } catch { args = ''; }
-                log(`工具调用：${nm} ${String(args).slice(0, 200)}`);
+                const raw = event?.data?.args ?? event?.data?.arguments ?? {};
+                if (verboseLogEnabled()) {
+                  let args = '';
+                  try { args = JSON.stringify(raw); } catch { args = ''; }
+                  log(`工具调用（verbose）：${nm} ${String(args).slice(0, 200)}`);
+                } else {
+                  log(`工具调用：${describeToolArgs(nm, raw)}`);
+                }
               } else if (ty === 'tool/result') {
-                let r2 = '';
-                try { r2 = JSON.stringify(event?.data?.result ?? event?.data?.output ?? {}); } catch { r2 = ''; }
-                log(`工具结果：${String(r2).slice(0, 160)}`);
+                const nm2 = event?.data?.name ?? event?.data?.toolName ?? '?';
+                const rr = event?.data?.result ?? event?.data?.output ?? {};
+                if (verboseLogEnabled()) {
+                  let r2 = '';
+                  try { r2 = JSON.stringify(rr); } catch { r2 = ''; }
+                  log(`工具结果（verbose）：${String(r2).slice(0, 160)}`);
+                } else {
+                  log(`工具结果：${describeToolResult(nm2, rr)}`);
+                }
               } else {
                 log(`会话事件：${ty}`);
               }
@@ -370,6 +476,11 @@ export function apply(ctx, rawConfig) {
               : String(event?.message ?? '');
             if (key && event?.post_type === 'message' && text.trim()) {
               chatLog.append(key, { text, userId: String(event.user_id ?? ''), self: String(event.user_id) === String(event.self_id) });
+            }
+            if (toolsUnsafe) {
+              // 双保险（0.4.49）：白名单没生效时，即使宿主仍建了 agent，也不把消息交给它
+              log('🛑 入站拒绝：工具白名单未生效（' + toolsUnsafe + '）');
+              return;
             }
             const r = gate(event, { selfId: state.selfId ?? event?.self_id });
             if (!r.handle) {

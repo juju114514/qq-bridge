@@ -1,6 +1,7 @@
 # 安全策略（SECURITY）
 
-> 本仓库是**个人 fork**（上游：`Derpyu520/qq-bridge`，MIT）。安全策略涵盖本仓库自研部分与移植部分。
+> 本仓库是**独立维护**的分支（上游 `Derpyu520/qq-bridge`，MIT；与上游是"定向回移植"关系，不是简单 fork）。
+> 安全策略涵盖本仓库自研部分与移植部分。
 
 ## 一、怎么报告漏洞
 
@@ -62,7 +63,8 @@
 
 ## 七、English summary
 
-This is a personal MIT fork. Report vulnerabilities **privately** via GitHub Security Advisories
+This is an independently maintained MIT branch (targeted backports from upstream, not a wholesale fork).
+Report vulnerabilities **privately** via GitHub Security Advisories
 or by opening an issue that only says "I have a security issue, need private contact".
 No SLO is promised. In scope: prompt injection, tool-boundary bypass, credential leaks,
 SSRF, channel-mutex failures, privilege escalation, console auth bypass.
