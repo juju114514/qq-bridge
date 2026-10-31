@@ -1,5 +1,7 @@
 # QQ ↔ DeepSeek Harness 桥接
 
+> **维护模式（2026-10-31 起）**：本仓库**独立维护**，不以「追平上游」为目标。上游只作为安全与技术情报来源，有价值的修复按 [docs/UPSTREAM-SECURITY-REGISTER.md](docs/UPSTREAM-SECURITY-REGISTER.md) 登记后**定向移植**。
+
 > 🔧 **Official 通道（QQ 官方机器人）正在调试与维修**：代码已修完审计的 3 个缺口（0.4.29），
 > 真机 e2e 正在做，**预计 3~5 天内更新**（2026-11-03 前）。**期间建议先等一等**，不必急着启用。
 > 状态 🔒 上锁 + 🧪 EXPERIMENTAL（未验证）。原因、时间窗、解锁条件与**免责声明**见 [LOCK.md](LOCK.md)。

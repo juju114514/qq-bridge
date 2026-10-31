@@ -251,6 +251,7 @@ const tests = [
   'check-atomic-write.mjs',
   // 路由总表要跟代码一致：改了路由忘了重新生成 → 红（生成：node scripts/gen-route-index.mjs --write）
   'test-safe-fetch-ports.mjs',
+  'check-preset-fresh.mjs',
   'check-lock.mjs',
   'check-plugin-vendor-fresh.mjs',
   'check-privacy.mjs',
