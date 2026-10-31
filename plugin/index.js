@@ -15,6 +15,8 @@
  * 多一道构建就多一处"源码与产物不一致"的可能（参考 dsh-onebot 的 lib/ 坑）。
  */
 
+import { sessionIdFor as sessionIdOf } from './agent-driver.js';
+
 export const name = 'qq-bridge';
 
 /** 给离线测试用的别名（对外 API 只有 name/inject/apply） */
@@ -25,6 +27,9 @@ export const inject = ['tools'];
 
 /** 配置默认值。真正的 schema 校验交给 DSH 的 schemastery（见 Config 导出）。 */
 const DEFAULTS = {
+  // 默认 false：装上插件不等于立刻连 QQ。要真接 QQ 必须显式打开，
+  // 否则"顺手装个插件"就把用户的号接进来了。
+  enabled: false,
   onebotUrl: 'ws://127.0.0.1:3001',
   accessToken: '',
   sidecarUrl: 'http://127.0.0.1:3110',
@@ -35,6 +40,7 @@ const DEFAULTS = {
 export function normalizeConfig(raw = {}) {
   const cfg = { ...DEFAULTS, ...(raw ?? {}) };
   return {
+    enabled: cfg.enabled === true,
     onebotUrl: String(cfg.onebotUrl || DEFAULTS.onebotUrl),
     accessToken: String(cfg.accessToken || ''),
     sidecarUrl: String(cfg.sidecarUrl || DEFAULTS.sidecarUrl).replace(/\/+$/, ''),
@@ -101,6 +107,60 @@ export function apply(ctx, rawConfig) {
     throw new Error('[qq-plugin] 挂载失败：ctx.tools.register 不可用（DSH 版本不匹配？）');
   }
 
+  // ── 通道（只有 enabled=true 才连 QQ）──────────────────────────────
+  let channel = null;
+  let driver = null;
+  if (config.enabled) {
+    (async () => {
+      try {
+        const [{ OneBotWsClient }, { createInboundGate }, { createChannel }, { createAgentDriver }] = await Promise.all([
+          import('../src/onebot-ws.js'),
+          import('./inbound.js'),
+          import('./channel.js'),
+          import('./agent-driver.js'),
+        ]);
+        if (!ctx.agents?.create) throw new Error('ctx.agents.create 不可用（inject 里要声明 agents）');
+        driver = createAgentDriver({
+          agents: ctx.agents,
+          loadCreateUserMessage: async () => (await import('@deepseek-ai/dsh-llm')).createUserMessage,
+          log: (m) => log(m),
+          meta: { plugin: name },
+        });
+        const gate = createInboundGate(config);
+        const bySession = new Map(); // sessionId -> chatKey
+
+        // 助手回复 → QQ（DSH 的会话事件总线）
+        if (typeof ctx.on === 'function') {
+          disposers.push(ctx.on('session/event', (session, event) => {
+            const chatKey = bySession.get(session?.id);
+            if (!chatKey) return;
+            if (event?.type !== 'assistant/message') return;
+            const blocks = event?.data?.message?.content ?? [];
+            const text = blocks.filter((b) => b?.type === 'text').map((b) => b.text).join('');
+            if (!text.trim()) return;
+            channel?.send(chatKey, text).catch((e) => log('发送失败：' + (e?.message ?? e)));
+          }));
+        }
+
+        channel = createChannel({
+          Client: OneBotWsClient,
+          clientOptions: { url: config.onebotUrl, accessToken: config.accessToken || undefined },
+          log: (m) => log(m),
+          onInbound: (event) => {
+            const r = gate(event, { selfId: event?.self_id });
+            if (!r.handle) return;
+            bySession.set(sessionIdOf(r.key), r.key);
+            driver.deliver(r.key, r.text).catch((e) => log('投递给 Agent 失败：' + (e?.message ?? e)));
+          },
+        });
+        await channel.start();
+        log('QQ 通道已启动');
+      } catch (e) {
+        log('QQ 通道启动失败（插件仍可用，只是不连 QQ）：' + (e?.message ?? e));
+      }
+    })();
+  }
+
   // ── 降级检查：启动时探一次，把结论打出来（5.5 节要求）──────────────
   probeSidecar(config.sidecarUrl)
     .then((res) => {
@@ -117,6 +177,8 @@ export function apply(ctx, rawConfig) {
 
   // DSH 卸载插件时会调用返回的 dispose（Cordis 约定：apply 返回清理函数也合法）
   return () => {
+    try { channel?.close(); } catch { /* ignore */ }
+    try { driver?.disposeAll?.(); } catch { /* ignore */ }
     for (const d of disposers) {
       try { d(); } catch { /* 卸载失败不该影响宿主 */ }
     }
