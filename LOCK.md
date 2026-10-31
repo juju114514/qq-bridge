@@ -5,6 +5,14 @@
 > 钥匙持有人：仓库所有者（本仓库唯一能解锁的人）
 > 影响范围：**只锁 git 仓库的口径与发布说明，不锁本地运行。**
 
+## 〇、踩到报错先看这份
+
+配置/白名单/窗口类问题已有实测对照：
+[docs/guides/OFFICIAL-TROUBLESHOOTING.md](docs/guides/OFFICIAL-TROUBLESHOOTING.md)
+（两层白名单、`not-friend`、被动回复窗口、鉴权失败、重复消息…，共 8 类）。
+
+> 但它**不改变上锁状态**：官方通道仍为 🔒 上锁 + 🧪 EXPERIMENTAL，仓库口径不变。
+
 ## 一、锁的是什么
 
 **QQ 官方机器人通道**（`config.json` 的 `official` 段 / `src/qqbot-official.js` / `src/official-transport.js`）。

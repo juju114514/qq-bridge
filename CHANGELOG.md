@@ -2,6 +2,34 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.67：补 18 篇漏索引的文档 + 加索引守卫；官方通道仍上锁但补了「报错调整方案」
+
+### 1）文档索引：一次查出 18 篇没进索引（同一个疏漏反复发生）
+
+| 类别 | 漏了 |
+| --- | --- |
+| guides | KASPERSKY · ONEBOT-ACTIONS · PRIVACY · SECURITY · SERVER · TOPOLOGY |
+| design | dsh-plugin-api-notes · OFFICIAL-CHANNEL-INTEGRATION · plugin-mode-2026-10-31 · decisions/0001 · decisions/0002 |
+| docs 顶层 | OPERATIONS · UPSTREAM-SECURITY-REGISTER · REFACTOR-BRIDGE · bridge-map · routes-map · plan-2026-10-31-plugin · plan-split-console-server |
+
+全部补进 `docs/README.md`，并新增顶层文档小节。
+
+**根因不是「忘性」，是没有守卫** —— 所以加了 `scripts/check-docs-index.mjs`：
+`guides/ design/ 顶层` 必须索引，`audits/ releases/ reports/ validation/ sessions/` 豁免（历史归档）。
+现在 64 篇活文档全绿。
+
+### 2）官方通道：**依旧上锁**，但补上「报错调整方案」
+
+`docs/guides/OFFICIAL-TROUBLESHOOTING.md`：8 类**实测**报错 + 逐条调整
+（两层白名单 / not-friend / 被动回复窗口 / 鉴权 / 重复消息 / 闸门 probe …），
+开头给「最快定位顺序」（4 条命令）。
+
+LOCK.md 加了一节指向它，但**锁的状态没变**：🔒 上锁 + 🧪 EXPERIMENTAL。
+仓库**依旧不合并**上游、也不把官方通道写成"已支持"。
+
+### 3）仓库介绍同步
+
+README 顶部加了两行：踩到报错看哪份文档、插件形态已提交 DSH 插件市场（PR #10986）。
 ## 2026-11-01 — 0.4.66：官方通道「预留接入位」（等验证通过直接接入）
 
 官方通道代码早就实现了，但接入状态一直散落在 LOCK.md 与几个条件判断里。这一版把它收敛成

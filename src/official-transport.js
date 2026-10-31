@@ -238,7 +238,10 @@ export function createOfficialTransport(opts = {}) {
           {
             const atts = Array.isArray(event.attachments) ? event.attachments : [];
             const types = atts.map((a) => String(a?.content_type ?? a?.type ?? '?')).join(',') || '无';
-            log(`[official] 收到 ${event.kind === 'group' ? '群' : '单聊'}消息（作者 ${event.authorName || '?'}，文本 ${String(event.text ?? '').length} 字，附件 ${atts.length} 个：${types}）`);
+            // 作者 openid 也打出来：群消息里 event.id 是**群** openid，作者是另一个人；
+            // 验 owner / 排障时需要知道"谁发的"（前 8 位足够区分，不刷全量）。
+            const who = event.authorId ? String(event.authorId).slice(0, 8) + '\u2026' : '?';
+            log(`[official] 收到 ${event.kind === 'group' ? '群' : '单聊'}消息（作者 ${event.authorName || '?'}\uff0fopenid ${who}，文本 ${String(event.text ?? '').length} 字，附件 ${atts.length} 个：${types}）`);
           }
           try { onMessage?.(event, toOneBotEvent(event)); } catch (e) { log(`[official] 转交失败：${e?.message ?? e}`); }
         }

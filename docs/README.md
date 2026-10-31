@@ -7,6 +7,18 @@
 
 ---
 
+## 顶层文档（docs/ 根目录）
+
+| 文档 | 一句话说明 | 状态 |
+| --- | --- | --- |
+| [OPERATIONS.md](OPERATIONS.md) | 运维手册：日常巡检、常见故障、重启与回滚（比 TROUBLESHOOTING 更偏「怎么维持运行」） | ✅ 2026-11-01 |
+| [UPSTREAM-SECURITY-REGISTER.md](UPSTREAM-SECURITY-REGISTER.md) | 上游安全情报登记册：每条上游修复的评估结论与是否已吸收 | ✅ 2026-11-01 |
+| [REFACTOR-BRIDGE.md](REFACTOR-BRIDGE.md) | bridge.js 拆分记录：已迁出哪些模块、剩余批次、为什么不再继续拆 | ✅ 2026-11-01 |
+| [bridge-map.md](bridge-map.md) | bridge.js 内部地图：常量/关键函数的行号区域与职责（读大文件前先看这个） | ✅ 2026-11-01 |
+| [routes-map.md](routes-map.md) | 路由地图（人读版）：与 ROUTES.md 互补，说明每类路由的归属模块与调用链 | ✅ 2026-11-01 |
+| [plan-2026-10-31-plugin.md](plan-2026-10-31-plugin.md) | 插件模式实施计划：已完成项、剩余项、验收口径 | ✅ 2026-11-01 |
+| [plan-split-console-server.md](plan-split-console-server.md) | 控制台前后端拆分计划：为什么拆、拆到哪一步、还差什么 | ✅ 2026-11-01 |
+
 ## guides/ —— 面向使用者 / 运维
 
 | 文档 | 一句话说明 | 状态 |
@@ -26,6 +38,7 @@
 | [guides/VOICE.md](guides/VOICE.md) | 语音发送全解：独立工具（`voice-tool/` 的图形界面与命令行）、桥接 CLI、AI 工具、控制台面板，以及**工具拆出后的配置解析顺序** | ✅ 2026 整理时已更新（工具移到上一级 `voice-tool/`） |
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/QUIET-HOURS.md](guides/QUIET-HOURS.md) | **静默时段**：什么时候该开、口径（只算入站）、护栏（默认要求覆盖 02–06）为什么存在、一键采用的四道保护、手动改文件要重启 | ✅ 2026-10-31 |
+| [guides/OFFICIAL-TROUBLESHOOTING.md](guides/OFFICIAL-TROUBLESHOOTING.md) | **官方通道报错调整方案**：8 类实测报错（两层白名单 / not-friend / 被动窗口 / 鉴权 / 去重）逐条给办法 | ✅ 2026-11-01 |
 | [guides/SWITCH-FROM-UPSTREAM.md](guides/SWITCH-FROM-UPSTREAM.md) | **从上游切到本 fork**：三条路径（脚本/手工/并行装）、受保护清单、三个坑（配置键/任务路径/插件重挂）、回退 | ✅ 2026-11-01 |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
@@ -64,6 +77,12 @@
 | [guides/GPT-ROUTE-STATUS.md](guides/GPT-ROUTE-STATUS.md) | **GPT/OpenAI 通道现状**（2026-10-31 实测）：key 有效但额度 0 → `429 credit_balance_exhausted`；含 DSH 0.2.1-rc.2 的 provider 能力证据、`gpt-smoke.mjs` 用法、充值后的六步验证顺序 | ⛔ 当前被余额卡住 |
 | [guides/MIGRATION.md](guides/MIGRATION.md) | **换一台机器**：哪些能带走 / 哪些必须丢（`sessions.json` 的 sessionId、DPAPI 备份）、新机器必须重做的四件事（DSH 端口与凭据、预设、外部工具路径、白名单）、按顺序检错的七步 | ✅ 2026-10-27 |
 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) | **安全基线与威胁模型**：威胁主体、已实现的边界（准入/工具面/出站/控制台/落盘/网络）、已知残余风险、发布前回归清单、改动检查单 | ✅ **改动安全相关代码前必读**（2026-09-20 新增） |
+| [guides/KASPERSKY.md](guides/KASPERSKY.md) | 卡巴斯基下跑桥接的坑：扫描/防火墙对 Node 与 WebSocket 的拦截、放行清单与验证步骤 | ✅ 2026-11-01 |
+| [guides/ONEBOT-ACTIONS.md](guides/ONEBOT-ACTIONS.md) | OneBot v11 动作（action）面清单：我们用到哪些、各网关支持差异、失败时怎么降级 | ✅ 2026-11-01 |
+| [guides/PRIVACY.md](guides/PRIVACY.md) | 隐私与数据边界：哪些内容会出机、脱敏规则、日志里不该出现什么 | ✅ 2026-11-01 |
+| [guides/SECURITY.md](guides/SECURITY.md) | 安全使用指南（面向使用者）：令牌、白名单、控制台暴露面、常见错误配置 | ✅ 2026-11-01 |
+| [guides/SERVER.md](guides/SERVER.md) | 服务器/长期运行部署：开机自启、日志轮转、崩溃恢复、资源占用 | ✅ 2026-11-01 |
+| [guides/TOPOLOGY.md](guides/TOPOLOGY.md) | 部署拓扑图与选型：本机 / 局域网 / 服务器 / Docker 四种形态的取舍 | ✅ 2026-11-01 |
 
 ## validation/ 与 sessions/ —— 实测记录与现场（越新越权威）
 
@@ -90,6 +109,11 @@
 | design/SOCIAL_MODE_PLAN.md | 一代仿真模式（`reserved`）的头脑风暴定案：规则引擎管「何时说」、LLM 管「说什么」 | ⚠️ 描述的一代状态机已实现；`reserved2` 已是默认模式，设计背景仍有效 |
 | design/DSH_QQ_TOOLS_PLAN.md | 「一切皆工具」总路线与交接文档：当前能力盘点、安全性设计、分阶段计划 | ⚠️ 阶段计划大部分已完成，作为路线/安全设计参考仍有效 |
 | design/真人语感策略.md | 拟人化策略：短句碎片、接梗、错别字、话题漂移、选择性沉默、括号用法 | ⚠️ 文首已自注：部分「现状」写于旧版随机分句时期，最新行为以 PROJECT_GUIDE / 代码为准 |
+| [design/dsh-plugin-api-notes.md](design/dsh-plugin-api-notes.md) | DSH 插件 API 笔记：本仓库对接用到的接口与约束（写插件前先读这个） | ✅ 2026-11-01 |
+| [design/OFFICIAL-CHANNEL-INTEGRATION.md](design/OFFICIAL-CHANNEL-INTEGRATION.md) | 官方通道接入契约：清单五项、闸门判定、控制台入口、接入五步与回退 | ✅ 2026-11-01 |
+| [design/plugin-mode-2026-10-31.md](design/plugin-mode-2026-10-31.md) | 插件模式（路线 B）设计：通道互斥、工具白名单、与常驻 bridge 的边界 | ✅ 2026-11-01 |
+| [design/decisions/0001-snowluma-license-inquiry.md](design/decisions/0001-snowluma-license-inquiry.md) | 决策 0001：SnowLuma 许可询问的来龙去脉与结论 | ✅ 2026-11-01 |
+| [design/decisions/0002-drop-snowluma-npm-deps.md](design/decisions/0002-drop-snowluma-npm-deps.md) | 决策 0002：移除 `@snowluma/*` npm 依赖的原因与替代方案 | ✅ 2026-11-01 |
 
 ## research/ —— 调研记录（结论可直接引用，过程可能过时）
 

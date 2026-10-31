@@ -7,7 +7,12 @@
 > 真机 e2e 正在做，**预计 3~5 天内更新**（2026-11-03 前）。**期间建议先等一等**，不必急着启用。
 > 状态 🔒 上锁 + 🧪 EXPERIMENTAL（未验证）。原因、时间窗、解锁条件与**免责声明**见 [LOCK.md](LOCK.md)。
 > 后续开发在分仓库 [qq-bridge-official](https://github.com/juju114514/qq-bridge-official)，**验证完一次性合并回本仓库**（不做零散提交）。
+> **踩到报错先看这个** → [docs/guides/OFFICIAL-TROUBLESHOOTING.md](docs/guides/OFFICIAL-TROUBLESHOOTING.md)：
+> 实测过的 8 类报错（两层白名单、not-friend、被动回复窗口、鉴权、去重…）逐条给了调整办法。
+> **仍然上锁、仍然不合并**：本文档只解决「配置/白名单/窗口」，不代表官方通道已验证可用。
 > **只锁仓库口径，不锁本地运行**：个人号通道、插件模式、控制台、记忆全部不受影响。
+> **插件形态已提交 DSH 插件市场**（PR [#10986](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/10986)）：
+> 收录后可直接 `dsh plugin add github:juju114514/qq-bridge#path:/plugin` 安装，见 [plugin/](plugin/)。
 > ⚠️ 你若自行启用官方通道，**风险自负**；本项目按 MIT「现状」提供，作者不承担使用后果。
 
 > **这是个人增强分支（fork）**：在上游 `qq-bridge` 基础上加了攻略模板、点歌/唱歌/说话、斗图、

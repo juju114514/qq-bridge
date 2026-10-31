@@ -211,6 +211,7 @@ const tests = [
   'test-issue-fixes-1030.mjs',
   // 文档链接守卫：本地文件必须存在（锚点只警告，slug 规则难精确复刻）。
   'check-md-links.mjs',
+  'check-docs-index.mjs',
   // 外部工具探测（yt-dlp）：缓存 / 失败不抛 / 版本解析。
   'test-tool-version.mjs',
   // 人物库列表：搜索 / 档位筛 / 排序 / scope 笔记。
