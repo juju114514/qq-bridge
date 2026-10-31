@@ -2,6 +2,31 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.63：上游用户迁移路径（文档 + `adopt-fork.ps1`）
+
+「已经装了上游、想换成本 fork」这条路径之前完全没有材料。补上：
+
+### `scripts/adopt-fork.ps1`
+
+```
+默认只预演（DryRun），必须 -Apply 才写盘
+只覆盖程序文件；config.json / state / node_modules / .git / data / logs / audio / cookies 一律不碰
+先备份到 _backup_switch_<时间戳>\（含 config/state + git-head.txt）
+预检：3100 是否被占、计划任务是否存在
+```
+
+实测（假目录）：预演列出 48 项将复制、受保护清单正确；`-Apply -Force` 后
+`src/bridge.js` 与源一致、`config.json` 与 `state/` 哈希未变、无 `src\src` 嵌套。
+
+> 脚本自己也踩过一个坑：`Copy-Item -Recurse` 拷到**已存在的目录**会再套一层
+> （变成 `src\src\...`）。已改成"拷内容"。
+
+### `docs/guides/SWITCH-FROM-UPSTREAM.md`
+
+三条路径（脚本 / 手工覆盖 / 新目录并行装）、三个真坑（配置键缺失、任务动作路径仍指旧目录、
+plugin/skills 要重挂）、验证四步（18 项自检 → health → 仪表盘 → 让 AI 回一句）、回退表。
+
+明确写了：**不要 `git pull` 上游分支**（历史已分叉，本 fork 是超集，覆盖即可）。
 ## 2026-11-01 — 0.4.62.1：三层测试跑出来的三个真问题（全修）
 
 按「回归 → 环境 → 脏环境」三层跑了一遍，每层都抓到东西。
