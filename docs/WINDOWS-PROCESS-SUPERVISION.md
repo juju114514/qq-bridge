@@ -242,3 +242,67 @@ watchdog 的触发器是 `PT5M`（每 5 分钟），所以表现成"**隔几分�
 
 修法：`scripts\harden-watchdog-task.ps1 -Apply`（管理员；只改参数，触发器/设置保持原样）。
 `scripts\verify-qq-bridge.ps1` 已把这条加进验收（现在共 19 项）。
+
+## 十三、0.4.57.1：三层守护补齐（Boot 触发器 + RestartOnFailure）+ 实测恢复耗时
+
+### 背景：原来的两个缺口
+
+| 缺口 | 后果 |
+| --- | --- |
+| `qq-bridge` 只有 `LogonTrigger` | 机器重启后**没人登录就永远不启动** |
+| `RestartOnFailure` 被关掉（`Count=0` 的时代） | 进程异常退出后，最坏要等 watchdog 的 5 分钟 |
+
+> 当初关掉 `RestartOnFailure` 是因为它每分钟弹一次 PowerShell 窗口 —— 那个理由现在**不成立**：
+> 任务动作已带 `-WindowStyle Hidden`（见 §十二）。注意：关掉要用**删节点**，不是 `Count=0`（§七.1）。
+
+### 改了什么（2026-10-31 23:48 执行）
+
+```xml
+<Triggers>
+  <LogonTrigger />
+  <BootTrigger><Enabled>true</Enabled><Delay>PT30S</Delay></BootTrigger>
+</Triggers>
+<Settings>
+  <RestartOnFailure><Interval>PT1M</Interval><Count>1</Count></RestartOnFailure>
+  <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+  <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+</Settings>
+```
+
+执行方式：`schtasks /end` → `schtasks /create /tn qq-bridge /xml <新XML> /f` → `schtasks /run`（**XML 必须是 UTF-16**）。
+改动前 XML 备份在 `_rollback/task-20261031-2350/qq-bridge.before.xml`。
+
+### 实测：杀掉桥接进程后多久恢复
+
+```
+before pid=2976 epoch=30
+taskkill /PID 2976 /F  → 成功
+after  pid=26972 epoch=31 ready=True version=0.4.57
+```
+
+恢复耗时来自 **runner 自己**，不是计划任务：
+
+```jsonl
+{"event":"runner.child_exit","exitCode":1,"attempt":1,"uptimeMs":119108}
+{"event":"runner.restart","attempt":1,"delayMs":5000,"reason":"exitCode=1"}
+```
+
+`scripts/run-bridge.ps1` 早就有「子进程退出 → 5 秒后重启」的逻辑，所以**崩溃恢复是秒级**，
+计划任务的 `RestartOnFailure` 是第二层（防 runner 自己死掉）。
+
+### 现在的三层守护
+
+| 层 | 触发条件 | 响应 | 实测 |
+| --- | --- | --- | --- |
+| 1. runner（`run-bridge.ps1`） | 子进程退出（含崩溃） | 5 秒后重启，记 `runner.child_exit` / `runner.restart` | ✅ 秒级 |
+| 2. 计划任务 `RestartOnFailure` | runner 本身失败退出 | 1 分钟后重启一次 | 已配置 |
+| 3. `qq-bridge-watchdog`（keepalive.ps1） | 进程在但 `/health/detail` 持续不可用（15 分钟窗口 + 15 分钟冷却） | 受控恢复 | 见 §十一 |
+
+### 已知局限
+
+- **Boot 触发器与 `InteractiveToken` 的关系**：任务以「交互式令牌」运行，开机时若**没有用户登录**，
+  Boot 触发器会因没有交互会话而无法启动任务。要让"开机即跑（无需登录）"真正成立，
+  需要改成 `S4U` / 存密码的登录类型，或开启自动登录。当前配置的价值是：
+  **已登录用户注销再登录、或开机后自动登录时**都能拉起，且多了一层触发。
+- `RestartOnFailure` 的 `Count=1` 意味着**只自动重启一次**：若 runner 连续失败（例如端口被永久占用），
+  不会再重启 —— 这时要靠 watchdog 与日志排查。这是有意的：避免无限重启把问题掩盖成"看起来在跑"。

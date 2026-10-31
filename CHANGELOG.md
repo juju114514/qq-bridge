@@ -2,6 +2,37 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.57.1：三层守护补齐（运维加固，无代码变更）
+
+### 补了两个缺口
+
+| 缺口 | 修法 |
+| --- | --- |
+| `qq-bridge` 只有登录触发器 → 重启后没人登录就不启动 | 加 `BootTrigger`（延迟 30s） |
+| `RestartOnFailure` 早年被关掉 → 崩溃后最坏等 5 分钟 | 恢复 `Count=1 / PT1M`（动作已 `-WindowStyle Hidden`，不会弹窗） |
+
+### 实测：kill 掉桥接进程后 5 秒恢复
+
+```
+before pid=2976 epoch=30
+taskkill /PID 2976 /F   → 成功
+after  pid=26972 epoch=31 ready=True
+```
+
+恢复来自 **runner 自己**（`run-bridge.ps1` 的 `child_exit → delayMs=5000 → restart`），
+不是计划任务 —— 说明**崩溃恢复本来就是秒级**，`RestartOnFailure` 是第二层（防 runner 死）。
+
+### 现在的三层
+
+| 层 | 触发 | 响应 |
+| --- | --- | --- |
+| runner | 子进程退出 | 5 秒重启（实测） |
+| 计划任务 RestartOnFailure | runner 失败退出 | 1 分钟后重启一次 |
+| watchdog | 进程在但健康持续不可用 | 15 分钟窗口 + 15 分钟冷却的受控恢复 |
+
+局限写进文档：`InteractiveToken` + Boot 触发器在"无人登录"时启动不了；`Count=1` 只自动重启一次（避免无限重启掩盖故障）。
+
+改动前任务 XML 备份：`_rollback/task-20261031-2350/qq-bridge.before.xml`。
 ## 2026-10-31 — 0.4.57：补 `docs/guides/QUIET-HOURS.md`
 
 0.4.55/0.4.56 做的静默建议，决策逻辑此前只活在 UI 文案里。补成文档：
