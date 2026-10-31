@@ -1770,3 +1770,40 @@ sudo systemctl restart qq-bridge
 4. DSH 与 SnowLuma 的版本号
 
 这样别人（或 AI）能少问你五轮。
+
+## 附：插件日志的 verbose 开关（0.4.49.2 补）
+
+`plugin.log` 默认**不记录**工具参数/结果的正文、也不记录异常 message（只给 `name`/`code` + 长度），
+这是为了避免群聊/私聊内容长期驻留磁盘。
+
+需要原始取证时，临时打开：
+
+```powershell
+# 1) 设置环境变量（对 DSH 进程生效；设置后需重启 DSH）
+[Environment]::SetEnvironmentVariable('QQ_PLUGIN_LOG_VERBOSE', '1', 'User')
+# 2) 复现问题 → 抓 plugin.log
+# 3) 用完立刻关掉
+[Environment]::SetEnvironmentVariable('QQ_PLUGIN_LOG_VERBOSE', $null, 'User')
+```
+
+**风险提示**：打开后 `plugin.log` 会出现工具参数/结果原文与异常首行，可能含聊天正文。
+用完请：
+
+1. 关闭开关并重启 DSH；
+2. 删除 `state/plugin.log` 与 `state/plugin.log.1`（轮转文件同样含正文）；
+3. 不要把这两个文件贴到公开 Issue。
+
+### 锁文件卡住时的手工处理（`state/*.guard` / `official-instance.lock`）
+
+0.4.49.2 起，guard 内容读不到（损坏/空）时**不再自动回收**（保守拒绝，避免误删别人的锁）。
+如果你确认没有第二个实例在跑、且日志出现 `抢不到 guard`：
+
+```powershell
+# 1) 先确认没有第二个 bridge / DSH 实例
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Select-Object ProcessId, CommandLine
+# 2) 确认后再删残留
+Remove-Item state\official-instance.lock.guard -Force -ErrorAction SilentlyContinue
+Remove-Item state\official-instance.lock -Force -ErrorAction SilentlyContinue
+# 3) 重启任务
+schtasks /run /tn qq-bridge
+```

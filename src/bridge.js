@@ -9879,7 +9879,7 @@ function selfCheckSnapshot() {
   let officialLockedOut = false;
   if (officialTransport) {
     const instanceId = String(process.env.QQB_INSTANCE || 'host');
-    const lock = acquireInstanceLock(path.join(ROOT, 'state', 'official-instance.lock'), { instanceId });
+    const lock = acquireInstanceLock(path.join(ROOT, 'state', 'official-instance.lock'), { instanceId, log: (m) => log(m) });
     if (lock.ok) {
       officialLock = lock;
       log(`[official] 实例锁已获取（instance=${instanceId}）`);

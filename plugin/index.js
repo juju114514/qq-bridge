@@ -479,7 +479,7 @@ export function apply(ctx, rawConfig) {
             // OneBotWsClient.call() 返回的就是 response.data
             channel?.send(chatKey, outgoing)
               .then((r) => log(`发送成功 ${chatKey} message_id=${r?.message_id ?? r?.data?.message_id ?? '(none)'}`))
-              .catch((e) => log(`❌ 发送失败 ${chatKey}：` + (e?.message ?? e)));
+              .catch((e) => log(`❌ 发送失败 ${chatKey}：` + describeError(e)));
           }));
         }
 

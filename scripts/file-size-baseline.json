@@ -92,7 +92,7 @@
     "src/incoming-media.js": 71,
     "src/incoming-social.js": 64,
     "src/incoming-status-commands.js": 150,
-    "src/instance-lock.js": 125,
+    "src/instance-lock.js": 227,
     "src/mcp-host-server.js": 94,
     "src/mcp-snowluma-safe.js": 1805,
     "src/mcp-web-search-safe.js": 93,
