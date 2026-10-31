@@ -9,6 +9,17 @@
 > powershell -ExecutionPolicy Bypass -File .\verify.ps1
 > ```
 
+## 半夜它不该说话却说了 / 该说话却没说
+
+静默时段（`socialV2.quietHours`）的语义、口径与护栏，见 **[docs/guides/QUIET-HOURS.md](docs/guides/QUIET-HOURS.md)**。
+
+速查：
+
+- 管理员指令与首次引导**不受**静默限制（这是有意的）
+- `[5, 5]` 起止相同 = 关闭，不是"静默 24 小时"
+- 控制台「采用建议」是热更新；**手工改 `config.json` 要重启**才生效
+- 想知道某条消息为什么没唤醒：控制台「诊断与健康」→ 唤醒漏斗
+
 ## 目录
 
 | 阶段 | 跳转 |

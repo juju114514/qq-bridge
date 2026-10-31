@@ -25,6 +25,7 @@
 | [guides/DSH_SETUP.md](guides/DSH_SETUP.md) | DSH 端安装说明：`qq-chat` / `qq-chat-v2` preset 与三个 MCP server 怎么挂到目标设备的 DSH 上 | ✅ |
 | [guides/VOICE.md](guides/VOICE.md) | 语音发送全解：独立工具（`voice-tool/` 的图形界面与命令行）、桥接 CLI、AI 工具、控制台面板，以及**工具拆出后的配置解析顺序** | ✅ 2026 整理时已更新（工具移到上一级 `voice-tool/`） |
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
+| [guides/QUIET-HOURS.md](guides/QUIET-HOURS.md) | **静默时段**：什么时候该开、口径（只算入站）、护栏（默认要求覆盖 02–06）为什么存在、一键采用的四道保护、手动改文件要重启 | ✅ 2026-10-31 |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
 | [guides/OFFICIAL-VS-BRIDGE.md](guides/OFFICIAL-VS-BRIDGE.md) | **官方插件 vs 本仓库**：QQ 官方 `@tencent-connect/dsh-qqbot` 三步接入的实测信息与能力边界；诚实对照两条路（账号风险 / 群消息可见性 / 主动插话 / 表情包 / 记忆），附决策树 | ✅ 2026-10-31 |
