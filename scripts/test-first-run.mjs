@@ -126,7 +126,8 @@ await checkAsync('DryRun 在真实仓库上成功且不改动 config.json', asyn
     // 退出码非 0 是允许的（体检有 FAIL 时 DryRun 也会如实退 1）
   }
   assert.match(out, /DryRun/, '应进入 DryRun 模式');
-  assert.match(out, /步骤 1\/5/, '应打印步骤 1');
+  // 允许中文与 ASCII 两种形态：管道/重定向下 PowerShell 可能把中文写成非 UTF-8
+  assert.match(out, /(?:步骤\s*)?1\/5/, '应打印步骤 1');
   const after = fs.existsSync(cfg) ? fs.readFileSync(cfg) : null;
   assert.deepEqual(after, before, 'DryRun 不得改动 config.json');
 });

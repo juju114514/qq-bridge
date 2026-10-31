@@ -1,4 +1,5 @@
 ﻿#Requires -Version 5.1
+
 <#
 .SYNOPSIS
   qq-bridge 首次运行引导：体检 → 装依赖 → 生成/校验配置 → 装 DSH preset →（可选）启动。

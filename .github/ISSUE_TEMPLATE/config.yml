@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安装与排障
+    url: https://github.com/juju114514/qq-bridge/blob/main/TROUBLESHOOTING.md
+    about: 先看这里：常见故障、日志在哪、怎么读启动摘要
+  - name: 安全问题（私下报告）
+    url: https://github.com/juju114514/qq-bridge/security/advisories/new
+    about: 不要在 Issue 里贴漏洞细节或凭证

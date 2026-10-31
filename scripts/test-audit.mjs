@@ -255,6 +255,7 @@ const tests = [
   'test-channel-epoch.mjs',
   'test-integration.mjs',
   'test-characterization.mjs',
+  'test-dsh-port-env.mjs',
   'test-boot-report.mjs',
   'test-build-and-health.mjs',
   'test-build-info.mjs',
@@ -266,8 +267,10 @@ const tests = [
 let failed = 0;
 for (const test of tests) {
   console.log(`\nRunning ${test}`);
+  // 个别测试要起 PowerShell/bash，60s 在负载下不够（会误报失败）
+  const SLOW = { 'test-first-run.mjs': 180000, 'test-dsh-port.mjs': 120000, 'test-dsh-contracts.mjs': 180000 };
   const result = spawnSync(process.execPath, [path.join(root, 'scripts', test)], {
-    cwd: root, stdio: 'inherit', timeout: 60000,
+    cwd: root, stdio: 'inherit', timeout: SLOW[test] ?? 60000,
     env: { ...process.env, QQ_BRIDGE_TEST_LIVE: '0' },
   });
   if (result.status !== 0 || result.error) {

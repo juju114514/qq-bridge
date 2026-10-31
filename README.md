@@ -1,5 +1,6 @@
 # QQ ↔ DeepSeek Harness 桥接
 
+> **想参与或报告问题？** → [CONTRIBUTING.md](CONTRIBUTING.md)（分支/测试/PR 流程）· [SECURITY.md](SECURITY.md)（漏洞怎么私下报）
 > **维护模式（2026-10-31 起）**：本仓库**独立维护**，不以「追平上游」为目标。上游只作为安全与技术情报来源，有价值的修复按 [docs/UPSTREAM-SECURITY-REGISTER.md](docs/UPSTREAM-SECURITY-REGISTER.md) 登记后**定向移植**。
 
 > 🔧 **Official 通道（QQ 官方机器人）正在调试与维修**：代码已修完审计的 3 个缺口（0.4.29），

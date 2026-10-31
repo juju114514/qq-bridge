@@ -16,6 +16,22 @@ import net from 'node:net';
 const CACHE_MS = 20000;
 const cache = new Map(); // key(baseUrl|'') → { at, result }
 
+/**
+ * 环境变量 DSH_WEB_URL（由 DSH 注入给子进程）：最准的候选，不用扫描。
+ * 只接受 http(s) 的本地回环地址，避免把外部地址当成本机 DSH。
+ */
+export function dshUrlFromEnv(env = process.env) {
+  const raw = String(env?.DSH_WEB_URL ?? '').trim();
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    const host = u.hostname;
+    if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1' && host !== '[::1]') return '';
+    return `${u.protocol}//${u.host}`;
+  } catch { return ''; }
+}
+
 /** 平台闸门：只有 Windows 能问系统"这些 pid 在听哪些端口"。 */
 export function canDiscoverPorts() {
   return process.platform === 'win32';
@@ -97,7 +113,11 @@ export async function discoverDshBaseUrl(opts = {}) {
     const port = Number(p);
     if (Number.isInteger(port) && port > 0 && port < 65536 && !candidates.includes(port)) candidates.push(port);
   };
-  // 顺序：已在用的端口 → 系统报的 DSH 端口 → 常见默认
+  // 顺序：环境变量 → 已在用的端口 → 系统报的 DSH 端口 → 常见默认
+  // （环境变量由 DSH 注入给子进程，比"按进程名扫端口"更准；见上游 #63）
+  const fromEnv = dshUrlFromEnv(opts.env ?? process.env);
+  const envPort = /:(\d{2,5})\/?$/.exec(fromEnv)?.[1];
+  if (envPort) push(envPort);
   const preferredPort = /:(\d{2,5})\/?$/.exec(preferred)?.[1];
   if (preferredPort) push(preferredPort);
   // skipSystemPorts 是给**单测/受控环境**用的：真机上系统里那个 DSH 端口会先于测试端口被选中，

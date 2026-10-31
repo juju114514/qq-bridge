@@ -1,0 +1,59 @@
+name: Bug 报告
+description: 桥接不工作、行为异常、报错
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢报告。**请先看 `TROUBLESHOOTING.md`**，并确认你贴的内容里**没有 token / secret / 真实群号**。
+  - type: input
+    id: version
+    attributes:
+      label: 版本与指纹
+      description: 来自 `GET http://127.0.0.1:3100/health` 的 version / buildId / sourceCommit
+      placeholder: 'version=0.4.45 buildId=sha256:… sourceCommit=…'
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 运行模式
+      options:
+        - bridge（常驻进程，个人号）
+        - plugin（DSH 插件）
+        - sidecar-only（channel.enabled=false）
+        - 官方机器人通道
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 期望 vs 实际
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 关键日志（已脱敏）
+      description: |
+        `state/bridge.log` 或 `state/plugin.log` 里相关的那几行；
+        如果有 `startup.summary`，贴那一行 JSON 最有用。
+      render: text
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 启动 …
+        2. 群里发 …
+        3. 出现 …
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 自查
+      options:
+        - label: 我已确认日志里没有 token / secret / Cookie
+          required: true
+        - label: 我已跑过 `node scripts/test-audit.mjs`（如果是本地问题）

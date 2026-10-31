@@ -63,8 +63,9 @@ await check('discoverDshBaseUrl：优先已配置端口；全都探不通时返�
   const livePort = server.address().port;
 
   // 起点是一个死端口，真实服务在 livePort → 应该能发现它
+  // env: {} —— 隔离 DSH_WEB_URL：真机跑测试时它指向真实 DSH，会干扰"全探不通"的断言
   const found = await discoverDshBaseUrl({
-    preferred: 'http://127.0.0.1:1', extraPorts: [livePort], useCache: false, skipSystemPorts: true
+    preferred: 'http://127.0.0.1:1', extraPorts: [livePort], useCache: false, skipSystemPorts: true, env: {}
   });
   assert.equal(found.baseUrl, `http://127.0.0.1:${livePort}`, `没发现 live 端口，实际 ${found.baseUrl}`);
   assert.equal(found.source, 'discovered');
@@ -73,7 +74,7 @@ await check('discoverDshBaseUrl：优先已配置端口；全都探不通时返�
   // 全都不通 → null
   const none = await discoverDshBaseUrl({
     preferred: 'http://127.0.0.1:1', extraPorts: [], useCache: false, skipSystemPorts: true,
-    timeoutMs: 600
+    timeoutMs: 600, env: {}
   });
   assert.equal(none.baseUrl, null);
   assert.equal(none.source, 'not-found');
@@ -106,3 +107,5 @@ else {
   console.error(`  ${failures} 项失败`);
   process.exitCode = 1;
 }
+// 发现器会留下探测用的 socket/定时器；显式退出，避免拖住 test-audit
+process.exit(failures ? 1 : 0);

@@ -2,6 +2,38 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.46：补工程规范文档 + 移植 DSH_WEB_URL 优先
+
+> 和上游（v0.2.1-r1 + #131）做了一次**双向对比**后，补齐我们缺的、移植他们更好的。
+
+### 补的（我们缺，他们有）
+
+| 文件 | 内容 |
+| --- | --- |
+| `SECURITY.md` | 报告渠道、**据实说明**（个人项目没有 SLO）、In/Out of scope、部署硬要求、已知风险 |
+| `CONTRIBUTING.md` | 环境/启动/测试门槛（`test-audit` 必须全绿）、PR 规则、合并方式、许可、安全 |
+| `.github/ISSUE_TEMPLATE/` | bug / feature / config 三份（bug 模板强制要求 `/health` 指纹、模式、脱敏日志） |
+
+README 顶部加了入口。
+
+### 移植的（他们有，我们更好，但这条确实缺）
+
+`src/dsh-port.js` 新增 `dshUrlFromEnv()`：**优先使用 `DSH_WEB_URL`**（DSH 注入给子进程的精确地址），
+比"按进程名扫监听端口"更准。发现顺序变成：环境变量 → 已配置 → 系统报的端口 → 常见默认。
+
+- 只接受本地回环 http(s)，拒绝外部地址（避免把外网当本机 DSH）
+- `discoverDshBaseUrl` 新增 `opts.env`，便于测试隔离
+- 新增 `scripts/test-dsh-port-env.mjs`（5 条）
+
+### 顺手修的两个测试脆弱点
+
+| 问题 | 原因 | 修法 |
+| --- | --- | --- |
+| `test-dsh-port` 在真机上失败 | 环境里真有 `DSH_WEB_URL`，把"全探不通"的前提破坏 | 测试显式 `env: {}` 隔离 |
+| `test-dsh-port` 拖住审计 | 探测残留 socket 不退出 | 末尾显式 `process.exit` |
+| `test-first-run` 在审计里失败 | `stdio:'inherit'` + 重定向时 PowerShell 中文变 mojibake | 断言兼容 `1/5` 形态；审计对慢测试放宽超时 |
+
+审计 **138/138**。
 ## 2026-10-31 — 0.4.45：watchdog v3（冷却期 / port_conflict / 时钟回拨）+ 实施包
 
 > 主任务 XML 不再改（保留 `UseUnifiedSchedulingEngine=true`）。本次只动 watchdog 与工具脚本。
