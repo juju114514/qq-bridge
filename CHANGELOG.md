@@ -2,6 +2,41 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.26：清理 preset 的旧 deny 名单（纯日志噪音）
+
+> 小更新。0.4.21 之后白名单已经接管，旧黑名单只剩噪音。
+
+### 之前
+
+每次建 agent 都会先跑一遍 78 个必然失败的 `restrict({deny})`：
+
+```
+[qq-tool-restrict] restrict 失败 78/82：unknown global tool "pwsh"; known global tools: desktop_control, …
+（3 秒后再重试一遍，再失败 77 个）
+allow-restrict ok 保留=4/10：…
+```
+
+日志被两屏噪音盖住，真正的结论（保留了几个）反而看不见。
+
+### 现在
+
+顺序改成 **先白名单，失败才退回黑名单**：
+
+```js
+let allowApplied = false
+try { ctx.tools.restrict({ allow: keep }); allowApplied = true } catch {}
+if (!allowApplied) { /* 历史 deny 名单 + 3s 重试，作为兜底 */ }
+ctx.tools.guard(...)      // 执行期白名单，始终生效
+```
+
+效果：正常路径只打一行 `allow-restrict ok 保留=N/M`；拿不到工具清单时才回退老逻辑。
+
+### 验证（mock ctx）
+
+```
+allow 调用: 1  deny 调用: 0  guard: 1
+保留: mcp__snowluma__qq_ping, todo_write
+```
 ## 2026-10-31 — 0.4.25：self-test 连不上时给可操作提示
 
 > 小更新。来自干净环境实测：只有 `fetch failed` 三个字，什么也说明不了。
