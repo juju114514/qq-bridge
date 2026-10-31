@@ -1790,6 +1790,7 @@ button:active:not(:disabled) {
         <button data-view="access" class="nav-item"><span class="nav-icon" aria-hidden="true">⊙</span>访问与安全</button>
         <button data-view="operations" class="nav-item"><span class="nav-icon" aria-hidden="true">⌘</span>调试与运维</button>
         <button data-view="supervisor" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>守护进程</button>
+        <button data-view="official" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>官方通道</button>
       </nav>
     <div class="sidebar-bottom"><span class="local-dot"></span>本地控制台<small>QQ ↔ DeepSeek Harness</small></div>
   </aside>
@@ -2819,6 +2820,18 @@ button:active:not(:disabled) {
     <strong style="font-size:13px">事件时间线（最近 20 条）</strong>
     <div id="svEvents" style="margin-top:8px;font-size:12px;color:#c8d4ea">（加载中…）</div>
   </div>
+</section>
+<section data-page="official" class="card span-all" hidden id="section-official">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <h2 data-note="等验证通过再接入">官方通道（QQ 官方机器人）</h2>
+      <div class="meta">这一页是**预留的接入位**：官方通道代码已实现，但仍在「上锁 + 未验证」状态（见 <code>LOCK.md</code>）。清单全绿之后，把 <code>official.enabled</code> 改成 <code>true</code> 就接入了 —— 不需要改代码。</div>
+    </div>
+    <button class="btn" id="offRefresh" type="button">刷新</button>
+  </div>
+  <div id="offState" style="margin-top:10px"></div>
+  <div id="offChecklist" style="margin-top:10px;font-size:13px;color:#c8d4ea">（加载中…）</div>
+  <div id="offNext" style="margin-top:12px"></div>
 </section>
 <section data-page="memory-graph" class="card span-all" hidden>
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -4680,6 +4693,7 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
+  official: ['官方通道', '官方机器人，预留接入。', '官方通道路由与接入清单：条件齐全后改一个开关即可接入。'],
   supervisor: ['守护进程', '它一直在，才叫可靠。', '进程存活、重启历史与看门狗事件；存活以进程为准，日志只作补充。'],
   song: ['点歌 / 唱歌', '把喜欢的，唱给对方听。', '下载并截取音频，以语音条发到指定会话（真实发送）。'],
   space: ['空间动态', '让关心的人看到。', '发说说、看好友动态、点赞与评论（写操作需确认）。'],
@@ -5811,6 +5825,57 @@ function bindSupervisor() {
 }
 bindSupervisor();
 
+
+// ── 官方通道（0.4.65）─────────────────────────────────────────────────
+async function loadOfficial() {
+  const stateBox = document.getElementById('offState');
+  const listBox = document.getElementById('offChecklist');
+  const nextBox = document.getElementById('offNext');
+  if (!listBox) return;
+  listBox.textContent = '（加载中…）';
+  try {
+    const r = await api('/api/official');
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    const color = r.allowed ? '#9fd6a0' : (r.readyToFlip ? '#ffd479' : '#ffb27a');
+    if (stateBox) {
+      stateBox.innerHTML = '<div style="padding:9px 11px;border:1px solid rgba(120,160,220,.22);border-radius:9px;background:rgba(22,34,56,.55)">'
+        + '<div style="font-size:11px;opacity:.65">当前状态</div>'
+        + '<div style="font-size:16px;color:' + color + ';margin-top:3px">' + r.state + (r.sandbox ? ' · 沙箱' : '') + '</div>'
+        + '<div style="font-size:10px;opacity:.55;margin-top:4px">' + r.note + '</div></div>';
+    }
+    const names = { enabled: 'official.enabled', appid: 'appid', secret: 'secret', allow: '接收范围', probe: '探针通过' };
+    const rows = Object.keys(names).map(function (k) {
+      const ok = r.checks && r.checks[k] === true;
+      return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed rgba(90,120,160,.22)">'
+        + '<span style="color:' + (ok ? '#9fd6a0' : '#ff9d7a') + '">' + (ok ? '✓' : '✗') + '</span>'
+        + '<span style="opacity:.9">' + names[k] + '</span></div>';
+    }).join('');
+    listBox.innerHTML = '<div style="opacity:.7;margin-bottom:6px">接入清单（全绿 = 可以接入）</div>' + rows;
+
+    const missing = Array.isArray(r.missing) ? r.missing : [];
+    if (nextBox) {
+      if (!missing.length) {
+        nextBox.innerHTML = '<div style="padding:9px 11px;border:1px solid rgba(120,200,140,.45);border-radius:9px;background:rgba(28,52,36,.45);font-size:13px;color:#9fd6a0">'
+          + '条件齐全：把 <code>official.enabled</code> 设为 <code>true</code> 即接入（当前已开）。</div>';
+      } else if (r.readyToFlip) {
+        nextBox.innerHTML = '<div style="padding:9px 11px;border:1px solid rgba(255,212,121,.45);border-radius:9px;background:rgba(52,44,26,.45);font-size:13px;color:#ffd479">'
+          + '只差一个开关：<code>official.enabled = true</code>（其余条件已满足）。</div>';
+      } else {
+        nextBox.innerHTML = '<div style="padding:9px 11px;border:1px solid rgba(255,160,120,.4);border-radius:9px;background:rgba(56,34,26,.45);font-size:12px;color:#ffb27a">'
+          + '<div style="margin-bottom:4px">还差 ' + missing.length + ' 项：</div>'
+          + missing.map(function (x) { return '<div style="padding:2px 0">· ' + x.label + ' <span style="opacity:.6">（' + x.hint + '）</span></div>'; }).join('')
+          + '</div>';
+      }
+    }
+  } catch (e) {
+    listBox.innerHTML = '<div style="color:#ffb27a;font-size:12px">读取失败：' + (e && e.message ? e.message : e) + '</div>';
+  }
+}
+function bindOfficial() {
+  document.getElementById('offRefresh')?.addEventListener('click', loadOfficial);
+}
+bindOfficial();
+
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -5841,6 +5906,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'space' && typeof spaceInit === 'function') spaceInit();
   if (page === 'song' && typeof songInit === 'function') songInit();
   if (page === 'supervisor' && typeof loadSupervisor === 'function') loadSupervisor();
+  if (page === 'official' && typeof loadOfficial === 'function') loadOfficial();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });

@@ -4336,13 +4336,9 @@ async function main() {
             }),
             getQuietHours: () => (cfg.socialV2 ? (cfg.socialV2.quietHours ?? null) : null),
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
-            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log') },
-            getProcessInfo: () => ({
-              pid: process.pid,
-              uptimeMs: Math.round(process.uptime() * 1000),
-              ready: dshReady === true,
-              version: cfg.version || ''
-            }),
+            getOfficialRuntime: () => ({ enabled: Boolean(officialTransport), ready: officialTransport?.ready === true, lastError: String(officialTransport?.lastError ?? '') }),
+            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json') },
+            getProcessInfo: () => ({ pid: process.pid, uptimeMs: Math.round(process.uptime() * 1000), ready: dshReady === true, version: cfg.version || '' }),
             parseRunnerEvents: (lines) => parseRunnerEventsShared(lines),
             parseWatchdogEvents: (lines) => parseWatchdogEventsShared(lines),
           })

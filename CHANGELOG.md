@@ -2,6 +2,36 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.66：官方通道「预留接入位」（等验证通过直接接入）
+
+官方通道代码早就实现了，但接入状态一直散落在 LOCK.md 与几个条件判断里。这一版把它收敛成
+**一个闸门 + 一个控制台页 + 一份契约文档**：
+
+### `src/official/gate.js`
+
+纯函数，五项清单：`enabled` / `appid` / `secret` / `allow` / `probe`。
+返回 `allowed`（全绿）、`readyToFlip`（只差开关）、`missing[]`（缺什么 + 怎么补）、`state`（状态文案）。
+
+`probe` 项接受两种证据：跑过 `scripts/official-probe.mjs`（写 `state/official-probe.json`），
+**或者当前已连接** —— 已连上比探针更强，不认它会让在跑的实例显示"未就绪"。
+
+### `GET /api/official` + 控制台「运维 → 官方通道」
+
+顶部状态、五项清单、缺什么、`readyToFlip` 时提示"只差一个开关"。
+**不提供一键启用**：开关留给人手动改（符合 LOCK.md 的风险口径）。
+
+### `docs/design/OFFICIAL-CHANNEL-INTEGRATION.md`
+
+接入契约：字段、闸门、页面、接入步骤（探针 → 看清单 → 改 enabled → 重启 → 验）、回退。
+
+### 测试
+
+- `test-official-gate.mjs` 7 条（含"运行时已连接算通过"）
+- `test-official-route.mjs` 4 条：直接用假 deps 调路由 handler，校验字段与 probe 读取，
+  **不需要启动桥接**
+
+> 本轮工作在**独立副本**（`_official-staging`）里完成并验证，验证通过后才搬回主仓；
+> 真机部署未动（仍 0.4.64），等确认再上。
 ## 2026-11-01 — 0.4.64：首屏「永远在加载」的根因找到并修掉（不是网络问题）
 
 之前一直以为是「`?token=` 第一跳的 fetch 会挂住」，加了个有限重试（0.4.58.1）压着。

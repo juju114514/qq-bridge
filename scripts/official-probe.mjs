@@ -89,11 +89,31 @@ let received = 0;
 let replied = false;
 let closed = false;
 
+// 成功的探针留一个标记文件：闸门（src/official/gate.js）据此判断"验证过"，
+// 控制台的接入清单就不用靠人记"我跑过没有"。
+const PROBE_MARK = path.join(process.cwd(), 'state', 'official-probe.json');
+const markProbe = (passed, extra = {}) => {
+  try {
+    fs.mkdirSync(path.dirname(PROBE_MARK), { recursive: true });
+    if (!passed) { try { fs.unlinkSync(PROBE_MARK); } catch { /* 没有就算了 */ } return; }
+    fs.writeFileSync(PROBE_MARK, JSON.stringify({
+      at: Date.now(),
+      appid: String(cred.appid || ''),
+      sandbox: cred.sandbox === true,
+      received,
+      replied,
+      ...extra
+    }, null, 2));
+  } catch { /* 写不了不影响探针本身 */ }
+};
+
 const shutdown = (code) => {
   if (closed) return;
   closed = true;
   clearTimeout(timer);
   bot.close();
+  // 只有"鉴权成功"且没报错才算通过；收到 0 条事件仍然是"链路通"，只是群里还没人 @ 它
+  markProbe(code === 0);
   console.log(`\n  ── 结果：收到 ${received} 个消息事件${replied ? '，并成功被动回复 1 条' : '（未回复）'}`);
   if (received === 0) {
     console.log('     没收到事件？检查：机器人是否已加群 / 群里是否 @ 了它 / 群主是否开了「接收全量消息」/ 是否发到了别的群');
