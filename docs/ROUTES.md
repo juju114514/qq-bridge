@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**113** 条（25 个文件）
+- 已搬进模块：**114** 条（26 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（6 条）
@@ -55,6 +55,12 @@
 | ANY | `/api/socialV2/official-proactive` | createOfficialSayHandler |
 | ANY | `/api/socialV2/official-recall` | createOfficialSayHandler |
 | ANY | `/api/socialV2/official-say` | createOfficialSayHandler |
+
+## src/api/report-route.js（1 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| GET | `/api/report` | handleReportRoute |
 
 ## src/api/roles.js（9 条）
 

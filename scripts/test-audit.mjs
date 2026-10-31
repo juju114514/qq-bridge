@@ -148,6 +148,7 @@ const tests = [
   'test-quiet-suggest.mjs',
   'test-overview.mjs',
   'test-console-boot.mjs',
+  'test-report-build.mjs',
   'test-official-route.mjs',
   'test-official-gate.mjs',
   'test-supervisor-view.mjs',

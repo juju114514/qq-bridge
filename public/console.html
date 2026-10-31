@@ -1791,6 +1791,7 @@ button:active:not(:disabled) {
         <button data-view="operations" class="nav-item"><span class="nav-icon" aria-hidden="true">⌘</span>调试与运维</button>
         <button data-view="supervisor" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>守护进程</button>
         <button data-view="official" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>官方通道</button>
+        <button data-view="report" class="nav-item"><span class="nav-icon" aria-hidden="true">▦</span>运行报告</button>
       </nav>
     <div class="sidebar-bottom"><span class="local-dot"></span>本地控制台<small>QQ ↔ DeepSeek Harness</small></div>
   </aside>
@@ -2832,6 +2833,22 @@ button:active:not(:disabled) {
   <div id="offState" style="margin-top:10px"></div>
   <div id="offChecklist" style="margin-top:10px;font-size:13px;color:#c8d4ea">（加载中…）</div>
   <div id="offNext" style="margin-top:12px"></div>
+</section>
+<section data-page="report" class="card span-all" hidden id="section-report">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <h2 data-note="只读报告，可直接贴给别人">运行报告</h2>
+      <div class="meta">一键把「它现在好不好」变成一段可复制的文本：连续运行时长、重启次数、三条通道状态、内存/磁盘、配置摘要。
+        <b>已脱敏</b>（长数字、路径、令牌不外露），所以可以直接贴到群里或贴给对方排查。</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn" id="reportGen" type="button">生成报告</button>
+      <button class="btn" id="reportCopy" type="button">复制</button>
+      <button class="btn" id="reportDownload" type="button">下载 .md</button>
+    </div>
+  </div>
+  <div id="reportSummary" style="margin-top:10px;font-size:13px;color:#c8d4ea">（点「生成报告」）</div>
+  <pre id="reportBody" style="margin-top:10px;max-height:520px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.55;background:rgba(12,20,34,.75);border:1px solid #24344f;border-radius:8px;padding:10px;color:#dbe6ff"></pre>
 </section>
 <section data-page="memory-graph" class="card span-all" hidden>
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -4693,6 +4710,7 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
+  report: ['运行报告', '它现在好不好，一段话。', '只读：连续运行/重启/通道/资源/配置摘要，已脱敏，可直接贴给别人。'],
   official: ['官方通道', '官方机器人，预留接入。', '官方通道路由与接入清单：条件齐全后改一个开关即可接入。'],
   supervisor: ['守护进程', '它一直在，才叫可靠。', '进程存活、重启历史与看门狗事件；存活以进程为准，日志只作补充。'],
   song: ['点歌 / 唱歌', '把喜欢的，唱给对方听。', '下载并截取音频，以语音条发到指定会话（真实发送）。'],
@@ -5907,6 +5925,68 @@ function bindOfficial() {
 }
 bindOfficial();
 
+
+// ── 运行报告（0.4.74）─────────────────────────────────────────────────
+let reportText = '';
+function reportBadge(overall) {
+  if (overall === 'PASS') return '<span style="color:#9fd6a0">PASS · 健康</span>';
+  if (overall === 'WARN') return '<span style="color:#ffd479">WARN · 有需要注意的项目</span>';
+  return '<span style="color:#ff9d7a">FAIL · 有阻塞问题</span>';
+}
+async function loadReport() {
+  const body = document.getElementById('reportBody');
+  const sum = document.getElementById('reportSummary');
+  if (!body) return;
+  body.textContent = '（生成中…）';
+  try {
+    const r = await api('/api/report');
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    reportText = r.markdown || '';
+    body.textContent = reportText;
+    if (sum) sum.innerHTML = '总体判定：' + reportBadge(r.overall) + ' · 生成于 ' + new Date(r.at || Date.now()).toLocaleString('zh-CN') + (r.host ? ' · 主机 ' + r.host : '');
+  } catch (e) {
+    body.textContent = '';
+    if (sum) sum.innerHTML = '<span style="color:#ffb27a">生成失败：' + (e && e.message ? e.message : e) + '</span>';
+  }
+}
+async function copyReport() {
+  if (!reportText) { await loadReport(); }
+  if (!reportText) return;
+  try {
+    await navigator.clipboard.writeText(reportText);
+    if (typeof showConsoleToast === 'function') showConsoleToast('报告已复制');
+  } catch {
+    // 非 https / 无剪贴板权限时的兜底：选中文本让人手动 Ctrl+C
+    const body = document.getElementById('reportBody');
+    if (body) {
+      const range = document.createRange();
+      range.selectNodeContents(body);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    alert('浏览器不让自动复制，已选中文本，按 Ctrl+C');
+  }
+}
+function downloadReport() {
+  if (!reportText) { alert('先生成一次'); return; }
+  const blob = new Blob([reportText], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const p = function (n) { return String(n).padStart(2, '0'); };
+  a.download = 'qq-bridge-report-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.md';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function bindReport() {
+  document.getElementById('reportGen')?.addEventListener('click', loadReport);
+  document.getElementById('reportCopy')?.addEventListener('click', copyReport);
+  document.getElementById('reportDownload')?.addEventListener('click', downloadReport);
+}
+bindReport();
+
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -5938,6 +6018,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'song' && typeof songInit === 'function') songInit();
   if (page === 'supervisor' && typeof loadSupervisor === 'function') loadSupervisor();
   if (page === 'official' && typeof loadOfficial === 'function') loadOfficial();
+  if (page === 'report' && typeof loadReport === 'function') loadReport();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });

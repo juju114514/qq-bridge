@@ -14,6 +14,7 @@ import { createDiagnosticsHandler } from './console-diagnostics.js';
 import { createOverviewHandler } from './overview.js';
 import { createSupervisorHandler } from '../supervisor-view.js';
 import { handleOfficialRoute } from './official-route.js';
+import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
 
@@ -73,6 +74,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET /api/official —— 官方通道接入闸门（实现见 official-route.js）
   if (await handleOfficialRoute({ req, url, sendJson, deps: resolveDeps })) return true;
+
+  // GET /api/report —— 运行报告（只读；?format=md 直接拿 Markdown）
+  if (await handleReportRoute({ req, url, sendJson, deps: resolveDeps })) return true;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {
