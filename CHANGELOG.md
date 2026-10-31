@@ -2,6 +2,40 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.37：DSH 契约测试（`npm run test:contracts`）
+
+> 对应外部评审第 6 条：**11 个 bug 里 4 个来自 DSH 静默升级**，而 DSH 没有公开契约。
+
+### 做了什么
+
+新增 `scripts/test-dsh-contracts.mjs`，把我们**真正依赖的 4 个接口**变成可执行断言：
+
+```
+settings.describe   形状（namespaces / writable）
+sessions.create     接受 cwd、返回 sessionId
+events.mux         能订阅；session.prompt 被接受；回合以 completed 结束
+archiveSession     能归档临时会话
+```
+
+### 两个设计取舍
+
+1. **连不上 DSH 就跳过**（exit 0）—— CI 里没有 DSH，不能因此变红
+2. **不进 `test-audit`** —— 单独跑 `npm run test:contracts`，因为它会建临时会话（约 10~20 秒）
+
+### 真机实测（DSH 63262）
+
+```
+ok   settings.describe 返回可解析对象
+ok   sessions.create 接受 cwd 并返回 sessionId
+ok   events.mux 可订阅 + session.prompt 被接受 + 回合能结束
+ok   workspace.archiveSession 能归档临时会话
+
+结果：全部通过
+```
+
+### 顺带
+
+`package.json` 增加 `test:contracts` 与 `build:presets` 两个脚本，减少「命令靠记忆」。
 ## 2026-10-31 — 0.4.36：运行时指纹（version / commit / presetHash）
 
 > 对应外部评审第 2 条：「运行时到底执行什么」。一天 32 个版本 + 三份 preset 副本，
