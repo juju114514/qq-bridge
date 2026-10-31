@@ -2735,36 +2735,82 @@ button:active:not(:disabled) {
 
       <section data-page="space" class="card span-all" hidden id="section-space">
   <h2 data-note="写操作会真的发到 QQ 空间">QQ 空间</h2>
-  <div class="meta">发说说、看好友动态、点赞与评论。所有写操作都要二次确认；每日配额由后端限制（说说 5 条 / 评论 20 条 / 点赞 50 条）。</div>
+  <div class="meta">四个子页：写说说（含 AI 起草与配图）· 我的说说（可删）· 好友动态（点赞/评论）· 配图库。
+    所有写操作都要二次确认；每日配额由后端限制（说说 5 条 / 评论 20 条 / 点赞 50 条）。</div>
 
-  <div style="margin-top:12px;padding:10px;border:1px solid rgba(120,160,220,.22);border-radius:9px;background:rgba(22,34,56,.5)">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <strong style="font-size:13px">发说说</strong>
-      <span id="spaceQuota" style="font-size:11px;opacity:.6">—</span>
-    </div>
-    <textarea id="spaceText" maxlength="300" rows="3" placeholder="说点什么…（≤300 字）"
-      style="width:100%;margin-top:8px;box-sizing:border-box;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:7px;color:#dbe6ff;padding:8px;font-size:13px"></textarea>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-      <span id="spaceCount" style="font-size:11px;opacity:.55">0 / 300</span>
-      <button class="btn" id="spacePublish" type="button">发布到 QQ 空间</button>
+  <div id="spaceTabs" style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+    <button class="btn" type="button" data-space-tab="compose" style="font-size:12px">写说说</button>
+    <button class="btn" type="button" data-space-tab="mine" style="font-size:12px">我的说说</button>
+    <button class="btn" type="button" data-space-tab="feeds" style="font-size:12px">好友动态</button>
+    <button class="btn" type="button" data-space-tab="images" style="font-size:12px">配图库</button>
+  </div>
+
+  <!-- 子页 1：写说说 -->
+  <div data-space-panel="compose" style="margin-top:12px">
+    <div style="padding:10px;border:1px solid rgba(120,160,220,.22);border-radius:9px;background:rgba(22,34,56,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong style="font-size:13px">发说说</strong>
+        <span id="spaceQuota" style="font-size:11px;opacity:.6">—</span>
+      </div>
+      <textarea id="spaceText" maxlength="300" rows="3" placeholder="说点什么…（≤300 字）"
+        style="width:100%;margin-top:8px;box-sizing:border-box;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:7px;color:#dbe6ff;padding:8px;font-size:13px"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap">
+        <span id="spaceCount" style="font-size:11px;opacity:.55">0 / 300</span>
+        <span id="spaceStylePick" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:11px">
+          <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" value="daily">日常</label>
+          <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" value="funny">吐槽</label>
+          <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" value="soft">文艺</label>
+          <label style="display:flex;align-items:center;gap:3px"><input type="checkbox" value="tech">技术</label>
+          <label style="display:flex;align-items:center;gap:3px" title="不勾任何一项＝让它自己定"><input type="checkbox" value="auto">让它定</label>
+          <button class="btn" id="qzoneDraftAi" type="button" title="让它在你的私聊里写，几秒后取回">AI 写一条</button>
+          <button class="btn" id="qzoneDraftTake" type="button" title="取回它刚写的">取草稿</button>
+        </span>
+        <button class="btn" id="spacePublish" type="button">发布到 QQ 空间</button>
+      </div>
+      <div id="spaceDraftHint" style="margin-top:6px;font-size:11px;color:#c8d4ea"></div>
+      <div id="spaceDraftList" style="margin-top:6px;display:flex;flex-direction:column;gap:6px"></div>
+      <div style="margin-top:10px;border-top:1px dashed rgba(90,120,160,.25);padding-top:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <strong style="font-size:12px">配图（最多 9 张，存 state/qzone-uploads/）</strong>
+          <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input id="spaceUploadInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple style="font-size:11px;max-width:200px">
+            <button class="btn" id="spacePickAi" type="button" title="按草稿文字与图片描述挑 1~2 张">AI 挑图</button>
+            <button class="btn" id="spaceUploadClear" type="button" title="取消所有勾选">取消勾选</button>
+          </span>
+        </div>
+        <div id="spaceUploads" style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:#c8d4ea">（还没有图，选几张上传）</div>
+      </div>
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-    <div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <strong style="font-size:13px">我的说说</strong>
-        <button class="btn" id="spaceMineRefresh" type="button">刷新</button>
-      </div>
-      <div id="spaceMine" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
+  <!-- 子页 2：我的说说 -->
+  <div data-space-panel="mine" style="margin-top:12px" hidden>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="font-size:13px">我的说说</strong>
+      <button class="btn" id="spaceMineRefresh" type="button">刷新</button>
     </div>
-    <div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <strong style="font-size:13px">好友动态</strong>
+    <div id="spaceMine" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
+  </div>
+
+  <!-- 子页 3：好友动态 -->
+  <div data-space-panel="feeds" style="margin-top:12px" hidden>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <strong style="font-size:13px">好友动态</strong>
+      <span style="display:flex;gap:6px;align-items:center;font-size:11px;opacity:.7">
+        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="spaceFeedsDescribe"> 带识图描述（慢）</label>
         <button class="btn" id="spaceFeedsRefresh" type="button">刷新</button>
-      </div>
-      <div id="spaceFeeds" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
+      </span>
     </div>
+    <div id="spaceFeeds" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
+  </div>
+
+  <!-- 子页 4：配图库 -->
+  <div data-space-panel="images" style="margin-top:12px" hidden>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="font-size:13px">配图库（state/qzone-uploads/）</strong>
+      <button class="btn" id="spaceImagesRefresh" type="button">刷新</button>
+    </div>
+    <div id="spaceImageList" style="margin-top:8px;font-size:12px;color:#c8d4ea">（加载中…）</div>
   </div>
 </section>
 <section data-page="song" class="card span-all" hidden id="section-song">
@@ -5600,7 +5646,13 @@ async function spacePublish() {
   const btn = document.getElementById('spacePublish');
   if (btn) { btn.disabled = true; btn.textContent = '发布中…'; }
   try {
-    const r = await api('/api/socialV2/qzone', 'POST', { key: spaceOwnerKey, action: 'publish', content: text });
+    const picked = checkedUploadIds();
+    let imagePaths = [];
+    if (picked.length) {
+      const rr = await api('/api/qzone/uploads', 'POST', { action: 'resolve', ids: picked });
+      imagePaths = (rr && rr.paths) || [];
+    }
+    const r = await api('/api/socialV2/qzone', 'POST', { key: spaceOwnerKey, action: 'publish', content: text, images: imagePaths });
     if (!r || r.ok === false) throw new Error((r && r.error) || '发布失败');
     if (ta) ta.value = '';
     const cnt = document.getElementById('spaceCount');
@@ -5624,12 +5676,23 @@ async function spaceLoadMine() {
     if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
     const posts = Array.isArray(r.posts) ? r.posts : [];
     if (!posts.length) { box.innerHTML = spaceBanner('空间里还没有说说'); return; }
-    box.innerHTML = posts.map(function (p) {
+    box.innerHTML = posts.map(function (p, i) {
       return '<div style="padding:7px 0;border-bottom:1px dashed rgba(90,120,160,.25)">'
-        + '<div style="opacity:.55;font-size:11px">' + spaceFmtTime(p.time) + (p.images ? ' · 图 ' + p.images + ' 张' : '') + '</div>'
+        + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'
+        + '<span style="opacity:.55;font-size:11px">' + spaceFmtTime(p.time) + (p.images ? ' · 图 ' + p.images + ' 张' : '') + '</span>'
+        + '<button class="btn" type="button" data-del-post="' + i + '" style="font-size:11px;padding:1px 6px">删除</button>'
+        + '</div>'
         + '<div style="margin-top:2px;white-space:pre-wrap">' + String(p.content || '').slice(0, 300) + '</div>'
         + '</div>';
     }).join('');
+    box.querySelectorAll('[data-del-post]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const p = posts[Number(btn.getAttribute('data-del-post'))];
+        if (!p || !p.tid) return;
+        if (!confirm('删除这条说说？\n\n' + String(p.content || '').slice(0, 80) + '\n\n删了就没了。')) return;
+        spaceDeletePost(p.tid, btn);
+      });
+    });
   } catch (e) {
     box.innerHTML = spaceBanner('读取失败：' + (e && e.message ? e.message : e), 'error');
   }
@@ -5986,6 +6049,273 @@ function bindReport() {
   document.getElementById('reportDownload')?.addEventListener('click', downloadReport);
 }
 bindReport();
+
+
+// ── AI 写空间（0.4.77）────────────────────────────────────────────────
+// 流程：让 agent 在 owner 私聊里写 → 那句话被桥接顺手存成草稿 → 这里取回填进文本框。
+// 铁律：**不自动发布**，必须人点「发布到 QQ 空间」。
+let qzoneDraftTimer = null;
+function draftHint(text, color) {
+  const el = document.getElementById('spaceDraftHint');
+  if (el) el.innerHTML = '<span style="color:' + (color || '#c8d4ea') + '">' + text + '</span>';
+}
+function pickedStyles() {
+  const box = document.getElementById('spaceStylePick');
+  if (!box) return [];
+  const out = [];
+  box.querySelectorAll('input[type=checkbox]').forEach(function (el) { if (el.checked) out.push(el.value); });
+  // 一个都没勾＝让它自己定
+  return out.length ? out : ['auto'];
+}
+function renderDraftCandidates(candidates) {
+  const box = document.getElementById('spaceDraftList');
+  if (!box) return;
+  if (!candidates || !candidates.length) { box.innerHTML = ''; return; }
+  box.innerHTML = candidates.map(function (c, i) {
+    return '<div style="border:1px solid rgba(120,160,220,.28);border-radius:8px;padding:7px 9px;background:rgba(22,34,56,.6)">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
+      + '<span style="font-size:11px;color:#9fd6a0">' + (c.label || c.style) + '</span>'
+      + '<button class="btn" type="button" data-pick="' + i + '" style="font-size:11px;padding:2px 7px">用这条</button></div>'
+      + '<div style="margin-top:4px;font-size:13px;white-space:pre-wrap">' + String(c.text || '') + '</div></div>';
+  }).join('');
+  box.querySelectorAll('[data-pick]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const idx = Number(btn.getAttribute('data-pick'));
+      const c = candidates[idx];
+      const ta = document.getElementById('spaceText');
+      if (ta && c) {
+        ta.value = c.text;
+        const cnt = document.getElementById('spaceCount');
+        if (cnt) cnt.textContent = ta.value.length + ' / 300';
+        draftHint('已选「' + (c.label || c.style) + '」，改完再点发布', '#9fd6a0');
+      }
+    });
+  });
+}
+async function qzoneDraftRequest() {
+  const styles = pickedStyles();
+  const hintEl = document.getElementById('spaceText');
+  const hint = hintEl && hintEl.value.trim() ? hintEl.value.trim().slice(0, 120) : '';
+  draftHint('已请它在你的 QQ 私聊里写…（它会在私聊里回一句，那就是草稿）', '#ffd479');
+  try {
+    const r = await api('/api/qzone/draft', 'POST', { action: 'request', styles: styles, hint: hint });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '请求失败');
+    draftHint('等它回话…（最多 10 分钟；回来点「取草稿」或等我自动填）', '#ffd479');
+    startDraftPolling();
+  } catch (e) {
+    draftHint('发起失败：' + (e && e.message ? e.message : e), '#ff9d7a');
+  }
+}
+function startDraftPolling() {
+  if (qzoneDraftTimer) return;
+  let tries = 0;
+  qzoneDraftTimer = setInterval(async function () {
+    tries += 1;
+    if (tries > 40) { clearInterval(qzoneDraftTimer); qzoneDraftTimer = null; draftHint('等太久了，可能它没回；去私聊看看，或再点一次「取草稿」', '#ff9d7a'); return; }
+    const got = await qzoneDraftFill();
+    if (got) { clearInterval(qzoneDraftTimer); qzoneDraftTimer = null; }
+  }, 3000);
+}
+async function qzoneDraftFill() {
+  try {
+    const r = await api('/api/qzone/draft');
+    if (!r || r.ok === false) return false;
+    const d = r.draft || {};
+    if (d.status === 'ready' && (d.text || (d.candidates && d.candidates.length))) {
+      const ta = document.getElementById('spaceText');
+      const list = (d.candidates && d.candidates.length) ? d.candidates : [{ label: d.style || 'auto', text: d.text }];
+      if (ta && list.length === 1) {
+        ta.value = list[0].text;
+        const cnt = document.getElementById('spaceCount');
+        if (cnt) cnt.textContent = ta.value.length + ' / 300';
+      }
+      renderDraftCandidates(list);
+      draftHint(list.length > 1
+        ? ('写了 ' + list.length + ' 条，挑一条用（已列在下面）')
+        : ('草稿已填进上面的框（' + (list[0].label || 'auto') + '）。改完再点发布。'), '#9fd6a0');
+      return true;
+    }
+    if (d.status === 'error' || d.status === 'expired') {
+      draftHint('没拿到草稿：' + (d.error || d.status) + '（看看你的 QQ 私聊里它有没有回）', '#ff9d7a');
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+function bindQzoneDraft() {
+  document.getElementById('qzoneDraftAi')?.addEventListener('click', qzoneDraftRequest);
+  document.getElementById('qzoneDraftTake')?.addEventListener('click', async function () {
+    const got = await qzoneDraftFill();
+    if (!got) draftHint('还没有草稿（可能它还在想，或没收到请求）', '#ffd479');
+  });
+}
+bindQzoneDraft();
+
+
+// ── 空间配图（0.4.79）──────────────────────────────────────────────────
+// 上传 → state/qzone-uploads（随 state 备份）；勾选 → 发布时把 id 换成绝对路径。
+// 注意：识图（describe）当前环境返回空，所以先用"文件名/尺寸"给人看，不假装 AI 看懂了。
+let spaceUploadItems = [];
+
+function spaceUploadEl() { return document.getElementById('spaceUploads'); }
+
+function renderSpaceUploads() {
+  const box = spaceUploadEl();
+  if (!box) return;
+  if (!spaceUploadItems.length) { box.textContent = '（还没有图，选几张上传）'; return; }
+  box.innerHTML = spaceUploadItems.map(function (it) {
+    const kb = Math.round((it.size || 0) / 1024);
+    return '<label style="display:flex;flex-direction:column;gap:2px;border:1px solid rgba(120,160,220,.28);border-radius:8px;padding:6px 8px;cursor:pointer;max-width:150px">'
+      + '<span style="display:flex;align-items:center;gap:5px"><input type="checkbox" value="' + it.id + '">'
+      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (it.name || it.id) + '</span></span>'
+      + '<span style="opacity:.55">' + kb + ' KB' + (it.desc ? ' · ' + it.desc : '') + '</span></label>';
+  }).join('');
+}
+
+async function loadSpaceUploads() {
+  try {
+    const r = await api('/api/qzone/uploads');
+    if (!r || r.ok === false) return;
+    spaceUploadItems = r.items || [];
+    renderSpaceUploads();
+  } catch { /* 忽略 */ }
+}
+
+async function uploadSpaceFiles(files) {
+  const list = Array.from(files || []).slice(0, 9);
+  if (!list.length) return;
+  draftHint('上传 ' + list.length + ' 张…', '#ffd479');
+  for (const f of list) {
+    try {
+      const b64 = await new Promise(function (resolve, reject) {
+        const fr = new FileReader();
+        fr.onload = function () { resolve(String(fr.result || '').replace(/^data:[^;]+;base64,/, '')); };
+        fr.onerror = reject;
+        fr.readAsDataURL(f);
+      });
+      const r = await api('/api/qzone/uploads', 'POST', { action: 'upload', name: f.name, mime: f.type, data: b64 });
+      if (!r || r.ok === false) throw new Error((r && r.error) || '上传失败');
+    } catch (e) {
+      draftHint('上传失败：' + (e && e.message ? e.message : e), '#ff9d7a');
+    }
+  }
+  await loadSpaceUploads();
+  draftHint('已上传。勾选 1~2 张配图（别太多，像人才好）', '#9fd6a0');
+}
+
+function checkedUploadIds() {
+  const box = spaceUploadEl();
+  if (!box) return [];
+  const out = [];
+  box.querySelectorAll('input[type=checkbox]').forEach(function (el) { if (el.checked) out.push(el.value); });
+  return out;
+}
+
+function bindSpaceUploads() {
+  const input = document.getElementById('spaceUploadInput');
+  if (input) input.addEventListener('change', function (e) { uploadSpaceFiles(e.target.files); e.target.value = ''; });
+  const clear = document.getElementById('spaceUploadClear');
+  if (clear) clear.addEventListener('click', function () {
+    const box = spaceUploadEl();
+    if (box) box.querySelectorAll('input[type=checkbox]').forEach(function (el) { el.checked = false; });
+  });
+  loadSpaceUploads();
+}
+bindSpaceUploads();
+
+
+// ── 空间子标签（0.4.81）──────────────────────────────────────────────
+// 四个子页：写说说 / 我的说说 / 好友动态 / 配图库。
+// 切换时不销毁 DOM（避免正在编辑的草稿被清掉），只切 hidden。
+function setSpaceTab(name) {
+  const tabs = document.getElementById('spaceTabs');
+  if (tabs) {
+    tabs.querySelectorAll('[data-space-tab]').forEach(function (b) {
+      const on = b.getAttribute('data-space-tab') === name;
+      b.style.background = on ? 'rgba(60,110,180,.55)' : '';
+      b.style.borderColor = on ? '#5b8fd6' : '';
+    });
+  }
+  document.querySelectorAll('#section-space [data-space-panel]').forEach(function (p) {
+    p.hidden = p.getAttribute('data-space-panel') !== name;
+  });
+  if (name === 'mine' && typeof spaceLoadMine === 'function') spaceLoadMine();
+  if (name === 'feeds' && typeof spaceLoadFeeds === 'function') spaceLoadFeeds();
+  if (name === 'images' && typeof spaceLoadImages === 'function') spaceLoadImages();
+  try { sessionStorage.setItem('spaceTab', name); } catch (e) { /* 无所谓 */ }
+}
+function bindSpaceTabs() {
+  const tabs = document.getElementById('spaceTabs');
+  if (!tabs) return;
+  tabs.querySelectorAll('[data-space-tab]').forEach(function (b) {
+    b.addEventListener('click', function () { setSpaceTab(b.getAttribute('data-space-tab')); });
+  });
+  const refreshImages = document.getElementById('spaceImagesRefresh');
+  if (refreshImages) refreshImages.addEventListener('click', function () { if (typeof spaceLoadImages === 'function') spaceLoadImages(); });
+  const pickAi = document.getElementById('spacePickAi');
+  if (pickAi) pickAi.addEventListener('click', spacePickImagesAi);
+  let start = 'compose';
+  try { start = sessionStorage.getItem('spaceTab') || 'compose'; } catch (e) { /* 忽略 */ }
+  setSpaceTab(start);
+}
+
+// AI 挑图：按草稿文字 + 图片描述挑 1~2 张（后端 pick）
+async function spacePickImagesAi() {
+  const ta = document.getElementById('spaceText');
+  const text = ta ? ta.value.trim() : '';
+  if (!spaceUploadItems.length) { draftHint('先上传几张图再挑', '#ffd479'); return; }
+  try {
+    const r = await api('/api/qzone/uploads', 'POST', { action: 'pick', text: text });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '挑图失败');
+    const box = spaceUploadEl();
+    if (box) {
+      box.querySelectorAll('input[type=checkbox]').forEach(function (el) {
+        el.checked = (r.picked || []).indexOf(el.value) >= 0;
+      });
+    }
+    draftHint('已按正文挑了 ' + (r.picked || []).length + ' 张（' + (r.reason || '') + '）', '#9fd6a0');
+  } catch (e) {
+    draftHint('挑图失败：' + (e && e.message ? e.message : e), '#ff9d7a');
+  }
+}
+
+// 配图库列表
+async function spaceLoadImages() {
+  const box = document.getElementById('spaceImageList');
+  if (!box) return;
+  box.textContent = '（加载中…）';
+  try {
+    const r = await api('/api/qzone/uploads');
+    if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+    const items = r.items || [];
+    spaceUploadItems = items;
+    renderSpaceUploads();
+    if (!items.length) { box.textContent = '（还没有上传过图）'; return; }
+    box.innerHTML = items.map(function (it) {
+      return '<div style="padding:5px 0;border-bottom:1px dashed rgba(90,120,160,.22)">'
+        + '<b>' + (it.name || it.id) + '</b> <span style="opacity:.55">' + Math.round((it.size || 0) / 1024) + ' KB</span>'
+        + (it.desc ? '<div style="opacity:.7;margin-top:2px">' + it.desc + '</div>' : '<div style="opacity:.45;margin-top:2px">（还没有描述，可在写说说页点识图）</div>')
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<span style="color:#ffb27a">读取失败：' + (e && e.message ? e.message : e) + '</span>';
+  }
+}
+bindSpaceTabs();
+
+
+async function spaceDeletePost(tid, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '删除中…'; }
+  try {
+    const r = await api('/api/qzone/delete', 'POST', { tid: tid });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '删除失败');
+    if (typeof showConsoleToast === 'function') showConsoleToast(r.note || '已删除');
+    await spaceLoadMine();
+  } catch (e) {
+    alert('删除失败：' + (e && e.message ? e.message : e));
+    if (btn) { btn.disabled = false; btn.textContent = '删除'; }
+  }
+}
 
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';

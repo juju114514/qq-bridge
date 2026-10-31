@@ -98,6 +98,7 @@ import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
 import { migrateFromLegacy } from './memory-store.js';
+import { captureReply as captureQzoneDraft } from './qzone-draft.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
 import { atomicWriteJson, atomicWriteText, renameWithRetry } from './atomic-write.js';
@@ -214,6 +215,7 @@ const ROOT = path.resolve(__dirname, '..');
 const STATE_DIR = path.join(ROOT, 'state');
 const STATE_FILE = path.join(STATE_DIR, 'sessions.json');
 const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
+const QZONE_DRAFT_FILE = path.join(STATE_DIR, 'qzone-draft.json');
 const SLANG_FILE = path.join(STATE_DIR, 'slang.json');
 // 表情笔记（独立存储，和 slang.json 同级）。群聊/私聊严格隔离：
 // scope 由会话 key 前缀决定，笔记层不传 scope 就返回空，双保险。
@@ -4347,7 +4349,18 @@ async function main() {
             },
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
             getOfficialRuntime: () => ({ enabled: Boolean(officialTransport), ready: officialTransport?.ready === true, lastError: String(officialTransport?.lastError ?? '') }),
-            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log') },
+            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads') },
+            deliverPrompt: (key, text, opts) => deliverPromptNow(key, text, opts),
+            getStickerEntries: () => {
+              // 内存为空时回退读磁盘：启动时 WS 同步失败会让 stickerEntries 是空的
+              try {
+                if (Array.isArray(stickerEntries) && stickerEntries.length) return stickerEntries;
+                const fromFile = loadStickerStore(STICKER_FILE);
+                return Array.isArray(fromFile) ? fromFile : [];
+              } catch { return []; }
+            },
+            describeImageBuffer: (buf) => describeImageBuffer(buf),
+            onebotAction: (action, params, opts) => onebotHttpAction(action, params, opts || {}),
             getProcessInfo: () => ({ pid: process.pid, uptimeMs: Math.round(process.uptime() * 1000), ready: dshReady === true, version: cfg.version || '' }),
             parseRunnerEvents: (lines) => parseRunnerEventsShared(lines),
             parseWatchdogEvents: (lines) => parseWatchdogEventsShared(lines),
@@ -4428,6 +4441,13 @@ async function main() {
   const lastSendAtByKey = new Map();
 
   function sendToQQ(key, msg) {
+    // AI 写空间（0.4.77）：owner 私聊里发出的这句话，如果正等草稿，顺手存一份（仍照常发送）
+    try {
+      if (key === `private:${String(cfg.ownerQQ || '').trim()}` && typeof msg === 'string') {
+        const r = captureQzoneDraft(QZONE_DRAFT_FILE, msg);
+        if (r && r.captured) log('[qzone-draft] 已收下 AI 草稿：' + String(r.text || '').slice(0, 20) + '…');
+      }
+    } catch { /* 草稿失败绝不影响正常发送 */ }
     // 0.4.39：发送是不可撤销副作用，先过 epoch 守卫（通道易主就别发了）
     if (!epochGuard('QQ 发送')) {
       lastSendFailed.set(key, true);

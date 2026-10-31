@@ -149,6 +149,8 @@ const tests = [
   'test-overview.mjs',
   'test-console-boot.mjs',
   'test-report-build.mjs',
+  'test-qzone-draft.mjs',
+  'test-qzone-styles.mjs',
   'test-official-route.mjs',
   'test-official-gate.mjs',
   'test-supervisor-view.mjs',

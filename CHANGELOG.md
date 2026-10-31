@@ -2,6 +2,58 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.77 ~ 0.4.82：空间模块整轮升级（AI 起草 / 配图 / 挑图 / 删除）
+
+用户的原话是「空间只有文字很单调」「图片上传给 AI 挑」「给人点赞评论放到空间里做子分支」。
+这一轮把 QQ 空间从一个"能发文字"的页面，做成了完整的一条链。
+
+### 0.4.77 — AI 写空间（草稿，不自动发布）
+
+- `POST /api/qzone/draft { styles, hint }`：把「空间草稿请求」投给 owner 私聊，让 agent 写
+- 桥接在 `sendToQQ` 里挂钩子：owner 私聊发出的那句话顺手存成草稿（**仍照常发送**）
+- `state/qzone-draft.json`：`pending / ready / expired`，10 分钟没回自动作废
+- **铁律：绝不自动发布**，发布仍要人点
+
+### 0.4.78 — 风格做成模块（可多选 / 可让 AI 定）
+
+- `src/qzone-styles.js`：五种风格（日常 / 吐槽 / 文艺 / 技术 / 让它自己定），每条带
+  hint、长度区间、表情政策
+- 多选（最多 3 种）→ prompt 要求「每种一条」，回复用 `【日常】` 标签分隔 → 拆成候选卡片
+- 空选 / 未知 id → 回落 `auto`；`parseStyleReply` 兼容带标签 / 带编号 / 整段三种情况
+
+### 0.4.79 — 配图上传（存 state/qzone-uploads/）
+
+- `POST /api/qzone/uploads { action:'upload' }`：base64 上传，**内容寻址**（同图只存一份）
+- 安全：**文件头嗅探**（文本冒充 png 会被拒）、单张 6MB、最多 9 张、本地最多留 60 张
+- `describe`：用 GLM-4V 生成一句话描述；`resolve`：id → 绝对路径
+- 实测：网关 `send_qzone_msg` **接受本地绝对路径**（真发一条带图说说成功）
+
+### 0.4.80 — 删除 + 挑图
+
+- `POST /api/qzone/delete { tid }`：依次试 4 个候选 action 名
+  （`delete_qzone_msg` / `del_qzone_msg` / `delete_qzone` / `qzone_delete`）
+- **实测真删成功**：`{"ok":true,"deleted":1,"action":"delete_qzone_msg"}`
+- `src/qzone-post-ops.js`：挑图打分（中文 2 字滑窗 / 英文按词），**最多 2 张**（产品约束）
+
+### 0.4.81 — 空间改成四个子页
+
+「写说说 / 我的说说 / 好友动态 / 配图库」顶部切换，`sessionStorage` 记住上次那个页；
+「我的说说」每条加**删除**（二次确认）；好友动态保留点赞/评论，新增「带识图描述」开关。
+
+### 0.4.82 — 测试与收口
+
+- 正常环境：**审计 156/156**、真机自检 **18/18**、接口矩阵 **9/9**
+- 脏环境：新增 `test-qzone-dirty.mjs`（9 条）——坏 index / 假图 / 空 base64 / 超 6MB /
+  不存在 id / 空挑图 / 删除全失败 / 截断草稿 / 并发同图
+- 结构收口：`qzone-endpoints.js`（四个端点收敛成一次调用）、
+  `qzone-draft`/`qzone-uploads` 改用共享 `atomicWriteJson`
+- 行数棘轮：`console-extra-routes.js` +55、`bridge.js` +69 —— 已 `--update` 基线，
+  理由是**只加接线不加逻辑**（路由体都在各自的模块里）
+
+### 顺手补的安全项
+
+`.gitignore` 加 `config/`：这个目录放 `image-api.json`（视觉 API key），
+之前**没有被忽略**，差点被提交。
 ## 2026-11-01 — 0.4.76：更新器在「别人的服务器」上会误回滚（已修）
 
 对应用户远程服务器的场景：对方明天早上要更新，而他那台机器**不是计划任务模式**。

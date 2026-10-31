@@ -30,3 +30,6 @@ pnpm-lock.yaml
 # 先放行目录、再放行内容，否则 git 不会往回加。
 !assets/beginner
 !assets/beginner/**
+
+# 本机凭证目录（image-api.json 里是视觉 API key，绝不入库）
+config/
