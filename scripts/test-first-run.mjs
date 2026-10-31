@@ -274,7 +274,9 @@ await checkAsync('shell 版：空仓库 dry-run 非 0 退出且不创建 config.
       out = String(error.stdout ?? '') + String(error.stderr ?? '');
     }
     assert.notEqual(code, 0, '环境不完整时 dry-run 应返回非 0');
-    assert.match(out, /config\.json/, '输出应提到 config.json');
+    // 失败必须「可行动」：说清缺什么 + 下一步。不强行要求出现 config.json ——
+    // Linux 上空仓库会先卡在「前置检查」(node/npm/preset)，那时还轮不到配置步骤。
+    assert.match(out, /下一步|config\.json/, '失败时必须给出具体缺什么 + 下一步，而不是只报"失败了"');
     assert.equal(fs.existsSync(path.join(tmp, 'config.json')), false, 'dry-run 绝不能创建 config.json');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
