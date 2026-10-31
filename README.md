@@ -222,6 +222,30 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 | **部署** | Windows 一键脚本；**Docker**（`docker compose up -d`，容器内可跑官方通道）—— [DOCKER.md](docs/guides/DOCKER.md) |
 | **模型** | `deepseek-official`（✅ 已测试）｜`openai` / GPT 等兼容 provider（⚠️ **已接入、未测试**，见 [MODELS.md](docs/guides/MODELS.md)） |
 
+### 能力全景（按模块：代码在哪 / 干什么 / 文档在哪）
+
+上表是按"用户感知"分的；这张表按"**代码模块**"分，方便你确认某个功能到底有没有、在哪。
+
+| 模块 | 代码 | 干什么 | 文档 |
+| --- | --- | --- | --- |
+| **定时任务 / 调度** | `src/scheduler/`（engine / schedule / commands / instance / time / notes）· `/api/scheduler` | 让机器人按时间做事的引擎（控制台「定时任务」页就是它的界面） | [COMMANDS.md](COMMANDS.md) |
+| **token 账本 + 计价** | `src/token-ledger.js` · `src/model-prices.js` | 按模型单价算花费、按会话记账（控制台「令牌与花费」页） | [CHANGELOG](CHANGELOG.md) |
+| **唤醒漏斗 / 唤醒配置** | `src/wake-funnel.js` · `src/domains/wake-config.js` · `wake-trigger.js` · `wake-schedule.js` | 决定"这条消息该不该叫醒它"，漏斗逐段给判定 | 控制台「会话与审批」 |
+| **决策追踪** | `src/decision-trace.js` | 记录"为什么回/不回某条消息"，环缓冲 80 条 | [COMMANDS.md](COMMANDS.md)（`/诊断`） |
+| **Prompt 模拟器** | `/api/preset/sim-prompt` · `/backups` · `/restore` | 在控制台试 prompt 效果，改坏了能回滚 | 控制台「人格与角色」 |
+| **控制台直推 AI** | `/api/console/notify-ai` | 从控制台直接给 AI 发一条（不用绕 QQ） | — |
+| **黑话 / 俚语学习** | `src/slang-learner.js` · `/api/slang/*`（7 个端点） | 从群聊里学新词，人工批量确认/删除 | 控制台「黑话词库」 |
+| **角色卡系统** | `src/role-card.js` · `/api/roles/*`（10 个端点）· `roles/` | 人格卡 CRUD + 热切换；内置 4 个：傲娇助手 / **小鲸鱼（已测试）** / 樱羽艾玛 / 派蒙 | [roles/README.md](roles/README.md) |
+| **红包处理** | `src/domains/red-packet.js` | 群里红包事件的识别与响应 | [CHANGELOG](CHANGELOG.md) |
+| **睡眠定时器** | `src/domains/sleep-timer.js` | 到点自己"睡"（停止主动说话），到点自己醒 | [CHANGELOG](CHANGELOG.md) |
+| **频道模式** | `src/domains/channel-mode.js` · `channel-mode-store.js` | 不同频道/群用不同运行模式，可切换可持久化 | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
+| **记忆交接** | `src/domains/memory-handoff.js` | 换会话/换通道时把上下文摘要交接过去（≤4KB） | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
+| **社交规则 v1 / v2** | `src/domains/social-v2-rules.js` · `social-v2-store.js` | 一代（规则引擎）/ 二代（工具化）两套说话策略 | 控制台「二代仿真 / 一代仿真」 |
+| **插件 sidecar** | `src/domains/plugin-bridge-wiring.js` · `plugin-sidecar-io.js` | 插件模式与常驻 sidecar 的通信层（通道互斥、状态共享） | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
+| **总量可观测** | `/api/overview`（9 格）· `/api/report`（运行报告）· `/api/supervisor` | 一眼看状态、出事能导出可贴文本、看守护链 | [RUN-REPORT.md](docs/guides/RUN-REPORT.md) |
+
+> 找不到某个能力时：先 `node scripts\find-symbol.mjs <关键词>` 查符号，再看上表对应的模块。
+
 > **第一次用？** 别看 README，先看 [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)
 > —— 零基础八步，每步都写了「你应该看到什么 / 没看到怎么办」。
 
