@@ -1906,10 +1906,14 @@ button:active:not(:disabled) {
         <summary>切换当前启用的人格</summary>
         <div class="settings-content">
           <div class="row" style="margin-top:10px">
-            <input type="text" id="roleInput" placeholder="选择已有角色或输入新角色名">
+            <select id="rolePick" style="flex:1;min-width:200px">
+              <option value="">（加载中…）</option>
+            </select>
+            <input type="text" id="roleInput" placeholder="新角色名（不存在会自动创建）" style="flex:0 1 220px;display:none">
             <button id="roleSet">设置</button>
             <button id="roleClear">清除</button>
           </div>
+          <div class="meta" id="rolePickHint">从下拉里选已有角色卡；要新建就选「自定义…」后在右边输入名字。</div>
           <div class="meta">清空当前人格后，AI 只按「仿真提示词」行动，不扮演任何角色。</div>
         </div>
       </details>
@@ -3178,6 +3182,7 @@ function resetRoleForm() {
 }
 
 async function refreshRoles() {
+  if (typeof loadRolePick === 'function') { try { await loadRolePick(); } catch { /* 下拉失败不影响列表 */ } }
   try {
     const r = await api('/api/roles');
     if (r.limits?.injectMaxChars) {
@@ -3387,8 +3392,60 @@ document.getElementById('closedPreset').addEventListener('change', async () => {
   const mode = active ? active.dataset.mode : 'chat';
   await saveMode(mode);
 });
+// 人格下拉：列出已有角色卡；选「自定义…」才显示输入框
+async function loadRolePick() {
+  const sel = document.getElementById('rolePick');
+  const input = document.getElementById('roleInput');
+  if (!sel) return;
+  try {
+    const r = await api('/api/roles');
+    const names = Array.isArray(r.roles) ? r.roles : [];
+    let current = String(r.active || r.current || r.role || '').trim();
+    if (!current) {
+      try {
+        const st = await api('/api/status');
+        current = String(st?.role || '').trim();
+      } catch { /* 拿不到就不预选 */ }
+    }
+    const none = current ? '' : ' selected';
+    const opts = [`<option value=""${none}>（未设置 · 只按仿真提示词）</option>`];
+    for (const n of names) opts.push(`<option value="${n}"${n === current ? ' selected' : ''}>${n}</option>`);
+    opts.push('<option value="__custom__">自定义（输入新名字）…</option>');
+    sel.innerHTML = names.length ? opts.join('') : '<option value="__custom__">自定义（还没有角色卡）…</option>';
+    if (input) input.style.display = sel.value === '__custom__' ? '' : 'none';
+  } catch {
+    sel.innerHTML = '<option value="__custom__">（读取失败，手动输入）…</option>';
+  }
+}
+
+function bindRolePick() {
+  const sel = document.getElementById('rolePick');
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => bindRolePick(), { once: true });
+    return;
+  }
+  const input = document.getElementById('roleInput');
+  if (sel && !sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      const custom = sel.value === '__custom__';
+      if (input) { input.style.display = custom ? '' : 'none'; if (custom) input.focus(); }
+      const hint = document.getElementById('rolePickHint');
+      if (hint) hint.textContent = custom
+        ? '输入一个新名字：不存在会自动当作新角色卡（内容留空，稍后去上面编辑）'
+        : '从下拉里选已有角色卡；要新建就选「自定义…」';
+    });
+  }
+  loadRolePick();
+}
+
 document.getElementById('roleSet').addEventListener('click', async () => {
-  const r = await api('/api/role', 'POST', { role: document.getElementById('roleInput').value.trim() });
+  const sel = document.getElementById('rolePick');
+  const picked = sel ? sel.value : '';
+  const name = (picked === '__custom__' || !picked)
+    ? document.getElementById('roleInput').value.trim()
+    : picked;
+  const r = await api('/api/role', 'POST', { role: name });
   if (r.ok) refreshRoles(); else alert(r.error || '设置失败');
 });
 document.getElementById('roleClear').addEventListener('click', async () => { await api('/api/role', 'POST', { role: null }); refreshRoles(); refresh(); });
@@ -4348,7 +4405,7 @@ document.getElementById('socialSave').addEventListener('click', async () => {
   });
   document.getElementById('socialMsg').textContent = r.ok ? '✅ 已保存' : ('❌ ' + (r.error || '失败'));
   document.getElementById('socialMsg').className = r.ok ? 'meta ok' : 'meta err';
-  if (r.ok) { loadSocialForm(); bindResetSession(); bindSessionBackups(); refreshSocialStatus(); }
+  if (r.ok) { loadSocialForm(); bindResetSession(); bindSessionBackups(); bindRolePick(); refreshSocialStatus(); }
 });
 document.getElementById('socialFlush').addEventListener('click', async () => {
   const r = await api('/api/social/flush', 'POST', {});
@@ -6521,6 +6578,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'persona') {
     if (typeof bindResetSession === 'function') bindResetSession();
     if (typeof bindSessionBackups === 'function') bindSessionBackups();
+    if (typeof bindRolePick === 'function') bindRolePick();
   }
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
