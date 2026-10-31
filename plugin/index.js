@@ -19,6 +19,16 @@ import { sessionIdFor as sessionIdOf } from './agent-driver.js';
 import { createTools } from './tools.js';
 import { createChatLog } from './chat-log.js';
 
+// 宿主用 defineTool() 把「参数说明」编译成 JSON Schema；直接把裸对象丢给
+// ctx.tools.register 的话，register 不会编译 —— 供应商侧看到的是 `type: null`，
+// 每一轮都报 "Invalid schema for function ...: got 'type: null'"（真机踩过）。
+// 这里用顶层 await 动态取：拿不到（离线测试）就退回裸对象，不影响挂载。
+let defineToolImpl = null;
+try {
+  const mod = await import('@deepseek-ai/dsh-tools');
+  defineToolImpl = typeof mod.defineTool === 'function' ? mod.defineTool : null;
+} catch { defineToolImpl = null; }
+
 export const name = 'qq-bridge';
 
 /** 给离线测试用的别名（对外 API 只有 name/inject/apply） */
@@ -151,7 +161,11 @@ export function apply(ctx, rawConfig) {
       log(`工具 ${tool.name} 已存在（多半是同名 MCP 工具），跳过注册 —— 该功能请走 MCP 那份`);
       return;
     }
-    disposers.push(ctx.tools.register(tool));
+    try {
+      disposers.push(ctx.tools.register(defineToolImpl ? defineToolImpl(tool) : tool));
+    } catch (e) {
+      log(`工具 ${tool.name} 注册失败：` + (e?.message ?? e));
+    }
   };
 
   if (typeof ctx?.tools?.register === 'function') {
