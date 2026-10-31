@@ -344,9 +344,17 @@ function readJsonSafe(file, fallback, required = false) {
     return JSON.parse(text);
   } catch (error) {
     if (required) throw new Error(`配置文件读取/解析失败：${file}（${error?.message ?? error}）`);
+    // 文件**存在**但读不动 = 内容坏了。不崩是对的（fail-soft），但必须说一声：
+    // 静默回退成默认值会让用户以为自己的配置还在（脏环境测试发现的）。
+    // 同一个文件只警告一次，避免每次读都刷一行。
+    if (!readJsonSafeWarned.has(file) && (() => { try { return fs.existsSync(file); } catch { return false; } })()) {
+      readJsonSafeWarned.add(file);
+      log(`⚠️  state 文件损坏，已回退默认值（原文件保留，未覆盖）：state/${path.basename(String(file))} —— ${error?.message ?? error}`);
+    }
     return fallback;
   }
 }
+const readJsonSafeWarned = new Set();
 
 /**
  * 读取 config.json，并保证拿到一个**可安全改写的普通对象**。

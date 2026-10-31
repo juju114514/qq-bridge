@@ -242,5 +242,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4295 |
-| ANY | `/api/tokens/` | L4295 |
+| ANY | `/api/tokens/summary` | L4303 |
+| ANY | `/api/tokens/` | L4303 |
