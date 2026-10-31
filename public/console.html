@@ -1777,6 +1777,7 @@ button:active:not(:disabled) {
         <button data-view="social-v2" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>二代仿真<span class="nav-note">V2</span></button>
         <button data-view="social-v1" class="nav-item"><span class="nav-icon" aria-hidden="true">◇</span>一代仿真<span class="nav-note">V1</span></button>
         <button data-view="persona" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>人格与角色</button>
+        <button data-view="song" class="nav-item"><span class="nav-icon" aria-hidden="true">♪</span>点歌</button>
 
         <div class="nav-label">记忆</div>
         <button data-view="memory-graph" class="nav-item"><span class="nav-icon" aria-hidden="true">✦</span>记忆星图</button>
@@ -2761,6 +2762,46 @@ button:active:not(:disabled) {
       </div>
       <div id="spaceFeeds" style="margin-top:8px;font-size:12px;color:#c8d4ea">（点刷新加载）</div>
     </div>
+  </div>
+</section>
+<section data-page="song" class="card span-all" hidden id="section-song">
+  <h2 data-note="会真实发出语音条">点歌 / 唱歌</h2>
+  <div class="meta">下载并截取指定时长的音频，以语音条发到目标会话。<b>这是真实发送</b>：10~20 秒后对方就会收到，不是本地预览。</div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px">
+    <label style="font-size:12px">发到哪个会话
+      <select id="songKey" style="width:100%;margin-top:4px;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px"></select>
+    </label>
+    <label style="font-size:12px">歌名（可带歌手）
+      <input id="songName" placeholder="晴天 周杰伦" style="width:100%;margin-top:4px;box-sizing:border-box;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px">
+    </label>
+    <label style="font-size:12px">音质
+      <select id="songQuality" style="width:100%;margin-top:4px;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px">
+        <option value="">普通</option>
+        <option value="高清">高清</option>
+        <option value="无损">无损</option>
+        <option value="母带">母带</option>
+      </select>
+    </label>
+  </div>
+
+  <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px">
+    <label style="display:flex;align-items:center;gap:6px">时长
+      <input id="songSeconds" type="range" min="10" max="300" step="5" value="40" style="width:180px">
+      <span id="songSecondsVal">40 秒</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:5px"><input id="songFull" type="checkbox"> 整首（≤300 秒）</label>
+    <button class="btn" id="songGo" type="button">点歌并发送</button>
+  </div>
+
+  <div id="songResult" style="margin-top:10px;font-size:12px;color:#c8d4ea"></div>
+
+  <div style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="font-size:13px">本次页面发起的点歌</strong>
+      <span style="font-size:11px;opacity:.55">只记本页操作，不是引擎历史</span>
+    </div>
+    <div id="songHistory" style="margin-top:8px;font-size:12px;color:#c8d4ea">（还没有）</div>
   </div>
 </section>
 <section data-page="memory-graph" class="card span-all" hidden>
@@ -4623,6 +4664,7 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
+  song: ['点歌 / 唱歌', '把喜欢的，唱给对方听。', '下载并截取音频，以语音条发到指定会话（真实发送）。'],
   space: ['空间动态', '让关心的人看到。', '发说说、看好友动态、点赞与评论（写操作需确认）。'],
   'memory-graph': ['记忆星图', '记忆星图', '把长期记忆画成星点：权重、新鲜度、关联一目了然'],
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
@@ -5586,6 +5628,103 @@ function bindSpace() {
   document.getElementById('spaceFeedsRefresh')?.addEventListener('click', spaceLoadFeeds);
 }
 bindSpace();
+// ── 点歌（0.4.61）──────────────────────────────────────────────────────
+// 契约：POST /api/socialV2/song { key, name, seconds(10~300), full, quality }
+//   仅 reserved2；非 Windows 且未设 QQBOT_SONG_SCRIPT 时后端直接 501。
+// 这是**真实发送**：后端 spawn PowerShell 下载+截取，10~20 秒后发语音条。
+let songHistory = [];
+async function songInit() {
+  const sel = document.getElementById('songKey');
+  const box = document.getElementById('songResult');
+  const secs = document.getElementById('songSeconds');
+  const secsVal = document.getElementById('songSecondsVal');
+  if (secs && secsVal && !secs.dataset.bound) {
+    secs.dataset.bound = '1';
+    secs.addEventListener('input', function () { secsVal.textContent = secs.value + ' 秒'; });
+  }
+  const full = document.getElementById('songFull');
+  if (full && !full.dataset.bound) {
+    full.dataset.bound = '1';
+    full.addEventListener('change', function () {
+      if (secs) secs.disabled = full.checked;
+      if (secsVal) secsVal.textContent = full.checked ? '整首' : (secs.value + ' 秒');
+    });
+  }
+  if (!sel) return;
+  if (sel.options.length > 1) return;
+  sel.innerHTML = '<option value="">（加载会话…）</option>';
+  try {
+    const st = await api('/api/socialV2/states');
+    const convs = (st && st.conversations) || [];
+    if (!convs.length) { sel.innerHTML = '<option value="">（还没有会话）</option>'; return; }
+    sel.innerHTML = convs.map(function (c) {
+      return '<option value="' + c.key + '">' + String(c.key).replace(/^(group:|private:)/, function (m) { return m; }) + '</option>';
+    }).join('');
+    if (box) box.textContent = '';
+  } catch (e) {
+    sel.innerHTML = '<option value="">（读取失败）</option>';
+    if (box) box.textContent = '读取会话失败：' + (e && e.message ? e.message : e);
+  }
+}
+function songRenderHistory() {
+  const box = document.getElementById('songHistory');
+  if (!box) return;
+  if (!songHistory.length) { box.textContent = '（还没有）'; return; }
+  box.innerHTML = songHistory.map(function (h) {
+    const color = h.ok ? '#9fd6a0' : '#ff9d7a';
+    const p = function (n) { return String(n).padStart(2, '0'); };
+    const d = new Date(h.at);
+    return '<div style="padding:5px 0;border-bottom:1px dashed rgba(90,120,160,.25)">'
+      + '<span style="opacity:.55;font-size:11px">' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '</span> '
+      + '<b>' + h.name + '</b> → ' + String(h.key).replace(/^(group:|private:)/, '')
+      + ' <span style="opacity:.55">(' + (h.full ? '整首' : h.seconds + 's') + (h.quality ? ' · ' + h.quality : '') + ')</span>'
+      + ' <span style="color:' + color + '">' + (h.ok ? '已提交' : ('失败：' + h.error)) + '</span>'
+      + '</div>';
+  }).join('');
+}
+async function songGo() {
+  const sel = document.getElementById('songKey');
+  const nameEl = document.getElementById('songName');
+  const qEl = document.getElementById('songQuality');
+  const secsEl = document.getElementById('songSeconds');
+  const fullEl = document.getElementById('songFull');
+  const box = document.getElementById('songResult');
+  const key = sel ? sel.value : '';
+  const name = (nameEl && nameEl.value || '').trim();
+  const full = !!(fullEl && fullEl.checked);
+  const seconds = Number(secsEl && secsEl.value) || 40;
+  const quality = qEl ? qEl.value : '';
+  if (!key) { alert('先选一个会话'); return; }
+  if (!name) { alert('歌名不能为空'); return; }
+  const target = String(key);
+  const ok = confirm('即将点歌并**真实发送**到：' + target + '\n\n'
+    + '歌名：' + name + '\n'
+    + '时长：' + (full ? '整首（≤300 秒）' : seconds + ' 秒') + (quality ? '\n音质：' + quality : '')
+    + '\n\n后端会下载并截取，约 10~20 秒后对方收到语音条。确认发送？');
+  if (!ok) return;
+  const btn = document.getElementById('songGo');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  const entry = { at: Date.now(), key: target, name: name, seconds: seconds, full: full, quality: quality, ok: false, error: '' };
+  try {
+    const r = await api('/api/socialV2/song', 'POST', { key: target, name: name, seconds: seconds, full: full, quality: quality });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '点歌失败');
+    entry.ok = true;
+    songHistory.unshift(entry);
+    if (box) box.innerHTML = '<span style="color:#9fd6a0">已提交：' + (r.note || '正在下载并截取，约 10~20 秒后发语音条') + '</span>';
+    if (nameEl) nameEl.value = '';
+  } catch (e) {
+    entry.error = e && e.message ? e.message : String(e);
+    songHistory.unshift(entry);
+    if (box) box.innerHTML = '<span style="color:#ff9d7a">点歌失败：' + entry.error + '</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '点歌并发送'; }
+    songRenderHistory();
+  }
+}
+function bindSong() {
+  document.getElementById('songGo')?.addEventListener('click', songGo);
+}
+bindSong();
 function setConsolePage(page, { updateHash = true, focus = false, target = '' } = {}) {
   if (!Object.hasOwn(consolePages, page)) page = 'overview';
   currentConsolePage = page;
@@ -5614,6 +5753,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'usage' && typeof loadUsageStructure === 'function') loadUsageStructure();
   if (page === 'overview' && typeof loadOverview === 'function') loadOverview();
   if (page === 'space' && typeof spaceInit === 'function') spaceInit();
+  if (page === 'song' && typeof songInit === 'function') songInit();
   if (page === 'reference' && typeof loadToolHealth === 'function') loadToolHealth();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
