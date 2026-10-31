@@ -6259,14 +6259,50 @@ function setSpaceTab(name) {
   try { sessionStorage.setItem('spaceTab', name); } catch (e) { /* 无所谓 */ }
 }
 // ── 重置会话（0.4.91）─────────────────────────────────────────────
+// key 形如 group:630679184 / private:1599683156 → 人能读的标签。
+// 注意：/api/socialV2/states 返回的 conversations 是**数组**（不是对象），
+// 早先直接用 Object.keys() 会得到 "0","1","2"… —— 下拉里显示的就是下标。
+function describeSessionKey(key) {
+  const m = /^(group|private):(.+)$/.exec(String(key || ''));
+  if (!m) return String(key || '');
+  return (m[1] === 'group' ? '群 ' : '私聊 ') + m[2];
+}
+
 async function loadResetSessionOptions() {
   const sel = document.getElementById('resetSessionKey');
   if (!sel) return;
   try {
     const r = await api('/api/socialV2/states');
-    const keys = Object.keys((r && (r.states || r.conversations)) || {});
+    const raw = (r && r.conversations) || [];
+    const keys = (Array.isArray(raw) ? raw.map((x) => x && (x.key || x.sessionKey)) : Object.keys(raw))
+      .filter((k) => typeof k === 'string' && k)
+      // 群聊排前面，私聊在后；同类按号码升序（数字部分按数值比，不是字典序）
+      .sort((a, b) => {
+        const pa = a.startsWith('group:') ? 0 : 1;
+        const pb = b.startsWith('group:') ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const na = Number(a.split(':')[1]) || 0;
+        const nb = Number(b.split(':')[1]) || 0;
+        if (na !== nb) return na - nb;
+        return a.localeCompare(b);
+      });
+
+    // 同一个号出现多次时（理论上不会，但导入了多份状态时可能）加 （1）（2）区分
+    const count = new Map();
+    for (const k of keys) count.set(describeSessionKey(k), (count.get(describeSessionKey(k)) || 0) + 1);
+    const seen = new Map();
+
     sel.innerHTML = keys.length
-      ? keys.map((k) => `<option value="${k}">${k}</option>`).join('')
+      ? keys.map((k) => {
+          const base = describeSessionKey(k);
+          let label = base;
+          if (count.get(base) > 1) {
+            const n = (seen.get(base) || 0) + 1;
+            seen.set(base, n);
+            label = base + '（' + n + '）';
+          }
+          return `<option value="${k}">${label}</option>`;
+        }).join('')
       : '<option value="">（还没有会话）</option>';
   } catch {
     sel.innerHTML = '<option value="">（读取会话失败）</option>';
