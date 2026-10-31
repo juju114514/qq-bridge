@@ -1,9 +1,23 @@
-﻿# 用计划任务/守护方式启动桥接：先找到 node，再进守护循环。
-# 为什么需要：任务计划里的 PATH 往往不含 node（实测 `where node` 为空），
-# 直接跑 start.bat 会 5 秒重启一次、永远起不来。
+﻿# 计划任务/守护启动桥接：找 node → 守护循环 → 结构化日志（0.4.42/0.4.43）
+#
+# 日志（state/runner.log，每行一个 JSON）：
+#   runner.start       本次启动（runnerPid / nodePath）
+#   runner.child_exit  node 退出（nodePid / exitCode / uptimeMs / how）
+#   runner.restart     即将重试（attempt / delayMs / reason）
+#   runner.shutdown    收到停止信号
+#
+# 为什么用 JSON：`state/exit.log` 那种纯文本"有启动没退出"要靠肉眼比对；
+# JSON 行可以直接和任务计划历史对齐，判断是"崩溃"还是"整进程被结束"。
 $ErrorActionPreference = 'Stop'
-$dir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)   # scripts/ 的上一级
+$dir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 Set-Location $dir
+$log = Join-Path $dir 'state\runner.log'
+
+function Write-Event([string]$event, [hashtable]$fields) {
+  $obj = [ordered]@{ event = $event; time = (Get-Date).ToString('o'); runnerPid = $PID }
+  foreach ($k in $fields.Keys) { $obj[$k] = $fields[$k] }
+  try { ($obj | ConvertTo-Json -Compress) | Out-File $log -Append -Encoding utf8 } catch {}
+}
 
 function Resolve-Node {
   if ($env:QQB_NODE -and (Test-Path $env:QQB_NODE)) { return $env:QQB_NODE }
@@ -15,7 +29,6 @@ function Resolve-Node {
     'C:\Program Files (x86)\nodejs\node.exe'
   )
   foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
-  # DSH runtime 目录名带哈希时兜底扫描
   $rt = Join-Path $env:USERPROFILE '.dsh\dsh-runtimes'
   if (Test-Path $rt) {
     $hit = Get-ChildItem $rt -Recurse -Filter node.exe -Depth 6 -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -25,28 +38,33 @@ function Resolve-Node {
 }
 
 $node = Resolve-Node
-$log = Join-Path $dir 'state\runner.log'
-$stamp = { Get-Date -Format 'yyyy-MM-dd HH:mm:ss' }
 if (-not $node) {
-  "[$(& $stamp)] 找不到 node.exe：请设 QQB_NODE 或把 node 加进 PATH" | Out-File $log -Append -Encoding utf8
+  Write-Event 'runner.fatal' @{ reason = 'node-not-found' }
   exit 1
 }
-"[$(& $stamp)] 使用 node: $node" | Out-File $log -Append -Encoding utf8
+Write-Event 'runner.start' @{ nodePath = $node; taskPid = $PID }
 
-$exitLog = Join-Path $dir 'state\exit.log'
+$attempt = 0
 while ($true) {
-  "[$(& $stamp)] 启动 bridge" | Out-File $log -Append -Encoding utf8
+  $attempt += 1
   $t0 = Get-Date
   & $node 'src/bridge.js'
   $code = $LASTEXITCODE
-  # 退出诊断（0.4.42）：下次"莫名重启"时先看这个文件，而不是猜
-  $secs = [Math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
-  $how = if ($code -eq 0) { '主动退出' } elseif ($code -eq 2) { '发现已有实例' } else { '异常退出' }
-  "[$(& $stamp)] exit code=$code（$how） 运行 ${secs}s" | Out-File $exitLog -Append -Encoding utf8
+  $ms = [int](((Get-Date) - $t0).TotalMilliseconds)
+
+  $how = switch ($code) {
+    0 { 'graceful' }
+    2 { 'already-running' }
+    default { 'crash' }
+  }
+  Write-Event 'runner.child_exit' @{ nodePid = $null; exitCode = $code; uptimeMs = $ms; how = $how; attempt = $attempt }
+
   if ($code -eq 2) {
-    "[$(& $stamp)] 已有实例在跑（code 2），退出守护" | Out-File $log -Append -Encoding utf8
+    # 已有实例：不要跟它抢，退出让 watchdog/任务处理
+    Write-Event 'runner.shutdown' @{ reason = 'already-running'; attempt = $attempt }
     exit 2
   }
-  "[$(& $stamp)] bridge 退出（code $code），5 秒后重启" | Out-File $log -Append -Encoding utf8
-  Start-Sleep -Seconds 5
+  $delay = if ($code -eq 0) { 1 } else { 5 }
+  Write-Event 'runner.restart' @{ attempt = $attempt; delayMs = $delay * 1000; reason = "exitCode=$code" }
+  Start-Sleep -Seconds $delay
 }

@@ -2,6 +2,47 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.43：Windows 启动链修复**已执行**（窗口不再弹）
+
+> 承接 0.4.42 的根因定位。这次是**真机执行 + 验证**，不是文档。
+
+### 执行了什么
+
+| 项 | 改前 | 改后 |
+| --- | --- | --- |
+| `RestartOnFailure` | `Count=999 / PT1M` | **节点删除**（不是 Count=0 —— 那是非法值） |
+| 启动参数 | `-NoProfile -ExecutionPolicy Bypass` | 加 `-WindowStyle Hidden` |
+| `MultipleInstancesPolicy` | IgnoreNew（本来就对） | 保持 |
+| `ExecutionTimeLimit` | PT0S（本来就对） | 保持 |
+| 触发器 | 仅 `LogonTrigger` | 保持 |
+
+原来列的 6 项里**只有 2 项真的需要改**，其余要么已满足、要么该改脚本。
+
+### 验证证据（16:46 实测）
+
+```
+读回 XML：RestartOnFailure 不存在 / 含 -WindowStyle Hidden
+进程：node 4528 ← powershell 17128（16:46:43）← svchost
+       powershell 17128 MainWindowHandle=0、MainWindowTitle=''  ← 无可见窗口
+健康：/health/detail → ready=true, epoch=11, 四个服务全 connected
+```
+
+### 启动器收敛
+
+- `run-bridge.ps1`：改成 **JSON 行日志**（`runner.start` / `runner.child_exit` / `runner.restart` / `runner.shutdown`）
+- `keepalive.ps1`：**不再启动 `start.bat`**；改为「连续 3 次（15 分钟）health 不可用 → `schtasks /end` → 等 5 秒 → `/run`」
+  （因为 `IgnoreNew` 会让"任务 Running 但服务已死"时的 `/run` 变成空操作）
+- `start.bat`：去掉 `pause`（窗口不再卡住等人按键）
+
+### 备份与回滚
+
+`state/task-backup-20261031-164631.xml`
+回滚：`schtasks /create /tn "\qq-bridge" /xml <备份> /f`
+
+### 文档
+
+`docs/WINDOWS-PROCESS-SUPERVISION.md` 补三处纠正：
+`Count=0` 非法、`Hidden` ≠ 隐藏窗口、`IgnoreNew` 需显式声明；并附改前后对照与验证证据。
 ## 2026-10-31 — 0.4.42：生命周期规范 + 结构化启动摘要 + Windows 重启根因
 
 > 只有文档、摘要与少量日志/脚本改动，**不拆 bridge.js**。

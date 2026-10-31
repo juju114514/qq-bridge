@@ -112,3 +112,80 @@ powershell -ExecutionPolicy Bypass -File scripts\harden-scheduled-task.ps1 -Appl
 3. 看 `state/bridge.log` 的 `startup.summary`：`bootId` 变了 = 新进程
 4. 看 `schtasks /query /tn qq-bridge /v /fo LIST` 的「上次结果」
 5. 确认 `RestartOnFailure` 已关闭、`MultipleInstances=IgnoreNew`
+
+## 七、三个容易被做错的细节（外部评审指出，已核实）
+
+### 1) 不能用 `Count=0` 关闭 RestartOnFailure
+
+Task Scheduler 的 XML 要求 `Count >= 1`、`Interval >= PT1M`。
+`Count=0` 不是"关闭"，是**非法值**。正确做法是**让整个 `<RestartOnFailure>` 节点不存在**。
+
+本仓库脚本已改成「生成完整 XML → `schtasks /create /xml`」，而不是用
+`New-ScheduledTaskSettingsSet -RestartCount 0`（那会写出非法配置）。
+
+### 2) `Settings.Hidden=true` ≠ 隐藏窗口
+
+`Hidden` 只影响「任务计划程序列表里是否显示这个任务」。
+真正让 PowerShell 窗口不弹的是**启动参数**：
+
+```
+-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File …\run-bridge.ps1
+```
+
+### 3) `IgnoreNew` 是默认值，但要显式写
+
+导出 XML 时确认：`<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>`
+（本机本来就是这个值，重新注册时保留显式声明）。
+
+## 八、本机实测：改之前 vs 改之后
+
+从导出的 XML 读到的**真实现状**（不是猜）：
+
+| 项 | 改前 | 改后 |
+| --- | --- | --- |
+| `RestartOnFailure` | `Count=999 / PT1M` | **节点已删除** |
+| 启动参数 | `-NoProfile -ExecutionPolicy Bypass` | 多了 `-WindowStyle Hidden` |
+| `MultipleInstancesPolicy` | IgnoreNew（本来就对） | 保持 |
+| `ExecutionTimeLimit` | PT0S（本来就对，不会杀长跑 Node） | 保持 |
+| 触发器 | 只有 `LogonTrigger`（没有重复触发器） | 保持 |
+| `WorkingDirectory` | 项目根（正确） | 保持 |
+
+**结论：原来列的 6 项里，只有 2 项真的需要改**，其余要么已满足、要么该改脚本而不是任务。
+
+## 九、watchdog 的宽限期（避免 `IgnoreNew` 吃掉重启请求）
+
+原 `keepalive.ps1` 有盲区：任务显示 `Running` 但服务已死时，`schtasks /run` 会被
+`IgnoreNew` 直接忽略 —— 等于什么都没做。
+
+现在的逻辑：
+
+```
+每 5 分钟：
+  GET /health/detail → 200 且 ok:true   → 清零计数器，退出
+  不可用 → 连续失败 +1；< 3 次 → 记日志，退出
+         → 连续 3 次（约 15 分钟）→ 受控重启：
+              schtasks /end /tn qq-bridge
+              等 5 秒
+              schtasks /run /tn qq-bridge
+```
+
+同时**不再调用 `start.bat`**（避免出现第二个启动器）。
+
+## 十、验证证据（2026-10-31 16:46 执行后）
+
+```
+读回任务 XML：
+  RestartOnFailure 存在: False
+  含 -WindowStyle Hidden : True
+  MultipleInstancesPolicy: IgnoreNew
+  ExecutionTimeLimit: PT0S
+
+进程：
+  node pid=4528  ←  powershell pid=17128（16:46:43 启动）← svchost
+  powershell 17128 的 MainWindowHandle = 0、MainWindowTitle = ''   ← 没有可见窗口
+
+健康：
+  /health/detail → ready=true, epoch=11, dsh/snowluma/official/console 全 connected
+```
+
+备份：`state/task-backup-20261031-164631.xml`（回滚用：`schtasks /create /xml <备份> /f`）。
