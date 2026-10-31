@@ -2699,6 +2699,8 @@ button:active:not(:disabled) {
               <input id="mgMinWeight" type="range" min="0" max="3" step="0.1" value="0" style="vertical-align:middle;width:120px">
               <span id="mgMinWeightVal">0.0</span>
             </label>
+            <label style="font-size:12px;opacity:.85"><input id="mgShowPeople" type="checkbox" checked style="vertical-align:middle"> 人物层</label>
+            <label style="font-size:12px;opacity:.85"><input id="mgShowAtoms" type="checkbox" checked style="vertical-align:middle"> 记忆层</label>
             <button class="btn" id="mgRefresh" type="button">刷新</button>
             <button class="btn" id="mgRelayout" type="button">重新布局</button>
           </div>
@@ -2719,7 +2721,9 @@ button:active:not(:disabled) {
             <div>● 中 = 1.0 ~ 2.0</div>
             <div>● 小 = &lt; 1.0（半衰期后基本会淡出）</div>
             <div style="margin-top:6px">● 亮 = 最近被命中；暗 = 很久没提</div>
-            <div style="margin-top:6px">◇ 会话节点（group:/private:）</div>
+            <div style="margin-top:6px">◇ 会话（group:/private:）</div>
+            <div>◆ 人物（紫色菱形，越大关联记忆越多）</div>
+            <div style="margin-top:6px">紫色细线 = 人物 ↔ 提到的记忆</div>
           </div>
         </div>
       </section>
@@ -5499,27 +5503,33 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
 })();
 </script>
 <script>
-// ── 记忆星图：把 longTerm 记忆画成星点 ────────────────────────────────
-// 数据全走现有只读端点：/api/socialV2/states → 会话列表；/api/socialV2/memory → 长期原子。
-// 视觉语义与「遗忘曲线」对齐：点大小 = 有效权重（30 天半衰期），亮度 = 新鲜度。
+// ── 记忆星图 v2：会话 / 人物 / 记忆 三层 ──────────────────────────────
+// 数据全走现有只读端点：/api/socialV2/states → 会话；/api/socialV2/memory → longTerm + memberImpressions。
+// 视觉语义对齐「遗忘曲线」：点大小 = 有效权重（30 天半衰期），颜色 = 新鲜度。
 const MG = {
   nodes: [], edges: [], alpha: 1, raf: 0, view: { x: 0, y: 0, k: 1 },
-  hover: null, selected: null, dragged: null, panning: false, minWeight: 0, loaded: false,
+  hover: null, selected: null, dragged: null, panning: false,
+  minWeight: 0, showPeople: true, showAtoms: true, loaded: false,
 };
-const HALF_LIFE_DAYS = 30;
+const MG_HALF_LIFE = 30;
 function mgEffectiveWeight(atom, now) {
   const t = now || Date.now();
   const days = Math.max(0, (t - Number(atom.createdAt || atom.lastHitAt || t)) / 86400000);
-  return Number(atom.weight || 1) * Math.pow(0.5, days / HALF_LIFE_DAYS);
+  return Number(atom.weight || 1) * Math.pow(0.5, days / MG_HALF_LIFE);
 }
 function mgTagsOf(atom) {
   return (Array.isArray(atom.tags) ? atom.tags : []).map(function (x) { return String(x).toLowerCase(); }).filter(Boolean);
+}
+function mgVisible(n) {
+  if (n.kind === 'hub') return true;
+  if (n.kind === 'person') return MG.showPeople;
+  return MG.showAtoms && n.eff >= MG.minWeight;
 }
 async function loadMemoryGraph() {
   const canvas = document.getElementById('mgCanvas');
   if (!canvas) return;
   const empty = document.getElementById('mgEmpty');
-  if (empty) { empty.textContent = '正在读取记忆…'; empty.style.display = 'flex'; }
+  if (empty) { empty.textContent = '正在读取记忆与人物…'; empty.style.display = 'flex'; }
   try {
     const states = await api('/api/socialV2/states');
     const keys = ((states && states.conversations) || []).map(function (c) { return c.key; }).filter(Boolean).slice(0, 16);
@@ -5529,8 +5539,17 @@ async function loadMemoryGraph() {
       let mem = null;
       try { mem = await api('/api/socialV2/memory?key=' + encodeURIComponent(key)); } catch (e) { mem = null; }
       const atoms = (mem && Array.isArray(mem.longTerm)) ? mem.longTerm : [];
-      if (!atoms.length) continue;
+      const people = (mem && mem.raw && mem.raw.memberImpressions && typeof mem.raw.memberImpressions === 'object') ? mem.raw.memberImpressions : {};
+      const names = Object.keys(people);
+      if (!atoms.length && !names.length) continue;
       nodes.push({ id: 'hub:' + key, kind: 'hub', key: key, label: key, weight: 0, ts: now, eff: 0, tags: [] });
+      names.forEach(function (name) {
+        nodes.push({
+          id: 'p:' + key + ':' + name, kind: 'person', key: key, label: name,
+          text: String(people[name] || ''), weight: 0, eff: 0, tags: [String(name).toLowerCase()],
+          createdAt: 0, lastHitAt: 0, hits: 0,
+        });
+      });
       atoms.forEach(function (a, i) {
         nodes.push({
           id: key + '#' + i, kind: 'atom', key: key, text: String(a.text || ''),
@@ -5542,20 +5561,33 @@ async function loadMemoryGraph() {
     }
     const edges = [];
     const atoms = nodes.filter(function (n) { return n.kind === 'atom'; });
-    atoms.forEach(function (a) { edges.push({ a: a.id, b: 'hub:' + a.key, w: 0.6 }); });
+    const people = nodes.filter(function (n) { return n.kind === 'person'; });
+    atoms.forEach(function (a) { edges.push({ a: a.id, b: 'hub:' + a.key, w: 0.6, kind: 'mem' }); });
+    people.forEach(function (p) {
+      edges.push({ a: p.id, b: 'hub:' + p.key, w: 0.8, kind: 'person' });
+      // 人物 ↔ 记忆：正文提到名字，或 tag 命中名字
+      atoms.forEach(function (a) {
+        if (a.key !== p.key) return;
+        const name = String(p.label).toLowerCase();
+        if (a.text.toLowerCase().indexOf(name) >= 0 || a.tags.indexOf(name) >= 0) {
+          edges.push({ a: p.id, b: a.id, w: 0.9, kind: 'link' });
+          p.degree = (p.degree || 0) + 1;
+        }
+      });
+    });
     for (let i = 0; i < atoms.length; i += 1) {
       for (let j = i + 1; j < atoms.length; j += 1) {
         const A = atoms[i], B = atoms[j];
         const shared = A.tags.filter(function (t) { return B.tags.indexOf(t) >= 0; });
         if (shared.length >= 2 || (shared.length === 1 && A.eff > 1.2 && B.eff > 1.2)) {
-          edges.push({ a: A.id, b: B.id, w: Math.min(1, shared.length / 3) });
+          edges.push({ a: A.id, b: B.id, w: Math.min(1, shared.length / 3), kind: 'mem' });
         }
       }
     }
     MG.nodes = nodes; MG.edges = edges; MG.loaded = true; MG.selected = null;
-    renderMemoryChips();
     const detail = document.getElementById('mgDetail');
-    if (detail) detail.textContent = '（点一个星点看详情）';
+    if (detail) detail.textContent = '（点一个星点或人物看详情）';
+    renderMemoryChips();
     layoutMemoryGraph();
     MG.alpha = 1;
     startMemoryGraphLoop();
@@ -5566,6 +5598,32 @@ async function loadMemoryGraph() {
   } catch (error) {
     if (empty) { empty.textContent = '读取失败：' + (error && error.message ? error.message : error); empty.style.display = 'flex'; }
   }
+}
+function renderMemoryChips() {
+  const box = document.getElementById('mgChips');
+  if (!box) return;
+  box.innerHTML = '';
+  MG.nodes.filter(function (n) { return n.kind === 'hub'; }).forEach(function (hub) {
+    const memCount = MG.nodes.filter(function (n) { return n.kind === 'atom' && n.key === hub.key; }).length;
+    const pplCount = MG.nodes.filter(function (n) { return n.kind === 'person' && n.key === hub.key; }).length;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = String(hub.label).replace(/^(group:|private:)/, '') + ' · 记' + memCount + ' 人' + pplCount;
+    b.title = hub.label;
+    b.style.cssText = 'font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid #2a3b5c;background:rgba(20,32,54,.9);color:#bcd0f0;cursor:pointer';
+    b.addEventListener('click', function () {
+      MG.selected = hub.id;
+      mgDetail(hub);
+      const canvas = document.getElementById('mgCanvas');
+      if (canvas) {
+        const w = canvas.clientWidth || 800, h = canvas.clientHeight || 520;
+        MG.view.x = w / 2 - hub.x * 1.6;
+        MG.view.y = h / 2 - hub.y * 1.6;
+        MG.view.k = 1.6;
+      }
+    });
+    box.appendChild(b);
+  });
 }
 function layoutMemoryGraph() {
   const canvas = document.getElementById('mgCanvas');
@@ -5582,10 +5640,10 @@ function layoutMemoryGraph() {
   const hubById = {};
   hubs.forEach(function (h2) { hubById[h2.id] = h2; });
   MG.nodes.forEach(function (n) {
-    if (n.kind !== 'atom') return;
+    if (n.kind === 'hub') return;
     const hub = hubById['hub:' + n.key];
     const ang = Math.random() * Math.PI * 2;
-    const r = 40 + Math.random() * 90;
+    const r = (n.kind === 'person' ? 30 : 40) + Math.random() * (n.kind === 'person' ? 55 : 90);
     n.x = (hub ? hub.x : cx) + Math.cos(ang) * r;
     n.y = (hub ? hub.y : cy) + Math.sin(ang) * r;
     n.vx = 0; n.vy = 0;
@@ -5598,15 +5656,14 @@ function stepMemoryGraph() {
   const cx = w / 2, cy = h / 2;
   const byId = {};
   MG.nodes.forEach(function (n) { byId[n.id] = n; });
-  const visible = function (n) { return n.kind === 'hub' || n.eff >= MG.minWeight; };
   for (let i = 0; i < MG.nodes.length; i += 1) {
-    const a = MG.nodes[i]; if (!visible(a)) continue;
+    const a = MG.nodes[i]; if (!mgVisible(a)) continue;
     for (let j = i + 1; j < MG.nodes.length; j += 1) {
-      const b = MG.nodes[j]; if (!visible(b)) continue;
+      const b = MG.nodes[j]; if (!mgVisible(b)) continue;
       let dx = a.x - b.x, dy = a.y - b.y;
       let d2 = dx * dx + dy * dy;
       if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
-      const f = 1200 / d2;
+      const f = (a.kind === 'person' || b.kind === 'person' ? 1600 : 1200) / d2;
       const d = Math.sqrt(d2);
       a.vx += (dx / d) * f; a.vy += (dy / d) * f;
       b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
@@ -5614,15 +5671,16 @@ function stepMemoryGraph() {
   }
   MG.edges.forEach(function (e) {
     const a = byId[e.a], b = byId[e.b];
-    if (!a || !b || !visible(a) || !visible(b)) return;
+    if (!a || !b || !mgVisible(a) || !mgVisible(b)) return;
     const dx = b.x - a.x, dy = b.y - a.y;
     const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-    const f = (d - 70) * 0.02 * (0.5 + e.w);
+    const rest = e.kind === 'link' ? 52 : 70;
+    const f = (d - rest) * 0.02 * (0.5 + e.w);
     a.vx += (dx / d) * f; a.vy += (dy / d) * f;
     b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
   });
   MG.nodes.forEach(function (n) {
-    if (!visible(n)) return;
+    if (!mgVisible(n)) return;
     n.vx += (cx - n.x) * 0.004;
     n.vy += (cy - n.y) * 0.004;
     n.vx *= 0.82; n.vy *= 0.82;
@@ -5635,7 +5693,7 @@ function stepMemoryGraph() {
 }
 function mgRadius(n) {
   if (n.kind === 'hub') return 9;
-  // log 尺度：weight=1 与 weight=3 要能看出差别，而不是一样大
+  if (n.kind === 'person') return 6 + Math.min(9, (n.degree || 0) * 1.6);
   return 3.2 + Math.min(13, Math.log2(1 + Math.max(0.01, n.eff)) * 4.2);
 }
 function drawMemoryGraph() {
@@ -5650,7 +5708,7 @@ function drawMemoryGraph() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   ctx.save();
-  ctx.globalAlpha = 0.25;
+  ctx.globalAlpha = 0.22;
   for (let i = 0; i < 70; i += 1) {
     ctx.fillStyle = '#2b3d5e';
     ctx.fillRect((i * 187.3) % w, (i * 97.7) % h, 1.2, 1.2);
@@ -5658,23 +5716,30 @@ function drawMemoryGraph() {
   ctx.restore();
   const byId = {};
   MG.nodes.forEach(function (n) { byId[n.id] = n; });
-  const visible = function (n) { return n.kind === 'hub' || n.eff >= MG.minWeight; };
   ctx.save();
   ctx.translate(MG.view.x, MG.view.y);
   ctx.scale(MG.view.k, MG.view.k);
   MG.edges.forEach(function (e) {
     const a = byId[e.a], b = byId[e.b];
-    if (!a || !b || !visible(a) || !visible(b)) return;
-    ctx.strokeStyle = 'rgba(90,130,210,' + (0.10 + e.w * 0.35).toFixed(3) + ')';
-    ctx.lineWidth = 0.6 + e.w;
+    if (!a || !b || !mgVisible(a) || !mgVisible(b)) return;
+    if (e.kind === 'link') {
+      ctx.strokeStyle = 'rgba(190,140,255,.45)';
+      ctx.lineWidth = 1.1;
+    } else if (e.kind === 'person') {
+      ctx.strokeStyle = 'rgba(120,200,255,.22)';
+      ctx.lineWidth = 1;
+    } else {
+      ctx.strokeStyle = 'rgba(90,130,210,' + (0.10 + e.w * 0.35).toFixed(3) + ')';
+      ctx.lineWidth = 0.6 + e.w;
+    }
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   });
   const now = Date.now();
   MG.nodes.forEach(function (n) {
-    if (!visible(n)) return;
+    if (!mgVisible(n)) return;
     if (n.kind === 'hub') {
       ctx.fillStyle = 'rgba(120,180,255,.18)';
-      ctx.strokeStyle = 'rgba(140,200,255,.7)';
+      ctx.strokeStyle = 'rgba(140,200,255,.75)';
       ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.arc(n.x, n.y, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.fillStyle = 'rgba(190,220,255,.85)';
@@ -5683,9 +5748,24 @@ function drawMemoryGraph() {
       ctx.fillText(String(n.label).replace(/^(group:|private:)/, ''), n.x, n.y - 14);
       return;
     }
+    if (n.kind === 'person') {
+      const r = mgRadius(n);
+      ctx.save();
+      ctx.translate(n.x, n.y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = 'rgba(178,140,255,.30)';
+      ctx.strokeStyle = MG.selected === n.id ? '#ffd479' : 'rgba(198,160,255,.9)';
+      ctx.lineWidth = MG.selected === n.id ? 2 : 1.2;
+      ctx.beginPath(); ctx.rect(-r, -r, r * 2, r * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(220,205,255,.9)';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(n.label, n.x, n.y + r + 12);
+      return;
+    }
     const days = Math.max(0, (now - (n.lastHitAt || n.createdAt || now)) / 86400000);
     const fresh = Math.max(0.15, Math.min(1, 1 - days / 60));
-    // 新鲜=暖（金白），陈旧=冷（深蓝紫）：一眼看出"哪些快被忘掉"
     const rC = Math.round(90 + 165 * fresh);
     const gC = Math.round(130 + 105 * fresh);
     const bC = Math.round(230 - 40 * fresh + 30 * (1 - fresh));
@@ -5714,45 +5794,33 @@ function mgHit(clientX, clientY) {
   const py = (clientY - rect.top - MG.view.y) / MG.view.k;
   let best = null, bestD = 1e9;
   MG.nodes.forEach(function (n) {
-    if (n.kind !== 'hub' && n.eff < MG.minWeight) return;
+    if (!mgVisible(n)) return;
     const d = Math.hypot(px - n.x, py - n.y);
-    if (d <= mgRadius(n) + 2 && d < bestD) { best = n; bestD = d; }
+    if (d <= mgRadius(n) + 4 && d < bestD) { best = n; bestD = d; }
   });
   return best;
 }
-function renderMemoryChips() {
-  const box = document.getElementById('mgChips');
-  if (!box) return;
-  box.innerHTML = '';
-  const hubs = MG.nodes.filter(function (n) { return n.kind === 'hub'; });
-  hubs.forEach(function (hub) {
-    const count = MG.nodes.filter(function (n) { return n.kind === 'atom' && n.key === hub.key; }).length;
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = String(hub.label).replace(/^(group:|private:)/, '') + ' · ' + count;
-    b.title = hub.label;
-    b.style.cssText = 'font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid #2a3b5c;background:rgba(20,32,54,.9);color:#bcd0f0;cursor:pointer';
-    b.addEventListener('click', function () {
-      MG.selected = hub.id;
-      MG.view = { x: 0, y: 0, k: 1 };
-      mgDetail(hub);
-      const canvas = document.getElementById('mgCanvas');
-      if (canvas) {
-        const w = canvas.clientWidth || 800, h = canvas.clientHeight || 520;
-        MG.view.x = w / 2 - hub.x;
-        MG.view.y = h / 2 - hub.y;
-        MG.view.k = 1.6;
-      }
-    });
-    box.appendChild(b);
-  });
-}
-
 function mgDetail(node) {
   const el = document.getElementById('mgDetail');
   if (!el) return;
-  if (!node) { el.textContent = '（点一个星点看详情）'; return; }
-  if (node.kind === 'hub') { el.textContent = '会话：' + node.label + '\n\n这个圆点的周围就是该会话的记忆。'; return; }
+  if (!node) { el.textContent = '（点一个星点或人物看详情）'; return; }
+  if (node.kind === 'hub') {
+    const mem = MG.nodes.filter(function (n) { return n.kind === 'atom' && n.key === node.key; }).length;
+    const ppl = MG.nodes.filter(function (n) { return n.kind === 'person' && n.key === node.key; }).length;
+    el.textContent = '会话：' + node.label + '\n\n记忆 ' + mem + ' 条 · 人物 ' + ppl + ' 位';
+    return;
+  }
+  if (node.kind === 'person') {
+    const linked = MG.edges.filter(function (e) { return e.a === node.id || e.b === node.id; })
+      .map(function (e) { return MG.nodes.find(function (n) { return n.id === (e.a === node.id ? e.b : e.a); }); })
+      .filter(function (n) { return n && n.kind === 'atom'; });
+    el.textContent = '人物：' + node.label
+      + '\n\n印象：' + (node.text || '（暂无文字印象）')
+      + '\n关联记忆：' + linked.length + ' 条'
+      + (linked.length ? '\n\n' + linked.slice(0, 5).map(function (a) { return '· ' + a.text.slice(0, 60); }).join('\n') : '')
+      + '\n\n会话：' + node.key;
+    return;
+  }
   const at = node.createdAt ? new Date(node.createdAt).toLocaleString() : '—';
   const hit = node.lastHitAt ? new Date(node.lastHitAt).toLocaleString() : '—';
   el.textContent = node.text
@@ -5788,7 +5856,9 @@ function mgDetail(node) {
       tip.style.display = 'block';
       tip.style.left = Math.min(canvas.clientWidth - 210, e.clientX - rect.left + 12) + 'px';
       tip.style.top = Math.max(4, e.clientY - rect.top - 10) + 'px';
-      tip.textContent = n.kind === 'hub' ? n.label : (n.text.slice(0, 80) + (n.text.length > 80 ? '…' : ''));
+      tip.textContent = n.kind === 'hub' ? n.label
+        : n.kind === 'person' ? ('人物 ' + n.label + (n.text ? '：' + n.text.slice(0, 50) : ''))
+        : (n.text.slice(0, 80) + (n.text.length > 80 ? '…' : ''));
     } else if (tip) { tip.style.display = 'none'; }
   });
   canvas.addEventListener('mousedown', function (e) {
@@ -5824,6 +5894,10 @@ function mgDetail(node) {
     const label = document.getElementById('mgMinWeightVal');
     if (label) label.textContent = MG.minWeight.toFixed(1);
   });
+  const pToggle = document.getElementById('mgShowPeople');
+  if (pToggle) pToggle.addEventListener('change', function (e) { MG.showPeople = e.target.checked; MG.alpha = 0.3; });
+  const aToggle = document.getElementById('mgShowAtoms');
+  if (aToggle) aToggle.addEventListener('change', function (e) { MG.showAtoms = e.target.checked; MG.alpha = 0.3; });
 })();
 </script></body>
 </html>
