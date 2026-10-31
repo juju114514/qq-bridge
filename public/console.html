@@ -1776,6 +1776,7 @@ button:active:not(:disabled) {
         <div class="nav-label">对话</div>
         <button data-view="social-v2" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>二代仿真<span class="nav-note">V2</span></button>
         <button data-view="social-v1" class="nav-item"><span class="nav-icon" aria-hidden="true">◇</span>一代仿真<span class="nav-note">V1</span></button>
+        <button data-view="role-map" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>角色分配</button>
         <button data-view="persona" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>人格与角色</button>
         <button data-view="song" class="nav-item"><span class="nav-icon" aria-hidden="true">♪</span>点歌</button>
 
@@ -1969,6 +1970,17 @@ button:active:not(:disabled) {
       <div id="sessionBackupsList" style="font-size:12.5px"></div>
       <div class="meta" id="sessionBackupDetail" style="white-space:pre-wrap;margin-top:6px"></div>
     </section>
+  <section data-page="role-map" class="card span-all" hidden>
+    <h2>角色分配（每个群用谁）</h2>
+    <div class="meta" id="roleMapMeta">加载中…</div>
+    <div class="row" style="margin:8px 0">
+      <button id="roleMapRefresh">刷新</button>
+      <span class="meta">单独设置优先于「群默认」；私聊跟随全局角色。改完下条消息生效。</span>
+    </div>
+    <div id="roleMapList" style="font-size:12.5px"></div>
+    <div class="meta" id="roleMapIssues"></div>
+  </section>
+
 <section id="section-social-v1" data-page="social-v1" class="card span-all">
       <h2>一代仿真模式（reserved）</h2>
       <div class="meta" id="socialStatus">加载中…</div>
@@ -3409,6 +3421,78 @@ document.getElementById('closedPreset').addEventListener('change', async () => {
   const mode = active ? active.dataset.mode : 'chat';
   await saveMode(mode);
 });
+// ── 角色分配（0.4.98）────────────────────────────────────────
+async function loadRoleMap() {
+  const meta = document.getElementById('roleMapMeta');
+  const list = document.getElementById('roleMapList');
+  const issuesEl = document.getElementById('roleMapIssues');
+  if (!list) return;
+  try {
+    const r = await api('/api/roles/map');
+    if (!r || !r.ok) { if (meta) meta.textContent = '读取失败：' + ((r && r.error) || '未知'); return; }
+    const rows = r.rows || [];
+    const srcText = { 'per-key': '单独设置', 'group-default': '群默认', global: '跟随全局', none: '未设角色' };
+    if (meta) {
+      meta.textContent = `共 ${rows.length} 个会话 · 群默认 ${r.groupEnabled ? ('开（' + (r.groupDefaultName || '未指定') + '）') : '关'} · 全局角色 ${r.globalRole || '未设'}${r.paused ? ' · 已暂停' : ''}`;
+    }
+    list.innerHTML = rows.map((it) => `
+      <div class="row" style="gap:8px;align-items:center;padding:3px 0">
+        <span style="flex:0 0 150px">${it.label}</span>
+        <span style="flex:0 0 120px">${it.wake || ''}</span>
+        <span style="flex:0 0 110px;opacity:.75">${srcText[it.source] || it.source}</span>
+        <select data-rm-key="${it.key}" style="flex:0 0 220px">
+          <option value=""${!it.overridden ? ' selected' : ''}>（跟随默认）</option>
+        </select>
+        <button data-rm-set="${it.key}" style="flex:0 0 auto">设置</button>
+      </div>`).join('');
+    // 角色下拉：共用 /api/roles 列表
+    const roles = await api('/api/roles');
+    const names = Array.isArray(roles.roles) ? roles.roles : [];
+    list.querySelectorAll('select[data-rm-key]').forEach((sel) => {
+      const key = sel.dataset.rmKey;
+      const row = rows.find((x) => x.key === key);
+      for (const n of names) {
+        const o = document.createElement('option');
+        o.value = n;
+        o.textContent = n;
+        if (row && row.overridden && row.role === n) o.selected = true;
+        sel.appendChild(o);
+      }
+      const cur = document.createElement('option');
+      cur.value = '__clear__';
+      cur.textContent = '（清除单独设置）';
+      sel.appendChild(cur);
+    });
+    list.querySelectorAll('[data-rm-set]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const key = btn.dataset.rmSet;
+        const sel = list.querySelector(`select[data-rm-key="${key}"]`);
+        const v = sel ? sel.value : '';
+        const role = v === '__clear__' || v === '' ? null : v;
+        const res = await api('/api/roles/map', 'POST', { key, role });
+        if (res && res.ok) loadRoleMap();
+        else alert((res && res.error) || '设置失败');
+      });
+    });
+    if (issuesEl) {
+      const issues = r.issues || [];
+      issuesEl.textContent = issues.length
+        ? '检查：' + issues.map((x) => x.problem === 'group-role-without-group-default'
+            ? `${x.count} 个群单独设了角色（群默认是关的，符合预期）`
+            : `${x.key} ${x.problem}`).join('；')
+        : '';
+    }
+  } catch (e) {
+    if (meta) meta.textContent = '读取失败：' + e.message;
+  }
+}
+
+function bindRoleMap() {
+  const btn = document.getElementById('roleMapRefresh');
+  if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', loadRoleMap); }
+  loadRoleMap();
+}
+
 // ── 人物卡外观照片（0.4.97）──────────────────────────────────────
 function currentRoleId() {
   const sel = document.getElementById('rolePick');
@@ -4949,6 +5033,7 @@ const consolePages = {
   'memory-graph': ['记忆星图', '记忆星图', '把长期记忆画成星点：权重、新鲜度、关联一目了然'],
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看 QQ 与 DSH 的会话映射，以及等待你回复的审批和提问。'],
+  'role-map': ['角色分配', '每个群，用谁。', '看每个群/私聊接入的是哪张角色卡、现在是潜水还是活跃；可就地单独指定角色。'],
   persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
   'social-v2': ['二代仿真', '自主参与，恰到好处。', '管理 AI 的工具、唤醒与发言节奏。展开需要调整的分组，修改后保存参数。'],
   'social-v1': ['一代仿真', '为自然对话，设定合适的节奏。', '调整参与概率、活跃周期和分条发送；所有配置项完整保留。'],
@@ -6678,6 +6763,7 @@ async function spaceDeletePost(tid, btn) {
     reference: ['loadToolHealth'],
     'social-v2': ['loadVoiceLibrary'],
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
+    'role-map': ['bindRoleMap'],
     persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage']
   };
 

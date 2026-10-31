@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**120** 条（32 个文件）
+- 已搬进模块：**121** 条（33 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（6 条）
@@ -85,6 +85,12 @@
 | 方法 | 路径 | handler |
 |---|---|---|
 | ANY | `/api/roles/image` | handleRoleImageRoute |
+
+## src/api/role-map-route.js（1 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| ANY | `/api/roles/map` | handleRoleMapRoute |
 
 ## src/api/roles.js（9 条）
 

@@ -18,6 +18,7 @@ import { handleQzoneEndpoints } from './qzone-endpoints.js';
 import { handleSessionResetRoute } from './session-reset-route.js';
 import { handleSessionBackupsRoute } from './session-backups-route.js';
 import { handleRoleImageRoute } from './role-image-route.js';
+import { handleRoleMapRoute } from './role-map-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -96,6 +97,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST/DELETE /api/roles/image —— 人物卡外观照片
   if (await handleRoleImageRoute({ req, url, sendJson, readBody: ctx.readBody, sendRaw: ctx.sendRaw, deps: resolveDeps })) return true;
+
+  // GET/POST /api/roles/map —— 每个会话的角色分配与状态
+  if (await handleRoleMapRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {
