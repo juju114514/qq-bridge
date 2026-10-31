@@ -32,6 +32,7 @@
 | [guides/UPGRADE-FROM-OLD.md](guides/UPGRADE-FROM-OLD.md) | **从旧版本升级**：0.2.x/0.3.x → 0.4.x 要做什么、新增配置项对照表、行为变化、state 兼容性、回滚方法、自查清单 | ✅ 2026-10-31 |
 | [guides/AWESOME-SUBMISSION.md](guides/AWESOME-SUBMISSION.md) | **提交到 awesome-dsh-plugin** 的收录草稿：条目 YAML、门槛逐条核对、为什么用 `tree/main/plugin` 这种 URL | ✅ 2026-10-31 |
 | [guides/PLUGIN-MODE.md](guides/PLUGIN-MODE.md) | **插件模式**（路线 B）真实完整版：两条路对照、**安全边界（必读）**、三种安装方式、真机踩坑清单、降级语义、排障 | ✅ 2026-10-31 |
+| [audits/official-channel-audit-2026-10-31.md](audits/official-channel-audit-2026-10-31.md) | **Official 通道专项审计**：确认它是否真与 SnowLuma 共用会话/记忆/prompt —— 结论：共享核心，但身份写错、管理员失效、重投未去重 3 个缺口 | ✅ 2026-10-31 |
 | [reports/2026-10-31-session.md](reports/2026-10-31-session.md) | **2026-10-31 工作纪要**：11 个静默 bug 清单、越权事故复盘、凭据轮换、遗留待办 | ✅ 2026-10-31 |
 | `scripts/switch-mode.mjs` | **两条路切换**：`status` / `bridge` / `plugin`，改两处配置并打印重启顺序 | — |
 | `scripts/sync-snowluma-token.mjs` | **换 token 别手改**：WS token 写 `accessToken`、HTTP token 写 `httpToken` | — |
