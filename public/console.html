@@ -5341,6 +5341,17 @@ function fmtClock(ts) {
   const d = new Date(Number(ts));
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
 }
+
+// 首屏加载兜底：控制台刚打开时（尤其是通过 ?token= 进来的第一跳）首个 fetch 可能
+// 赶在鉴权/连接就绪之前，静默挂着不 settle。这里做有限重试，避免停在"（加载中…）"。
+function scheduleOverview(tries) {
+  const attempt = tries || 0;
+  Promise.resolve(loadOverview()).then(function () {
+    const box = document.getElementById('appDashboard');
+    const stuck = box && box.textContent && box.textContent.indexOf('加载中') >= 0;
+    if (stuck && attempt < 2) setTimeout(function () { scheduleOverview(attempt + 1); }, 900);
+  }).catch(function () { /* loadOverview 自己会渲染错误态 */ });
+}
 async function loadOverview() {
   const box = document.getElementById('appDashboard');
   if (!box) return;
@@ -5993,6 +6004,9 @@ function bootConsolePage() {
   setConsolePage(page, { updateHash: true });
 }
 bootConsolePage();
+// 首屏兜底：仪表盘在 setConsolePage 里会加载一次，但首帧偶尔赶在 DOM/token 就绪之前，
+// 这里再显式拉一次（幂等）。
+setTimeout(function () { if (currentConsolePage === 'overview' && typeof scheduleOverview === 'function') scheduleOverview(); }, 60);
 // 有的浏览器在 load 之后才把 hash 填上（或前端路由先跑一步），再对齐一次，避免"看起来点不动"
 window.addEventListener('load', function () {
   const want = location.hash.slice(1);
