@@ -1770,6 +1770,7 @@ button:active:not(:disabled) {
       <div class="nav-label">聊天行为</div>
       <button data-view="social-v2" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>二代仿真<span class="nav-note">V2</span></button>
       <button data-view="social-v1" class="nav-item"><span class="nav-icon" aria-hidden="true">◇</span>一代仿真<span class="nav-note">V1</span></button>
+      <button data-view="memory-graph" class="nav-item"><span class="nav-icon" aria-hidden="true">✦</span>记忆星图</button>
       <button data-view="slang" class="nav-item"><span class="nav-icon" aria-hidden="true">▤</span>黑话词库</button>
       <div class="nav-label">管理</div>
       <button data-view="usage" class="nav-item"><span class="nav-icon" aria-hidden="true">◧</span>令牌与花费</button>
@@ -2686,6 +2687,42 @@ button:active:not(:disabled) {
       </div>
       <div class="overview-footnote" data-page="overview"><span id="accessSummary">正在读取访问范围…</span><button class="text-button" data-view="access">管理访问范围 →</button></div>
       <footer class="page-footer"><span>QQ Bridge · 连接日常，保持自主</span><span id="lastUpdated">等待首次同步</span></footer>
+
+      <section data-page="memory-graph" class="card span-all" hidden>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <strong>记忆星图</strong>
+            <small style="opacity:.7;margin-left:8px">点越大 = 权重越高（30 天半衰期）；连线 = 共享标签；亮度 = 新鲜度</small>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:12px;opacity:.8">最低权重
+              <input id="mgMinWeight" type="range" min="0" max="3" step="0.1" value="0" style="vertical-align:middle;width:120px">
+              <span id="mgMinWeightVal">0.0</span>
+            </label>
+            <button class="btn" id="mgRefresh" type="button">刷新</button>
+            <button class="btn" id="mgRelayout" type="button">重新布局</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px">
+          <div style="position:relative;background:radial-gradient(circle at 50% 40%,#101a2b 0%,#0a1120 70%);border:1px solid #1e2b45;border-radius:10px;overflow:hidden">
+            <canvas id="mgCanvas" style="display:block;width:100%;height:520px;cursor:grab"></canvas>
+            <div id="mgTip" style="position:absolute;pointer-events:none;background:rgba(10,16,28,.95);border:1px solid #2a3b5c;border-radius:8px;padding:6px 9px;font-size:12px;color:#dbe6ff;max-width:320px;display:none"></div>
+            <div id="mgEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7f8ea8;font-size:13px">点击「刷新」加载记忆</div>
+            <div id="mgChips" style="position:absolute;left:8px;bottom:8px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 16px)"></div>
+          </div>
+          <div style="border:1px solid #1e2b45;border-radius:10px;padding:10px;font-size:12px;color:#c8d4ea;overflow:auto;max-height:540px">
+            <div style="opacity:.7;margin-bottom:6px">选中记忆</div>
+            <div id="mgDetail" style="white-space:pre-wrap;line-height:1.6">（点一个星点看详情）</div>
+            <hr style="border:none;border-top:1px solid #1e2b45;margin:10px 0">
+            <div style="opacity:.7;margin-bottom:6px">图例</div>
+            <div>● 大 = 权重 ≥ 2.0（不容易被忘）</div>
+            <div>● 中 = 1.0 ~ 2.0</div>
+            <div>● 小 = &lt; 1.0（半衰期后基本会淡出）</div>
+            <div style="margin-top:6px">● 亮 = 最近被命中；暗 = 很久没提</div>
+            <div style="margin-top:6px">◇ 会话节点（group:/private:）</div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
       <div class="modal-overlay" id="slangModalOverlay">
@@ -4500,6 +4537,7 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
+  'memory-graph': ['记忆星图', '记忆星图', '把长期记忆画成星点：权重、新鲜度、关联一目了然'],
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看 QQ 与 DSH 的会话映射，以及等待你回复的审批和提问。'],
   persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
@@ -4844,6 +4882,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   if (page === 'diagnostics' && typeof loadDiagnostics === 'function') loadDiagnostics();
   if (page === 'people' && typeof loadPeople === 'function') loadPeople();
   if (page === 'scheduler' && typeof loadScheduler === 'function') loadScheduler();
+  if (page === 'memory-graph' && typeof loadMemoryGraph === 'function') loadMemoryGraph();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -5459,5 +5498,332 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
   });
 })();
 </script>
-</body>
+<script>
+// ── 记忆星图：把 longTerm 记忆画成星点 ────────────────────────────────
+// 数据全走现有只读端点：/api/socialV2/states → 会话列表；/api/socialV2/memory → 长期原子。
+// 视觉语义与「遗忘曲线」对齐：点大小 = 有效权重（30 天半衰期），亮度 = 新鲜度。
+const MG = {
+  nodes: [], edges: [], alpha: 1, raf: 0, view: { x: 0, y: 0, k: 1 },
+  hover: null, selected: null, dragged: null, panning: false, minWeight: 0, loaded: false,
+};
+const HALF_LIFE_DAYS = 30;
+function mgEffectiveWeight(atom, now) {
+  const t = now || Date.now();
+  const days = Math.max(0, (t - Number(atom.createdAt || atom.lastHitAt || t)) / 86400000);
+  return Number(atom.weight || 1) * Math.pow(0.5, days / HALF_LIFE_DAYS);
+}
+function mgTagsOf(atom) {
+  return (Array.isArray(atom.tags) ? atom.tags : []).map(function (x) { return String(x).toLowerCase(); }).filter(Boolean);
+}
+async function loadMemoryGraph() {
+  const canvas = document.getElementById('mgCanvas');
+  if (!canvas) return;
+  const empty = document.getElementById('mgEmpty');
+  if (empty) { empty.textContent = '正在读取记忆…'; empty.style.display = 'flex'; }
+  try {
+    const states = await api('/api/socialV2/states');
+    const keys = ((states && states.conversations) || []).map(function (c) { return c.key; }).filter(Boolean).slice(0, 16);
+    const nodes = [];
+    const now = Date.now();
+    for (const key of keys) {
+      let mem = null;
+      try { mem = await api('/api/socialV2/memory?key=' + encodeURIComponent(key)); } catch (e) { mem = null; }
+      const atoms = (mem && Array.isArray(mem.longTerm)) ? mem.longTerm : [];
+      if (!atoms.length) continue;
+      nodes.push({ id: 'hub:' + key, kind: 'hub', key: key, label: key, weight: 0, ts: now, eff: 0, tags: [] });
+      atoms.forEach(function (a, i) {
+        nodes.push({
+          id: key + '#' + i, kind: 'atom', key: key, text: String(a.text || ''),
+          tags: mgTagsOf(a), weight: Number(a.weight || 1), eff: mgEffectiveWeight(a, now),
+          createdAt: Number(a.createdAt || 0), lastHitAt: Number(a.lastHitAt || 0),
+          hits: Number(a.hits || 0), source: String(a.source || ''),
+        });
+      });
+    }
+    const edges = [];
+    const atoms = nodes.filter(function (n) { return n.kind === 'atom'; });
+    atoms.forEach(function (a) { edges.push({ a: a.id, b: 'hub:' + a.key, w: 0.6 }); });
+    for (let i = 0; i < atoms.length; i += 1) {
+      for (let j = i + 1; j < atoms.length; j += 1) {
+        const A = atoms[i], B = atoms[j];
+        const shared = A.tags.filter(function (t) { return B.tags.indexOf(t) >= 0; });
+        if (shared.length >= 2 || (shared.length === 1 && A.eff > 1.2 && B.eff > 1.2)) {
+          edges.push({ a: A.id, b: B.id, w: Math.min(1, shared.length / 3) });
+        }
+      }
+    }
+    MG.nodes = nodes; MG.edges = edges; MG.loaded = true; MG.selected = null;
+    renderMemoryChips();
+    const detail = document.getElementById('mgDetail');
+    if (detail) detail.textContent = '（点一个星点看详情）';
+    layoutMemoryGraph();
+    MG.alpha = 1;
+    startMemoryGraphLoop();
+    if (empty) {
+      if (!nodes.length) { empty.textContent = '还没有长期记忆：让 AI 记住点东西，或先在会话里聊几句'; empty.style.display = 'flex'; }
+      else empty.style.display = 'none';
+    }
+  } catch (error) {
+    if (empty) { empty.textContent = '读取失败：' + (error && error.message ? error.message : error); empty.style.display = 'flex'; }
+  }
+}
+function layoutMemoryGraph() {
+  const canvas = document.getElementById('mgCanvas');
+  if (!canvas) return;
+  const w = canvas.clientWidth || 800, h = canvas.clientHeight || 520;
+  const cx = w / 2, cy = h / 2;
+  const hubs = MG.nodes.filter(function (n) { return n.kind === 'hub'; });
+  hubs.forEach(function (n, i) {
+    const ang = (Math.PI * 2 * i) / Math.max(1, hubs.length);
+    n.x = cx + Math.cos(ang) * Math.min(w, h) * 0.28;
+    n.y = cy + Math.sin(ang) * Math.min(w, h) * 0.28;
+    n.vx = 0; n.vy = 0;
+  });
+  const hubById = {};
+  hubs.forEach(function (h2) { hubById[h2.id] = h2; });
+  MG.nodes.forEach(function (n) {
+    if (n.kind !== 'atom') return;
+    const hub = hubById['hub:' + n.key];
+    const ang = Math.random() * Math.PI * 2;
+    const r = 40 + Math.random() * 90;
+    n.x = (hub ? hub.x : cx) + Math.cos(ang) * r;
+    n.y = (hub ? hub.y : cy) + Math.sin(ang) * r;
+    n.vx = 0; n.vy = 0;
+  });
+}
+function stepMemoryGraph() {
+  const canvas = document.getElementById('mgCanvas');
+  if (!canvas) return;
+  const w = canvas.clientWidth || 800, h = canvas.clientHeight || 520;
+  const cx = w / 2, cy = h / 2;
+  const byId = {};
+  MG.nodes.forEach(function (n) { byId[n.id] = n; });
+  const visible = function (n) { return n.kind === 'hub' || n.eff >= MG.minWeight; };
+  for (let i = 0; i < MG.nodes.length; i += 1) {
+    const a = MG.nodes[i]; if (!visible(a)) continue;
+    for (let j = i + 1; j < MG.nodes.length; j += 1) {
+      const b = MG.nodes[j]; if (!visible(b)) continue;
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
+      const f = 1200 / d2;
+      const d = Math.sqrt(d2);
+      a.vx += (dx / d) * f; a.vy += (dy / d) * f;
+      b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
+    }
+  }
+  MG.edges.forEach(function (e) {
+    const a = byId[e.a], b = byId[e.b];
+    if (!a || !b || !visible(a) || !visible(b)) return;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const f = (d - 70) * 0.02 * (0.5 + e.w);
+    a.vx += (dx / d) * f; a.vy += (dy / d) * f;
+    b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
+  });
+  MG.nodes.forEach(function (n) {
+    if (!visible(n)) return;
+    n.vx += (cx - n.x) * 0.004;
+    n.vy += (cy - n.y) * 0.004;
+    n.vx *= 0.82; n.vy *= 0.82;
+    n.x += n.vx * MG.alpha;
+    n.y += n.vy * MG.alpha;
+    n.x = Math.max(14, Math.min(w - 14, n.x));
+    n.y = Math.max(14, Math.min(h - 14, n.y));
+  });
+  MG.alpha = Math.max(0.02, MG.alpha * 0.965);
+}
+function mgRadius(n) {
+  if (n.kind === 'hub') return 9;
+  // log 尺度：weight=1 与 weight=3 要能看出差别，而不是一样大
+  return 3.2 + Math.min(13, Math.log2(1 + Math.max(0.01, n.eff)) * 4.2);
+}
+function drawMemoryGraph() {
+  const canvas = document.getElementById('mgCanvas');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 800, h = canvas.clientHeight || 520;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  for (let i = 0; i < 70; i += 1) {
+    ctx.fillStyle = '#2b3d5e';
+    ctx.fillRect((i * 187.3) % w, (i * 97.7) % h, 1.2, 1.2);
+  }
+  ctx.restore();
+  const byId = {};
+  MG.nodes.forEach(function (n) { byId[n.id] = n; });
+  const visible = function (n) { return n.kind === 'hub' || n.eff >= MG.minWeight; };
+  ctx.save();
+  ctx.translate(MG.view.x, MG.view.y);
+  ctx.scale(MG.view.k, MG.view.k);
+  MG.edges.forEach(function (e) {
+    const a = byId[e.a], b = byId[e.b];
+    if (!a || !b || !visible(a) || !visible(b)) return;
+    ctx.strokeStyle = 'rgba(90,130,210,' + (0.10 + e.w * 0.35).toFixed(3) + ')';
+    ctx.lineWidth = 0.6 + e.w;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  });
+  const now = Date.now();
+  MG.nodes.forEach(function (n) {
+    if (!visible(n)) return;
+    if (n.kind === 'hub') {
+      ctx.fillStyle = 'rgba(120,180,255,.18)';
+      ctx.strokeStyle = 'rgba(140,200,255,.7)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(n.x, n.y, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(190,220,255,.85)';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(n.label).replace(/^(group:|private:)/, ''), n.x, n.y - 14);
+      return;
+    }
+    const days = Math.max(0, (now - (n.lastHitAt || n.createdAt || now)) / 86400000);
+    const fresh = Math.max(0.15, Math.min(1, 1 - days / 60));
+    // 新鲜=暖（金白），陈旧=冷（深蓝紫）：一眼看出"哪些快被忘掉"
+    const rC = Math.round(90 + 165 * fresh);
+    const gC = Math.round(130 + 105 * fresh);
+    const bC = Math.round(230 - 40 * fresh + 30 * (1 - fresh));
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(' + rC + ',' + gC + ',' + bC + ',' + (0.30 + 0.60 * fresh).toFixed(2) + ')';
+    ctx.arc(n.x, n.y, mgRadius(n), 0, Math.PI * 2);
+    ctx.fill();
+    if (MG.selected === n.id) { ctx.strokeStyle = '#ffd479'; ctx.lineWidth = 2; ctx.stroke(); }
+  });
+  ctx.restore();
+}
+function startMemoryGraphLoop() {
+  cancelAnimationFrame(MG.raf);
+  const tick = function () {
+    stepMemoryGraph();
+    drawMemoryGraph();
+    MG.raf = requestAnimationFrame(tick);
+  };
+  MG.raf = requestAnimationFrame(tick);
+}
+function mgHit(clientX, clientY) {
+  const canvas = document.getElementById('mgCanvas');
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX - rect.left - MG.view.x) / MG.view.k;
+  const py = (clientY - rect.top - MG.view.y) / MG.view.k;
+  let best = null, bestD = 1e9;
+  MG.nodes.forEach(function (n) {
+    if (n.kind !== 'hub' && n.eff < MG.minWeight) return;
+    const d = Math.hypot(px - n.x, py - n.y);
+    if (d <= mgRadius(n) + 2 && d < bestD) { best = n; bestD = d; }
+  });
+  return best;
+}
+function renderMemoryChips() {
+  const box = document.getElementById('mgChips');
+  if (!box) return;
+  box.innerHTML = '';
+  const hubs = MG.nodes.filter(function (n) { return n.kind === 'hub'; });
+  hubs.forEach(function (hub) {
+    const count = MG.nodes.filter(function (n) { return n.kind === 'atom' && n.key === hub.key; }).length;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = String(hub.label).replace(/^(group:|private:)/, '') + ' · ' + count;
+    b.title = hub.label;
+    b.style.cssText = 'font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid #2a3b5c;background:rgba(20,32,54,.9);color:#bcd0f0;cursor:pointer';
+    b.addEventListener('click', function () {
+      MG.selected = hub.id;
+      MG.view = { x: 0, y: 0, k: 1 };
+      mgDetail(hub);
+      const canvas = document.getElementById('mgCanvas');
+      if (canvas) {
+        const w = canvas.clientWidth || 800, h = canvas.clientHeight || 520;
+        MG.view.x = w / 2 - hub.x;
+        MG.view.y = h / 2 - hub.y;
+        MG.view.k = 1.6;
+      }
+    });
+    box.appendChild(b);
+  });
+}
+
+function mgDetail(node) {
+  const el = document.getElementById('mgDetail');
+  if (!el) return;
+  if (!node) { el.textContent = '（点一个星点看详情）'; return; }
+  if (node.kind === 'hub') { el.textContent = '会话：' + node.label + '\n\n这个圆点的周围就是该会话的记忆。'; return; }
+  const at = node.createdAt ? new Date(node.createdAt).toLocaleString() : '—';
+  const hit = node.lastHitAt ? new Date(node.lastHitAt).toLocaleString() : '—';
+  el.textContent = node.text
+    + '\n\n权重：' + node.weight.toFixed(2) + '（有效 ' + node.eff.toFixed(2) + '）'
+    + '\n命中：' + node.hits + ' 次　最近：' + hit
+    + '\n创建：' + at
+    + (node.tags.length ? '\n标签：' + node.tags.join(', ') : '')
+    + (node.source ? '\n来源：' + node.source : '')
+    + '\n会话：' + node.key;
+}
+(function bindMemoryGraph() {
+  const canvas = document.getElementById('mgCanvas');
+  if (!canvas) return;
+  const tip = document.getElementById('mgTip');
+  let dragStart = null;
+  canvas.addEventListener('mousemove', function (e) {
+    const rect = canvas.getBoundingClientRect();
+    if (MG.dragged) {
+      MG.dragged.x = (e.clientX - rect.left - MG.view.x) / MG.view.k;
+      MG.dragged.y = (e.clientY - rect.top - MG.view.y) / MG.view.k;
+      MG.alpha = 0.5;
+      return;
+    }
+    if (MG.panning && dragStart) {
+      MG.view.x += e.clientX - dragStart.x;
+      MG.view.y += e.clientY - dragStart.y;
+      dragStart = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    const n = mgHit(e.clientX, e.clientY);
+    MG.hover = n ? n.id : null;
+    if (n && tip) {
+      tip.style.display = 'block';
+      tip.style.left = Math.min(canvas.clientWidth - 210, e.clientX - rect.left + 12) + 'px';
+      tip.style.top = Math.max(4, e.clientY - rect.top - 10) + 'px';
+      tip.textContent = n.kind === 'hub' ? n.label : (n.text.slice(0, 80) + (n.text.length > 80 ? '…' : ''));
+    } else if (tip) { tip.style.display = 'none'; }
+  });
+  canvas.addEventListener('mousedown', function (e) {
+    const n = mgHit(e.clientX, e.clientY);
+    if (n) { MG.dragged = n; MG.selected = n.id; mgDetail(n); }
+    else { MG.panning = true; dragStart = { x: e.clientX, y: e.clientY }; canvas.style.cursor = 'grabbing'; }
+  });
+  window.addEventListener('mouseup', function () {
+    MG.dragged = null; MG.panning = false; dragStart = null;
+    if (canvas) canvas.style.cursor = 'grab';
+  });
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const k0 = MG.view.k;
+    const k1 = Math.max(0.35, Math.min(3, k0 * (e.deltaY < 0 ? 1.1 : 0.9)));
+    MG.view.x = mx - ((mx - MG.view.x) * k1) / k0;
+    MG.view.y = my - ((my - MG.view.y) * k1) / k0;
+    MG.view.k = k1;
+  }, { passive: false });
+  document.getElementById('mgRefresh').addEventListener('click', function () {
+    MG.view = { x: 0, y: 0, k: 1 };
+    loadMemoryGraph();
+  });
+  document.getElementById('mgRelayout').addEventListener('click', function () {
+    layoutMemoryGraph();
+    MG.alpha = 1;
+    startMemoryGraphLoop();
+  });
+  document.getElementById('mgMinWeight').addEventListener('input', function (e) {
+    MG.minWeight = Number(e.target.value || 0);
+    const label = document.getElementById('mgMinWeightVal');
+    if (label) label.textContent = MG.minWeight.toFixed(1);
+  });
+})();
+</script></body>
 </html>
