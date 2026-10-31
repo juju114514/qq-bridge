@@ -155,6 +155,25 @@ sidecar 没开时：
 
 如果 bridge 启动时报「通道被占用」，说明插件还持有认领（心跳 60s 内），等一分钟或确认插件已停。
 
+## 六·五、换 token / 换号之后
+
+SnowLuma 的 **HTTP token 与 WS token 是两个不同的值**，重新扫码后会一起变。
+插件只认 WS 那个，桥接的 HTTP 调用认另一个 —— 手改很容易搞反。用脚本：
+
+```powershell
+node scripts/sync-snowluma-token.mjs --dry    # 先看会改什么
+node scripts/sync-snowluma-token.mjs          # 真改
+```
+
+它会同时更新两处：
+
+| 位置 | 字段 | 用哪个 token |
+| --- | --- | --- |
+| `config.json` | `snowluma.accessToken` | **HTTP**（桥接的 API 调用） |
+| `<DSH profile>/cordis.patch.yml` 里 `qq-bridge` 条目 | `accessToken` | **WS**（插件连 3001） |
+
+改完**重启 DSH**（插件在启动时加载）。多账号时用 `config.json` 的 `selfQQ` 固定用哪个。
+
 ## 七、排障
 
 | 现象 | 先查 |
