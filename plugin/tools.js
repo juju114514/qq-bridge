@@ -35,7 +35,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
 
   // ── qq_send_message ─────────────────────────────────────────────
   tools.push({
-    name: 'qq_send_message',
+    name: 'qqb_send_message',
     description: '向指定的 QQ 群或私聊发送一条纯文本消息。chat_id 形如 group:<群号> 或 private:<QQ号>。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
@@ -61,7 +61,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
 
   // ── qq_reply ────────────────────────────────────────────────────
   tools.push({
-    name: 'qq_reply',
+    name: 'qqb_reply',
     description: '引用某条 QQ 消息并回复。适合群里消息很多、需要明确“我在回哪一条”时用。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
@@ -113,7 +113,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
   };
 
   tools.push({
-    name: 'qq_get_recent_messages',
+    name: 'qqb_get_recent_messages',
     description: '取某个会话最近的聊天记录（含自己发的，最多 50 条）。注意：只有机器人上线之后的消息，历史不会回补。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
@@ -129,7 +129,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
   });
 
   tools.push({
-    name: 'qq_get_unread_messages',
+    name: 'qqb_get_unread_messages',
     description: '取上次 mark_read 之后的新消息（别人说的，不含自己发的）。开口之前先看这个，避免重复回应。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
@@ -146,7 +146,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
 
   // ── qq_wait_for_messages ────────────────────────────────────────
   tools.push({
-    name: 'qq_wait_for_messages',
+    name: 'qqb_wait_for_messages',
     description: '等一条新消息（最长 60 秒）。想潜水但不想错过接话时用；超时会正常返回 timeout，不是错误。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
@@ -167,7 +167,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
 
   // ── qq_get_prompt ───────────────────────────────────────────────
   tools.push({
-    name: 'qq_get_prompt',
+    name: 'qqb_get_prompt',
     description: '取当前会话的提示词快照：人格卡、人物印象、群记忆交接、最近消息、唤醒配置。每次开口前先看一眼，能避免"人设漂移"和"忘了昨天聊过什么"。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
@@ -204,7 +204,7 @@ export function createTools({ channel, sidecar = null, chatLog = null, log = () 
 
   // ── qq_mark_read ────────────────────────────────────────────────
   tools.push({
-    name: 'qq_mark_read',
+    name: 'qqb_mark_read',
     description: '把某个会话“读到指定水位”，避免下次唤醒重复处理同一条消息。依赖 sidecar；sidecar 不在时返回 degraded 而不是报错。',
     parameters: {
       chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },

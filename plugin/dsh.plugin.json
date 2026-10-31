@@ -9,14 +9,14 @@
   },
   "contributes": {
     "tools": [
-      "qq_ping",
-      "qq_get_prompt",
-      "qq_send_message",
-      "qq_reply",
-      "qq_mark_read",
-      "qq_get_recent_messages",
-      "qq_get_unread_messages",
-      "qq_wait_for_messages"
+      "qqb_ping",
+      "qqb_get_prompt",
+      "qqb_send_message",
+      "qqb_reply",
+      "qqb_mark_read",
+      "qqb_get_recent_messages",
+      "qqb_get_unread_messages",
+      "qqb_wait_for_messages"
     ]
   }
 }
