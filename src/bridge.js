@@ -10009,7 +10009,8 @@ function selfCheckSnapshot() {
     // 更新了就让 SDK 立刻用新参数重连（否则要等下一轮退避，最长要好几秒）
     if (wsChanged) {
       try { bot.close(1000, 'token-refresh'); } catch {}
-      try { bot.connect(); } catch {}
+      // 让出通道时不重连（否则 bridge 与插件会各收一份消息）
+      if (bot.reconnect !== false) { try { bot.connect(); } catch {} }
     }
     return wsChanged;
   }
@@ -10072,6 +10073,17 @@ function selfCheckSnapshot() {
     enabled: cfg.channel?.enabled !== false,
   });
   channelModeClaimed = channelModeGuard.ok;
+  if (!channelModeClaimed) {
+    // 真机事故（2026-10-31 12:44）：日志写了 "sidecar-only"，但 3001 上仍有一条属于
+    // bridge 的连接 —— 说明某条路径（自愈/token 刷新）在断开后又会重连。
+    // 让出通道就必须**真的**不连：这里主动关掉并禁掉自动重连，兜底堵死所有路径。
+    try { bot.reconnect = false; } catch { /* ignore */ }
+    // 真机第二次踩到：close() 之后仍有一条连接建立成功（有别的路径在调 connect）。
+    // 直接把 connect 变成空操作 —— 让出通道时，任何路径都不许再连。
+    try { bot.connect = async () => {}; } catch { /* ignore */ }
+    try { bot.close(1000, 'sidecar-only'); } catch { /* 没连过就无所谓 */ }
+    log('已断开 SnowLuma 连接并禁用重连（本实例只作 sidecar）');
+  }
 
   // SnowLuma 尚未就绪时不阻塞桥接启动：SDK 自带后台重连，DSH 侧照常连接。
   if (channelModeClaimed) bot.connect().catch((error) => {

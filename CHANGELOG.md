@@ -2,7 +2,43 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.10：插件自动读 sidecar console-token（原来全 401）
+## 2026-10-31 — 0.4.11：sidecar-only 时**真的**不连网关（否则两边各收一份）
+
+> 小更新。真机实测发现：日志写着"让出通道"，实际却还连着 3001。
+
+### 现象
+
+```
+[bridge] sidecar-only 模式（channel.enabled=false）：不连接 QQ 网关，也不占用通道认领
+[bridge] SnowLuma 已连接：ws://127.0.0.1:3001      ← 说好的不连呢
+```
+
+`Get-NetTCPConnection -RemotePort 3001` 能看到**两条**：DSH 插件一条 + bridge 一条。
+后果是**同一条群消息被消费两次**，插件和桥接可能各回一句。
+
+### 修法（两层兜底）
+
+```js
+if (!channelModeClaimed) {
+  bot.reconnect = false;          // 禁自动重连
+  bot.connect = async () => {};   // 把 connect 变成空操作（真机第二次踩到：close 之后仍有连接建立）
+  bot.close(1000, 'sidecar-only');
+  log('已断开 SnowLuma 连接并禁用重连（本实例只作 sidecar）');
+}
+```
+
+同时自愈路径里的重连也受 `bot.reconnect !== false` 约束。
+
+### 验证
+
+```
+3001 连接: DeepSeek Harness.exe(12708)      ← 只剩插件
+bridge 日志: sidecar-only 模式 … / 已断开 SnowLuma 连接并禁用重连
+```
+
+### 顺带
+
+`src/bridge.js` 体积基线更新（本轮 N3 通道闸 + sidecar 兜底，增量 59 行、真实无法再拆）。## 2026-10-31 — 0.4.10：插件自动读 sidecar console-token（原来全 401）
 
 > 小更新。真机测试暴露的问题：工具通了，但**读快照一律 401**。
 
