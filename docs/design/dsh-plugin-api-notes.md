@@ -194,7 +194,7 @@ dsh web: http://127.0.0.1:3080/?token=...
 不是必然冲突，但**没有任何理由冒这个险**。正确做法：
 
 ```powershell
-$env:DSH_HOME = 'D:\QQBot\temp\dsh-home'    # 宿主会用它下面的 profiles/
+$env:DSH_HOME = '<临时目录>\dsh-home'    # 宿主会用它下面的 profiles/
 node <dsh-cli>\lib\bin.js --from-default-profile web --profile qqtest --dump-config
 node <dsh-cli>\lib\bin.js plugin --profile qqtest add <repo>\plugin
 node <dsh-cli>\lib\bin.js --profile qqtest
