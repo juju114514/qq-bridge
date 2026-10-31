@@ -36,6 +36,16 @@ npm run doctor
    └─ 其它系统 → C. 手动
 ```
 
+### A0. 已经在用 DSH？可以直接装成插件（路线 B）
+
+```powershell
+node scripts/switch-mode.mjs plugin     # 改配置：bridge 让出通道、插件接管
+# 然后按提示：先重启桥接，再重启 DSH
+```
+
+装卸细节、安全边界与排障：[docs/guides/PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md)。
+**注意**：插件会拿到一套工具，必须确认工具白名单生效后才把通道交出去。
+
 ### A. Docker（不需要 Node）
 
 ```bash

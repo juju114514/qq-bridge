@@ -31,6 +31,12 @@
 | [guides/INSTALL-SKILL.md](guides/INSTALL-SKILL.md) | **一键安装 Skill**：把这份手册给能执行命令的 AI 助手，它替你装；用户只在三处动手（扫码/白名单/确认）；含自愈顺序与风险声明 | ✅ 2026-10-31 |
 | [guides/UPGRADE-FROM-OLD.md](guides/UPGRADE-FROM-OLD.md) | **从旧版本升级**：0.2.x/0.3.x → 0.4.x 要做什么、新增配置项对照表、行为变化、state 兼容性、回滚方法、自查清单 | ✅ 2026-10-31 |
 | [guides/AWESOME-SUBMISSION.md](guides/AWESOME-SUBMISSION.md) | **提交到 awesome-dsh-plugin** 的收录草稿：条目 YAML、门槛逐条核对、为什么用 `tree/main/plugin` 这种 URL | ✅ 2026-10-31 |
+| [guides/PLUGIN-MODE.md](guides/PLUGIN-MODE.md) | **插件模式**（路线 B）真实完整版：两条路对照、**安全边界（必读）**、三种安装方式、真机踩坑清单、降级语义、排障 | ✅ 2026-10-31 |
+| [reports/2026-10-31-session.md](reports/2026-10-31-session.md) | **2026-10-31 工作纪要**：11 个静默 bug 清单、越权事故复盘、凭据轮换、遗留待办 | ✅ 2026-10-31 |
+| `scripts/switch-mode.mjs` | **两条路切换**：`status` / `bridge` / `plugin`，改两处配置并打印重启顺序 | — |
+| `scripts/sync-snowluma-token.mjs` | **换 token 别手改**：WS token 写 `accessToken`、HTTP token 写 `httpToken` | — |
+| `熔断-停插件.bat` | **2 秒熔断**：写 `state/plugin-kill`，插件断开 QQ 并释放通道（不用重启 DSH） | — |
+| `scripts/run-bridge.ps1` + `keepalive.ps1` | **守护与自启**：找 node（PATH 里可能没有）、崩溃 5 秒重启、计划任务保活 | — |
 | [guides/PLUGIN-MODE.md](guides/PLUGIN-MODE.md) | **插件模式**：怎么装、怎么配、降级表（sidecar 不在时哪些能力没有）、怎么切回 bridge、排障 | ✅ 2026-10-31 |
 | [guides/BRANCHING.md](guides/BRANCHING.md) | **分支与发版策略**：main 永远可发布；开发进 `next/X.Y.Z`；小更新 +0.0.1、大更新 +0.1.0；`--no-ff` 合并 + tag + Release | ✅ 2026-10-31 |
 | [guides/RELEASE.md](guides/RELEASE.md) | **发版流程**：tag + Release 一条命令；含「gh 猜错仓库」「token 缺 read:org」「正文必须与标签一致」三个坑 | ✅ 2026-10-31 |

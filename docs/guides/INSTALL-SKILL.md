@@ -190,3 +190,16 @@ Get-Content .\state\bridge.log -Tail 30
 安装包要打包 Node、两个第三方程序、模型凭据 —— 体积大、平台绑死、还没法解释"为什么卡住"。
 **Skill 是让 AI 现场判断**：报错变了、路径不一样、杀毒软件拦了，它能自己读日志改动作。
 代价是需要一个能执行命令的 AI 助手 —— 这恰好是本项目的前提。
+
+## 附：AI 助手执行时的四条补充（2026-10-31）
+
+1. **包管理器**：文档口径是 `npm install`。如果机器上只有 pnpm，用 `pnpm install` 也能跑；
+   它会生成 `pnpm-lock.yaml`，**不要提交进仓库**（已在 `.gitignore`）。
+2. **装完必须做一次自测**：`node src/self-test.js`（会自己从 config 读 DSH 端口）。
+   看到 `🎉 自测通过` 才算链路 OK；报 `连不上 DSH` 就按提示查端口。
+3. **插件模式是可选路线**，装之前先问用户「你要哪条路」：
+   常驻 bridge（稳）还是 DSH 插件（能用 DSH 的会话/UI）。切换只需
+   `node scripts/switch-mode.mjs bridge|plugin`。
+4. **如果启用了插件模式，必须验证工具边界**：看 `state/plugin.log` 有没有
+   `已对 agent 应用工具白名单` 和 `agent 已建：preset=qq-chat-v2`。
+   没有这两行就让通道留在 bridge 上 —— 否则群友可以指挥 agent 操作本机。
