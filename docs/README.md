@@ -38,6 +38,7 @@
 | [guides/VOICE.md](guides/VOICE.md) | 语音发送全解：独立工具（`voice-tool/` 的图形界面与命令行）、桥接 CLI、AI 工具、控制台面板，以及**工具拆出后的配置解析顺序** | ✅ 2026 整理时已更新（工具移到上一级 `voice-tool/`） |
 | [guides/TOKEN_USAGE_CONSOLE.md](guides/TOKEN_USAGE_CONSOLE.md) | 控制台「令牌与花费」看板：数据来源、计价口径（峰谷分时）、API、配置 | ✅ |
 | [guides/QUIET-HOURS.md](guides/QUIET-HOURS.md) | **静默时段**：什么时候该开、口径（只算入站）、护栏（默认要求覆盖 02–06）为什么存在、一键采用的四道保护、手动改文件要重启 | ✅ 2026-10-31 |
+| [guides/DSH-UPGRADE-ADAPTATION.md](guides/DSH-UPGRADE-ADAPTATION.md) | **DSH 升级后的适配清单**：快照对比 → 六步检查（插件加载/工具面/控制台/预设）→ 验收三步 | ✅ 2026-11-01 |
 | [guides/OFFICIAL-TROUBLESHOOTING.md](guides/OFFICIAL-TROUBLESHOOTING.md) | **官方通道报错调整方案**：8 类实测报错（两层白名单 / not-friend / 被动窗口 / 鉴权 / 去重）逐条给办法 | ✅ 2026-11-01 |
 | [guides/SWITCH-FROM-UPSTREAM.md](guides/SWITCH-FROM-UPSTREAM.md) | **从上游切到本 fork**：三条路径（脚本/手工/并行装）、受保护清单、三个坑（配置键/任务路径/插件重挂）、回退 | ✅ 2026-11-01 |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
@@ -93,6 +94,7 @@
 | [ROUTES.md](ROUTES.md) | **路由总表**（自动生成）：109 条模块路由 + 仍在 bridge 内联的条目，附行号。改路由后跑 `node scripts/gen-route-index.mjs --write` | ✅ 由 `check-route-index-fresh.mjs` 守住新鲜度 |
 | [validation/regression-2026-10-31.md](validation/regression-2026-10-31.md) | 波次 4 拆完 5 批后的**整体回归**：干净克隆 113/113 + 46 条 GET 端点探测（404/400 逐条解释） | ✅ |
 | [validation/live-endpoints-2026-10-31.md](validation/live-endpoints-2026-10-31.md) | **8 条"真发"端点实测**（发消息/语音/点歌/表情同步/长轮询），含每条的日志证据；顺带抓到 `/api/voice/send` 长期 500 | ✅ 含未覆盖项说明 |
+| [validation/env-snapshot-2026-11-01.md](validation/env-snapshot-2026-11-01.md) | **环境快照基线**：DSH 0.2.1-rc.2 / 仓库 0.4.68 / 插件 0.1.0 / 21 个配置键（升级后用来 diff） | ✅ 2026-11-01 |
 | [validation/dirty-env-2026-10-31.md](validation/dirty-env-2026-10-31.md) | **脏环境七场景**：坏状态文件/垃圾字段/`__proto__`/坏 config/双实例/.tmp 残留/脏端口 | ✅ 并据此加了 `consolePort` 校验 |
 | [validation/clean-clone-2026-10-31.md](validation/clean-clone-2026-10-31.md) | 干净克隆 + 全量审计（证明"没有只有本机能过的测试"） | ✅ |
 | [sessions/2026-10-31.md](sessions/2026-10-31.md) | 那一夜的会话记录：10 批迁移明细、12 个真缺陷、自己犯的 5 个错 | ✅ |
