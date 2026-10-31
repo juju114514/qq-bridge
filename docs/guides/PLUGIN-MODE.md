@@ -71,6 +71,8 @@ node <dsh-cli>\lib\bin.js --profile qqtest --dump-config | Select-String 'qq-bri
   "accessToken": "",
   "sidecarUrl": "http://127.0.0.1:3100", // 常驻 bridge 的控制台地址
   "sidecarToken": "",                    // 空 = 用 sidecar 的 state/console-token
+  "accessToken": "…",                    // ⚠️ SnowLuma 的 **WS** token（不是 HTTP 那个）
+  "stateDir": "<sidecar 的 state 目录>",  // ⚠️ 必须和 sidecar 同一个，否则通道互斥失效
   "requireMention": true,
   "allowGroups": [123456789]             // 空白名单 = 谁都不回
 }
@@ -88,6 +90,18 @@ node <dsh-cli>\lib\bin.js --profile qqtest --dump-config | Select-String 'qq-bri
 | `qq_get_prompt` | 人格卡 / 人物印象 / 群记忆交接 | **sidecar** |
 | `qq_mark_read` | 已读水位（内存 + sidecar） | **sidecar** |
 | `qq_ping` | 自检 | 无 |
+
+## 四·五、三个真机才会暴露的必需项
+
+| 项 | 为什么 |
+| --- | --- |
+| `accessToken` = SnowLuma 的 **WS** token | 空着能连上 TCP，但网关会立刻断开（`OneBot 错误：` 后面是空的，很难看出是 token 问题） |
+| `stateDir` 指向 **sidecar 的 state/** | 通道认领文件写在这里才和 sidecar 互斥；写错地方 = 互斥形同虚设 |
+| 插件 `inject` 必须含 `agents` | 宿主只把声明过的服务放进 `ctx`，没声明时访问 `ctx.agents` 会抛 `cannot get property "agents" without inject` |
+
+还有一个坑：**杀掉插件实例后 60 秒内重启会被拒**（心跳 TTL）。
+日志会写「通道被占用：plugin（pid …）」。确认那个 pid 已经不在了，删掉
+`state/channel-mode.json` 即可（等价于等它过期）。
 
 ## 五、降级语义（必须知道）
 

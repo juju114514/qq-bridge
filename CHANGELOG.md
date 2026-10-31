@@ -2,7 +2,34 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.2：升级指南（给还在用 0.2.x / 0.3.x 的人）
+## 2026-10-31 — 0.4.3：插件模式真机跑通（三个必需项）
+
+> 小更新。修的是"插件装上了但连不上 QQ"这类只在真机上出现的问题。
+
+### 三个修复
+
+| 问题 | 现象 | 修法 |
+| --- | --- | --- |
+| 插件 `inject` 少了 `agents` | 报 `cannot get property "agents" without inject`，通道启动直接失败 | `inject = ['tools', 'agents']` |
+| 挂载时探 sidecar 只给 1.5s | 宿主启动忙 → 明明开着却报「sidecar 未连接」 | 超时改 5s，并把失败原因打进日志 |
+| 认领文件写到了相对路径 | `stateDir` 默认 `./state`，cwd 不是 sidecar 的 state → **通道互斥形同虚设** | 新增 `stateDir` 配置项；文档写明必须与 sidecar 一致 |
+
+### 真机验证（隔离 DSH_HOME，未碰桌面版）
+
+```
+[qq-plugin] 通道模式：plugin（free）
+[qq-plugin] OneBot 已连接：ws://127.0.0.1:3001
+[qq-plugin] QQ 通道已启动
+[qq-plugin] 已挂载；sidecar 在线（mode=bridge）
+```
+
+`state/channel-mode.json` 显示 `mode: plugin`，sidecar 处于 sidecar-only。
+
+### 文档
+
+`docs/guides/PLUGIN-MODE.md` 增加「三个真机才会暴露的必需项」：
+`accessToken` 要用 **WS** token、`stateDir` 必须与 sidecar 一致、`inject` 要含 `agents`；
+另加一条：杀进程后 60 秒内重启会被心跳 TTL 拒绝，删 `channel-mode.json` 即可。## 2026-10-31 — 0.4.2：升级指南（给还在用 0.2.x / 0.3.x 的人）
 
 > 纯文档版本，没有代码改动。
 
