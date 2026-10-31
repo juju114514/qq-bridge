@@ -192,12 +192,23 @@ function healthReady(timeoutMs = 60000) {
   });
 }
 
-function restartService() {
+function serviceExists() {
   if (!isWin) return false;
+  return spawnSync('schtasks', ['/query', '/tn', 'qq-bridge'], { stdio: 'ignore' }).status === 0;
+}
+
+function restartService() {
+  if (!isWin) return { ok: false, reason: '非 Windows' };
+  if (has('--no-restart')) return { ok: false, reason: '--no-restart' };
+  if (!serviceExists()) {
+    // 常见情况：对方服务器是"手动 start.bat / pm2 / systemd"在跑，不是计划任务。
+    // 这时候硬等健康检查只会误判成失败并回滚 —— 明确告诉他手动重启。
+    return { ok: false, reason: 'no-task' };
+  }
   const end = spawnSync('schtasks', ['/end', '/tn', 'qq-bridge'], { stdio: 'ignore' });
-  spawnSync('timeout', ['/t', '3', '/nobreak'], { stdio: 'ignore' }); // 兼容：拿不到就当没等
+  spawnSync('timeout', ['/t', '3', '/nobreak'], { stdio: 'ignore' });
   const run = spawnSync('schtasks', ['/run', '/tn', 'qq-bridge'], { stdio: 'ignore' });
-  return run.status === 0 || end.status === 0;
+  return { ok: run.status === 0 || end.status === 0, reason: '' };
 }
 
 // --dry-run：只做解压与差异统计，不写根目录、不重启
@@ -249,11 +260,17 @@ async function apply({ dryRun = false } = {}) {
   ok(`已覆盖 ${copied} 个文件（其中新增 ${added.length} 个）`);
 
   // 4) 重启（交给计划任务，不由本进程负责 —— 这是与"别人家更新器"最大的区别）
-  if (process.env.QQB_UPDATE_SKIP_RESTART === '1') {
-    warn('QQB_UPDATE_SKIP_RESTART=1：跳过重启（只用于测试文件覆盖逻辑）');
-  } else {
-    info('重启交给计划任务 qq-bridge（更新器只换文件）');
-    restartService();
+  const restart = process.env.QQB_UPDATE_SKIP_RESTART === '1'
+    ? { ok: false, reason: 'QQB_UPDATE_SKIP_RESTART=1' }
+    : (() => { info('重启交给计划任务 qq-bridge（更新器只换文件）'); return restartService(); })();
+  if (!restart.ok) {
+    warn(`没有自动重启（原因：${restart.reason || '未知'}）`);
+    info('文件已覆盖完成。请手动重启你的服务进程，然后看控制台「运行报告」确认版本号。');
+    info('  · 计划任务：schtasks /run /tn qq-bridge');
+    info('  · 手动启动：launcher.bat / 启动器.cmd / 你自己的进程管理器');
+    fs.rmSync(stage, { recursive: true, force: true });
+    ok('本次更新：文件已就位，等待你手动重启（未做健康检查，也就不会误回滚）');
+    return 0;
   }
 
   // 5) 健康检查
@@ -298,6 +315,7 @@ else if (has('--apply')) {
   info('--check     只检查版本');
   info('--download  下载到 _update/');
   info('--apply --yes  备份 → 覆盖 → 重启 → 健康检查（失败自动回滚）');
+  info('--no-restart  只换文件，不重启（对方不是计划任务时用这个）');
   info('--proxy <url>  访问 GitHub 用代理');
 }
 process.exitCode = code;
