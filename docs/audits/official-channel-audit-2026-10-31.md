@@ -104,3 +104,15 @@ if (login?.user_id != null) selfUserId = String(login.user_id);
 > 审计方法：读代码路径 + 逐项对照（不是凭文档）。涉及
 > `src/qqbot-official.js`、`src/official-transport.js`、`src/bridge.js`（L9869 分派点、L7900 身份行、L9938 赋值）、
 > `src/config.js`（official 配置）。
+
+## 六、锁定状态（2026-10-31 定）
+
+代码侧三个缺口已在 **0.4.29** 修完（owner openid / 按通道身份 / message_id 去重）。
+但因为**还没有真机 e2e**，仓库对该通道**上锁**：
+
+- 见根目录 [LOCK.md](../../LOCK.md)
+- `config.example.json` 的 `official.enabled` 固定 `false`
+- README 顶部有 🔒 横幅
+
+**只锁 git 仓库口径，不锁本地运行** —— 本地按需 `official.enabled: true` 仍可测试。
+解锁条件见 LOCK.md 第三节。
