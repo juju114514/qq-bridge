@@ -2,6 +2,38 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.29：修 Official 通道的三个缺口（审计落地）
+
+> 对应 `docs/audits/official-channel-audit-2026-10-31.md` 的缺口 1/2/3。
+
+### 缺口 2（先修）：管理员在官方通道不再"永远不是 owner"
+
+- 新增 `official.ownerOpenid`（openid，不是 QQ 号）
+- `incoming-guards` 与拍一拍路径的 owner 判定同时支持：
+  - 个人号：`event.user_id === cfg.ownerQQ`
+  - 官方通道：`event.user_id`（`official-<openid>`）→ 去掉前缀后比对 `official.ownerOpenid`
+- 顺带修掉 `&&` 链返回 `''` 导致 `isOwner` 不是布尔的历史隐患
+
+### 缺口 1：官方通道有正确的自我身份
+
+- `selfIdentityTextV2(isOfficial)`：官方通道用 `official.botName` + appid，**不再借用 SnowLuma 的个人号**
+- 官方通道启动后写 `officialSelfName/officialSelfOpenid` 并打日志：
+  `[official] 自我身份已设置：显示名「…」（官方通道无 QQ 号）`
+- prompt 里的 @ 提示按通道区分（官方写 `@你`，个人号写 QQ 号）
+
+### 缺口 3：官方入站按 `message_id` 去重
+
+官方重连会重投同一 `msg_id`，而入站没有 seq 可用。新增 10 分钟 TTL 的有界去重表，
+命中时打 `[official] 重复消息，跳过`。
+
+### 测试
+
+`test-incoming-guards.mjs` 新增两条：
+
+- `openid 命中 official.ownerOpenid → isOwner=true`
+- `不在名单 → isOwner=false`
+
+审计 128/128，体积检查通过。
 ## 2026-10-31 — 0.4.28：Official 通道专项审计
 
 > 纯文档版本（+ 索引）。回答一个问题：**官方通道到底是不是同一套系统？**
