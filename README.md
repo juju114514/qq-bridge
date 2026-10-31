@@ -6,6 +6,7 @@
 > 第三方组件与数据出机清单在 [NOTICE.md](NOTICE.md)）。**仓库不含任何真实账号、群号、令牌或 Cookie。**
 
 > **已经装过、要升级？** → [docs/UPGRADE.md](docs/UPGRADE.md)（按版本看要做什么，含回滚）
+> **还在用 0.2.x / 0.3.x？** → [docs/guides/UPGRADE-FROM-OLD.md](docs/guides/UPGRADE-FROM-OLD.md)（30 秒版 + 配置对照表）
 > **第一次用（没写过代码）？** → [docs/guides/BEGINNER.md](docs/guides/BEGINNER.md)（零基础八步：每步都写了「应该看到什么 / 没看到怎么办」）
 > **想直接跑起来（会命令行）？** → [QUICKSTART.md](QUICKSTART.md)（一页版：体检 → 三条路线选一条 → 验证）
 > **想让 AI 替你装？** → [docs/guides/INSTALL-SKILL.md](docs/guides/INSTALL-SKILL.md)（把手册给你的 AI 助手，它照着装）

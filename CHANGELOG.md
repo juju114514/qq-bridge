@@ -2,7 +2,22 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.1：`channel.enabled` —— 让 sidecar 把通道让给插件
+## 2026-10-31 — 0.4.2：升级指南（给还在用 0.2.x / 0.3.x 的人）
+
+> 纯文档版本，没有代码改动。
+
+新增 [docs/guides/UPGRADE-FROM-OLD.md](docs/guides/UPGRADE-FROM-OLD.md)：
+
+- **30 秒版**：备份 → 拉代码 → `npm install` → `restart.bat` → `自检.bat`
+- **配置项对照表**：0.3.1 的 `notifyAgentErrors` / `roleInjectEvery`、0.4.1 的 `channel.enabled`，
+  标明"默认值都等于旧行为，一个都不改也能跑"
+- **行为变化**：角色卡改 `isOwner`、`consolePort` 启动校验、`/api/voice/send` 修复、通道认领
+- **从 0.2.x 上来要额外做的**：Node ≥22.13、DSH ≥0.2.1-rc.2、preset 名 `qq-chat-v2`、跑一次 `setup-dsh.mjs`
+- **state 兼容性**：只增不改；新增 `state/memory/`、`channel-mode.json`、`plugin-events.jsonl`
+- **回滚方法**：换回旧代码 + `state.bak-*` 覆盖回去
+- **升级后自查清单** 5 条
+
+README 顶部与 docs 索引都加了入口。## 2026-10-31 — 0.4.1：`channel.enabled` —— 让 sidecar 把通道让给插件
 
 > 小更新（+0.0.1）。默认行为不变（`channel.enabled` 默认 `true`，照常连网关）。
 
