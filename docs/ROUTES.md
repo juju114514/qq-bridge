@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**109** 条（24 个文件）
+- 已搬进模块：**110** 条（24 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（4 条）
@@ -180,7 +180,7 @@
 |---|---|---|
 | POST | `/api/socialV2/wait` | createSocialV2WaitHandler |
 
-## src/api/socialV2-write.js（16 条）
+## src/api/socialV2-write.js（17 条）
 
 | 方法 | 路径 | handler |
 |---|---|---|
@@ -195,6 +195,7 @@
 | POST | `/api/socialV2/memory-remove` | createSocialV2WriteHandler |
 | POST | `/api/socialV2/memory-split` | createSocialV2WriteHandler |
 | POST | `/api/socialV2/memory-update` | createSocialV2WriteHandler |
+| POST | `/api/socialV2/memory-weight` | createSocialV2WriteHandler |
 | POST | `/api/socialV2/record-sent` | createSocialV2WriteHandler |
 | POST | `/api/socialV2/reset` | createSocialV2WriteHandler |
 | POST | `/api/socialV2/tool-log/clear` | createSocialV2WriteHandler |

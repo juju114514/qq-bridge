@@ -234,6 +234,36 @@ export function createSocialV2WriteHandler(deps) {
       return true;
     }
 
+    // ── POST /api/socialV2/memory-weight ───────────────────────────────────
+    // 人工调权重（控制台星图用）。只允许操作者：带 x-agent-token 的会话级主体一律拒绝，
+    // 否则 A 群里的 AI 能改 B 群的记忆权重。
+    if (pathname === '/api/socialV2/memory-weight') {
+      const body = await readBody();
+      const key = String(body.key ?? '').trim();
+      const text = String(body.text ?? '').trim();
+      const weight = Number(body.weight);
+      if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅限操作者（控制台）' }, 403); return true; }
+      if (!key || !text) { sendJson({ ok: false, error: 'key/text 不能为空' }, 400); return true; }
+      if (!Number.isFinite(weight) || weight <= 0 || weight > 3) {
+        sendJson({ ok: false, error: 'weight 必须在 (0, 3] 之间' }, 400);
+        return true;
+      }
+      const st = getSocialV2State(key);
+      if (!Array.isArray(st.longTermMemories) || !st.longTermMemories.length) {
+        sendJson({ ok: false, error: '该会话还没有长期记忆' }, 404);
+        return true;
+      }
+      const atom = st.longTermMemories.find((a) => String(a.text ?? '') === text);
+      if (!atom) { sendJson({ ok: false, error: '没找到这条记忆（可能已被合并或归档）' }, 404); return true; }
+      const before = Number(atom.weight || 1);
+      atom.weight = Math.round(weight * 100) / 100;
+      atom.manualWeightAt = Date.now();
+      saveSocialV2State();
+      log(`[memory] 人工调权重：${text.slice(0, 30)} ${before} → ${atom.weight}`);
+      sendJson({ ok: true, key, before, atom });
+      return true;
+    }
+
     // ── POST /api/socialV2/memory-append ───────────────────────────────────
     if (pathname === '/api/socialV2/memory-append') {
       const body = await readBody();

@@ -2699,6 +2699,11 @@ button:active:not(:disabled) {
               <input id="mgMinWeight" type="range" min="0" max="3" step="0.1" value="0" style="vertical-align:middle;width:120px">
               <span id="mgMinWeightVal">0.0</span>
             </label>
+            <label style="font-size:12px;opacity:.85">时间
+              <input id="mgDays" type="range" min="0" max="120" step="1" value="0" style="vertical-align:middle;width:110px">
+              <span id="mgDaysVal">T+0</span>
+            </label>
+            <span id="mgFaded" style="font-size:12px;color:#ffb27a"></span>
             <label style="font-size:12px;opacity:.85"><input id="mgShowPeople" type="checkbox" checked style="vertical-align:middle"> 人物层</label>
             <label style="font-size:12px;opacity:.85"><input id="mgShowAtoms" type="checkbox" checked style="vertical-align:middle"> 记忆层</label>
             <button class="btn" id="mgRefresh" type="button">刷新</button>
@@ -2724,6 +2729,8 @@ button:active:not(:disabled) {
             <div style="margin-top:6px">◇ 会话（group:/private:）</div>
             <div>◆ 人物（紫色菱形，越大关联记忆越多）</div>
             <div style="margin-top:6px">紫色细线 = 人物 ↔ 提到的记忆</div>
+            <div style="margin-top:6px">虚线圈 = 拖时间轴后「将淡出」（有效权重 &lt; 0.05）</div>
+            <div style="margin-top:6px">点星点可在右侧直接调权重</div>
           </div>
         </div>
       </section>
@@ -5509,7 +5516,7 @@ setInterval(() => { if (currentConsolePage !== 'usage') return; refreshUsage(); 
 const MG = {
   nodes: [], edges: [], alpha: 1, raf: 0, view: { x: 0, y: 0, k: 1 },
   hover: null, selected: null, dragged: null, panning: false,
-  minWeight: 0, showPeople: true, showAtoms: true, loaded: false,
+  minWeight: 0, showPeople: true, showAtoms: true, daysFuture: 0, loaded: false,
 };
 const MG_HALF_LIFE = 30;
 function mgEffectiveWeight(atom, now) {
@@ -5520,10 +5527,17 @@ function mgEffectiveWeight(atom, now) {
 function mgTagsOf(atom) {
   return (Array.isArray(atom.tags) ? atom.tags : []).map(function (x) { return String(x).toLowerCase(); }).filter(Boolean);
 }
+// 投影到「T+daysFuture 天」的有效权重：这就是遗忘曲线本身
+function mgEffAt(n) {
+  const t = Date.now();
+  const ageDays = Math.max(0, (t - Number(n.createdAt || n.lastHitAt || t)) / 86400000) + (MG.daysFuture || 0);
+  return Number(n.weight || 1) * Math.pow(0.5, ageDays / MG_HALF_LIFE);
+}
+const MG_ARCHIVE_WEIGHT = 0.05;
 function mgVisible(n) {
   if (n.kind === 'hub') return true;
   if (n.kind === 'person') return MG.showPeople;
-  return MG.showAtoms && n.eff >= MG.minWeight;
+  return MG.showAtoms && mgEffAt(n) >= MG.minWeight;
 }
 async function loadMemoryGraph() {
   const canvas = document.getElementById('mgCanvas');
@@ -5591,6 +5605,7 @@ async function loadMemoryGraph() {
     layoutMemoryGraph();
     MG.alpha = 1;
     startMemoryGraphLoop();
+    updateFadedCount();
     if (empty) {
       if (!nodes.length) { empty.textContent = '还没有长期记忆：让 AI 记住点东西，或先在会话里聊几句'; empty.style.display = 'flex'; }
       else empty.style.display = 'none';
@@ -5694,7 +5709,7 @@ function stepMemoryGraph() {
 function mgRadius(n) {
   if (n.kind === 'hub') return 9;
   if (n.kind === 'person') return 6 + Math.min(9, (n.degree || 0) * 1.6);
-  return 3.2 + Math.min(13, Math.log2(1 + Math.max(0.01, n.eff)) * 4.2);
+  return 3.2 + Math.min(13, Math.log2(1 + Math.max(0.01, mgEffAt(n))) * 4.2);
 }
 function drawMemoryGraph() {
   const canvas = document.getElementById('mgCanvas');
@@ -5764,15 +5779,25 @@ function drawMemoryGraph() {
       ctx.fillText(n.label, n.x, n.y + r + 12);
       return;
     }
-    const days = Math.max(0, (now - (n.lastHitAt || n.createdAt || now)) / 86400000);
-    const fresh = Math.max(0.15, Math.min(1, 1 - days / 60));
+    const ageDays = Math.max(0, (now - (n.lastHitAt || n.createdAt || now)) / 86400000) + (MG.daysFuture || 0);
+    const fresh = Math.max(0.08, Math.min(1, 1 - ageDays / 60));
     const rC = Math.round(90 + 165 * fresh);
     const gC = Math.round(130 + 105 * fresh);
     const bC = Math.round(230 - 40 * fresh + 30 * (1 - fresh));
+    const effNow = mgEffAt(n);
+    const faded = effNow < MG_ARCHIVE_WEIGHT;
     ctx.beginPath();
-    ctx.fillStyle = 'rgba(' + rC + ',' + gC + ',' + bC + ',' + (0.30 + 0.60 * fresh).toFixed(2) + ')';
+    ctx.fillStyle = 'rgba(' + rC + ',' + gC + ',' + bC + ',' + (faded ? 0.16 : (0.30 + 0.60 * fresh)).toFixed(2) + ')';
     ctx.arc(n.x, n.y, mgRadius(n), 0, Math.PI * 2);
     ctx.fill();
+    if (faded) {
+      // 将淡出：虚线圈（在时间轴拖到未来时出现）
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = 'rgba(255,150,120,.75)';
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     if (MG.selected === n.id) { ctx.strokeStyle = '#ffd479'; ctx.lineWidth = 2; ctx.stroke(); }
   });
   ctx.restore();
@@ -5786,6 +5811,14 @@ function startMemoryGraphLoop() {
   };
   MG.raf = requestAnimationFrame(tick);
 }
+function updateFadedCount() {
+  const el = document.getElementById('mgFaded');
+  if (!el) return;
+  const atoms = MG.nodes.filter(function (n) { return n.kind === 'atom'; });
+  const faded = atoms.filter(function (n) { return mgEffAt(n) < MG_ARCHIVE_WEIGHT; }).length;
+  el.textContent = atoms.length ? ('将淡出 ' + faded + '/' + atoms.length) : '';
+}
+
 function mgHit(clientX, clientY) {
   const canvas = document.getElementById('mgCanvas');
   if (!canvas) return null;
@@ -5830,6 +5863,35 @@ function mgDetail(node) {
     + (node.tags.length ? '\n标签：' + node.tags.join(', ') : '')
     + (node.source ? '\n来源：' + node.source : '')
     + '\n会话：' + node.key;
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-top:10px;display:flex;gap:6px;flex-wrap:wrap';
+  const mk = function (label, value) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.style.cssText = 'font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #2a3b5c;background:rgba(24,38,62,.95);color:#cfe0ff;cursor:pointer';
+    b.addEventListener('click', function () { setAtomWeight(node, value); });
+    return b;
+  };
+  box.appendChild(mk('权重 −0.3', Math.max(0.1, node.weight - 0.3)));
+  box.appendChild(mk('权重 +0.3', Math.min(3, node.weight + 0.3)));
+  box.appendChild(mk('设为 1', 1));
+  box.appendChild(mk('设为 2', 2));
+  box.appendChild(mk('设为 3（最高）', 3));
+  el.appendChild(box);
+}
+async function setAtomWeight(node, weight) {
+  const el = document.getElementById('mgDetail');
+  try {
+    const r = await api('/api/socialV2/memory-weight', 'POST', { key: node.key, text: node.text, weight: weight });
+    if (!r || r.ok === false) throw new Error((r && r.error) || '写入失败');
+    node.weight = Number(r.atom && r.atom.weight) || weight;
+    node.eff = mgEffectiveWeight(node, Date.now());
+    MG.alpha = Math.max(MG.alpha, 0.25);
+    mgDetail(node);
+  } catch (error) {
+    if (el) el.textContent = (el.textContent || '') + '\n\n⚠️ 调权重失败：' + (error && error.message ? error.message : error);
+  }
 }
 (function bindMemoryGraph() {
   const canvas = document.getElementById('mgCanvas');
@@ -5896,6 +5958,15 @@ function mgDetail(node) {
   });
   const pToggle = document.getElementById('mgShowPeople');
   if (pToggle) pToggle.addEventListener('change', function (e) { MG.showPeople = e.target.checked; MG.alpha = 0.3; });
+  const daysInput = document.getElementById('mgDays');
+  if (daysInput) {
+    daysInput.addEventListener('input', function (e) {
+      MG.daysFuture = Number(e.target.value || 0);
+      const label = document.getElementById('mgDaysVal');
+      if (label) label.textContent = 'T+' + MG.daysFuture;
+      updateFadedCount();
+    });
+  }
   const aToggle = document.getElementById('mgShowAtoms');
   if (aToggle) aToggle.addEventListener('change', function (e) { MG.showAtoms = e.target.checked; MG.alpha = 0.3; });
 })();
