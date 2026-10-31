@@ -51,6 +51,14 @@ if (locked) {
     const audit = read('docs/audits/official-channel-audit-2026-10-31.md');
     assert.ok(audit.includes('缺口'), '审计文档要列缺口');
   });
+  check('上锁期间：要写明「调试与维修 + 预计时间」', () => {
+    assert.ok(/调试与维修|调试\s*\+\s*维修|正在调试/.test(lock), 'LOCK.md 要说明正在调试/维修');
+    assert.ok(/预计.*天|预计.*\d{4}-\d{2}-\d{2}/.test(lock), 'LOCK.md 要给预计完成时间');
+    const head = read('README.md').split('## ')[0];
+    assert.ok(/调试与维修|正在调试/.test(head), 'README 横幅要写正在调试');
+    assert.ok(/预计/.test(head), 'README 横幅要给预计时间');
+  });
+
   check('上锁期间：免责声明必须在位（README + LOCK.md）', () => {
     const head = read('README.md').split('## ')[0];
     assert.ok(/风险自负|不承担/.test(head), 'README 横幅要写明风险自负');
