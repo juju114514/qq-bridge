@@ -34,16 +34,16 @@
 git clone https://github.com/juju114514/qq-bridge.git D:\下载\qq-bridge-fork
 
 # 2) 预演：只报告，不写任何文件
-.\scripts\adopt-fork.ps1 -Source D:\下载\qq-bridge-fork -Target D:\deepseek工作区\qq-bridge
+.\scripts\adopt-fork.ps1 -Source D:\下载\qq-bridge-fork -Target D:\qq-bridge
 
 # 3) 停掉旧实例
 schtasks /end /tn qq-bridge
 
 # 4) 实盘（会先自动备份 config.json / state 到 _backup_switch_<时间戳>\）
-.\scripts\adopt-fork.ps1 -Source D:\下载\qq-bridge-fork -Target D:\deepseek工作区\qq-bridge -Apply
+.\scripts\adopt-fork.ps1 -Source D:\下载\qq-bridge-fork -Target D:\qq-bridge -Apply
 
 # 5) 补依赖 → 重装任务 → 自检 → 起服务
-cd D:\deepseek工作区\qq-bridge
+cd D:\qq-bridge
 npm ci --no-audit --no-fund
 powershell -File scripts\install-qq-bridge.ps1
 powershell -File scripts\verify-qq-bridge.ps1     # 期望 18/18

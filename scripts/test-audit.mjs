@@ -147,6 +147,7 @@ const tests = [
   'test-wake-funnel.mjs',
   'test-quiet-suggest.mjs',
   'test-overview.mjs',
+  'test-console-boot.mjs',
   'test-supervisor-view.mjs',
   // 外部触发入口：鉴权/白名单/限流/prompt|say。
   'test-inject.mjs',

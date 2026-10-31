@@ -7,7 +7,7 @@
 #   4. 输出「将被覆盖」与「被保护」两份清单，让用户先看清再决定
 #
 # 用法：
-#   .\adopt-fork.ps1 -Source D:\下载\qq-bridge-fork -Target D:\deepseek工作区\qq-bridge
+#   .\adopt-fork.ps1 -Source D:\下载\qq-bridge-fork -Target D:\qq-bridge
 #   .\adopt-fork.ps1 -Source ... -Target ... -Apply
 #
 # 注意：PowerShell 5.1 读取本文件需要 UTF-8 BOM（本文件已带 BOM）。

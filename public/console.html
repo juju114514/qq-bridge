@@ -2823,7 +2823,7 @@ button:active:not(:disabled) {
 <section data-page="memory-graph" class="card span-all" hidden>
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div>
-            <strong>记忆星图</strong>
+            <h2 data-note="点越大越重要；可调权重、可看遗忘">记忆星图</h2>
             <small style="opacity:.7;margin-left:8px">点越大 = 权重越高（30 天半衰期）；连线 = 共享标签；亮度 = 新鲜度</small>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -5930,7 +5930,10 @@ const searchResults = document.getElementById('searchResults');
 const featureIndex = [];
 document.querySelectorAll('section[data-page]').forEach(section => {
   const page = section.dataset.page;
-  featureIndex.push({ page, label: section.querySelector('h2').textContent, target: section });
+  // 容错：不能因为某个 section 忘了写 <h2> 就让整页脚本在这里抛异常 ——
+  // 那会把后面所有初始化（状态轮询、首屏加载）全部跳过，页面看起来"永远在加载"。
+  const heading = section.querySelector('h2');
+  featureIndex.push({ page, label: (heading ? heading.textContent : (section.id || page)).trim(), target: section });
   section.querySelectorAll('details.settings-group>summary,input,textarea,select').forEach(el => {
     let label = el.tagName === 'SUMMARY' ? el.textContent : (el.getAttribute('aria-label') || el.labels?.[0]?.textContent || el.placeholder);
     if (label) featureIndex.push({ page, label: label.trim(), target: el });
