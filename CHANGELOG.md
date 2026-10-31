@@ -2,7 +2,19 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
-## 2026-10-31 — 0.4.5：同名工具冲突（真机整轮失败）
+## 2026-10-31 — 0.4.6：提交到 awesome-dsh-plugin 的收录草稿
+
+> 纯文档版本。
+
+新增 [docs/guides/AWESOME-SUBMISSION.md](docs/guides/AWESOME-SUBMISSION.md)：
+
+- **条目 YAML**（可直接放进 `data/plugins/juju114514__qq-bridge.yml`）
+- **门槛逐条核对**：`dsh.bundle` ✅、仓库 5 天 ✅、未归档 ✅、不是 DSH 本身 ✅、单 PR 单条目 ✅
+- **为什么用 `tree/main/plugin` 这种 URL**：市场会把子目录 URL 拼成
+  `github:<owner>/<repo>#path:/<subdir>`，那才是能真正装上的形式；
+  而直接 `pnpm add .../tree/main/plugin` 会**忽略子目录**、装成仓库根（桥接应用本身）
+
+清单现状（实测）：7,924 条，其中 41 条与 QQ 相关；我们不在其中。## 2026-10-31 — 0.4.5：同名工具冲突（真机整轮失败）
 
 > 小更新，修的是"插件装上之后每一轮都报错"。
 
