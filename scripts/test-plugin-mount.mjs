@@ -122,6 +122,21 @@ for (const [name, bad] of [
   });
 }
 
+check('同名工具已存在 → 跳过注册（真机：与 mcp-snowluma 撞名会让整轮失败）', () => {
+  const registered = [];
+  const logs = [];
+  let disposed = 0;
+  const collide = {
+    tools: {
+      get: (n) => (n === 'qq_get_prompt' ? { name: n } : undefined),
+      register: (tool) => { registered.push(tool.name); return () => { disposed += 1; }; },
+    },
+  };
+  mod.apply(collide, { sidecarUrl: 'http://127.0.0.1:9' });
+  assert.ok(!registered.includes('qq_get_prompt'), '撞名的工具不该注册');
+  assert.ok(registered.includes('qq_send_message'), '不撞名的照常注册');
+});
+
 const failed = results.filter(([s]) => s !== 'ok');
 for (const [s, n] of results) console.log(`  ${s === 'ok' ? 'ok  ' : 'FAIL'} ${n}`);
 console.log(`\n结果：${results.length - failed.length} 通过，${failed.length} 失败`);
