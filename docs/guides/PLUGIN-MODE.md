@@ -6,6 +6,30 @@
 > 设计依据：[docs/design/plugin-mode-2026-10-31.md](../design/plugin-mode-2026-10-31.md)；
 > 真机踩过的坑：[docs/design/dsh-plugin-api-notes.md](../design/dsh-plugin-api-notes.md)。
 
+## 〇·一、安全边界（必读，先于一切）
+
+QQ 会话来自**陌生人**。插件会给 agent 一套工具 —— 没限制住的话，群友一句话就能让它
+操作你本机的文件与命令，权限就是你本人的权限。
+
+**真机事故（2026-10-31）**：插件早期版本建 agent 时没挂 preset，
+群友让 agent 做"管理员级操作"，它照做了。
+
+现在有两层防护，**缺一不可**：
+
+| 层 | 在哪 | 作用 |
+| --- | --- | --- |
+| 工具白名单（注册期） | 插件自身 `tools.restrict({ allow: [...] })` | 只留 `qqb_*` + `todo_write` + `ask_user_question`，本地工具**不出现在 schema 里** |
+| 执行期 guard | `qq-chat-v2` preset 的 `qq-tool-restrict` | 任何不在白名单的调用直接拒绝 |
+
+启用后确认 `plugin.log` 里有：
+
+```
+已对 agent 应用工具白名单（10 个；本地工具全部不可见）
+agent 已建：preset=qq-chat-v2 cwd=…
+```
+
+没看到这两行就**不要**把通道交给插件。
+
 ## 一、两条路怎么选
 
 | | bridge 模式（默认） | plugin 模式 |

@@ -2,6 +2,46 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-10-31 — 0.4.19：**安全修复** — 插件模式下群友可越权操作本机
+
+> ⚠️ 这是安全修复，请尽快升级。
+
+### 漏洞
+
+插件模式早期版本建 agent 时**没挂 `agentPreset`**，于是 agent 拿到的是 DSH 默认工具集
+（`pwsh` / `read` / `write` / `edit` / `subagent` …），**权限等于用户本人**。
+
+群聊消息来自陌生人 —— 任何群友 @ 它一句，就能让它读写本机文件、执行命令。
+
+真机已发生：群友要求"管理员级操作"，agent 照做。
+
+### 为什么桥接模式没这个问题
+
+桥接走 `qq-chat-v2` preset，里面有 `qq-tool-restrict`：
+
+- 注册期 `tools.restrict()` 把本地工具从 schema 隐藏
+- 执行期 `tools.guard()` 白名单兜底（`ask_user_question` / `todo_write` / `mcp__snowluma__*` / `mcp__web-search-safe__*`）
+
+插件模式绕过了整条链路。
+
+### 修法（两层，缺一不可）
+
+| 层 | 位置 | 效果 |
+| --- | --- | --- |
+| 工具白名单（注册期） | 插件 `tools.restrict({ allow: [...] })` | 只留 `qqb_*` + `todo_write` + `ask_user_question`；本地工具不出现在 schema |
+| 执行期 guard | `agentPreset: qq-chat-v2` | 越界调用直接拒绝 |
+
+启用插件模式后必须确认 `plugin.log` 有这两行，否则不要交出通道：
+
+```
+已对 agent 应用工具白名单（10 个；本地工具全部不可见）
+agent 已建：preset=qq-chat-v2 cwd=…
+```
+
+### 文档
+
+- `README.md` 顶部加安全警告
+- `docs/guides/PLUGIN-MODE.md` 新增「〇·一、安全边界（必读，先于一切）」
 ## 2026-10-31 — 0.4.18：插件模式没有人设（角色卡没挂上）
 
 > 小更新。群里说话不像"小鲸鱼"，像通用助手。

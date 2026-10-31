@@ -13,7 +13,17 @@
 > **只想让 AI 在群里答问题、不想碰个人号？** → QQ 官方插件 3 步搞定、无封号风险 →
 > [docs/guides/OFFICIAL-VS-BRIDGE.md](docs/guides/OFFICIAL-VS-BRIDGE.md)（官方 vs 本仓库，诚实对照）
 >
-### 你已经装了什么？不用换，直接用
+#
+> [!WARNING]
+> **插件模式（路线 B）的安全前提**：QQ 会话来自**陌生人**。
+> 插件会给 agent 一套工具，如果没限制住，群友一句话就能让它操作你本机的文件/命令（=你本人的权限）。
+> 插件默认对 agent 应用**工具白名单**（只有 `qqb_*` + `todo_write` + `ask_user_question`），
+> 并且要求 `agentPreset`（`qq-chat-v2`）生效——它会再套一层执行期 guard。
+> 启用前请确认 `plugin.log` 里有这两行：
+> `已对 agent 应用工具白名单`、`agent 已建：preset=qq-chat-v2`。
+> 桥接模式（路线 A）本来就有这层边界，见 `docs/guides/SECURITY_BASELINE.md`。
+
+## 你已经装了什么？不用换，直接用
 
 | 你现在的环境 | 能不能直接用 | 怎么做 |
 | --- | --- | --- |
