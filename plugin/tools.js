@@ -30,7 +30,7 @@ const OUTPUT = {
   },
 };
 
-export function createTools({ channel, sidecar = null, log = () => {} } = {}) {
+export function createTools({ channel, sidecar = null, chatLog = null, log = () => {} } = {}) {
   const tools = [];
 
   // ── qq_send_message ─────────────────────────────────────────────
@@ -96,6 +96,75 @@ export function createTools({ channel, sidecar = null, log = () => {} } = {}) {
     },
   });
 
+  // ── qq_get_recent_messages / qq_get_unread_messages ──────────────
+  const readLog = (args, { onlyUnread = false } = {}) => {
+    const chat = parseChatId(args?.chat_id);
+    if (!chat) return { error: 'chat_id 格式不对' };
+    if (!chatLog) return { error: '会话缓冲不可用（插件刚启动或未启用通道）', degraded: true };
+    const limit = Math.min(50, Math.max(1, Number(args?.limit) || 20));
+    const list = onlyUnread ? chatLog.unread(chat.key) : chatLog.recent(chat.key, { limit });
+    return {
+      chat,
+      list: (onlyUnread ? list.slice(-limit) : list).map((e) => ({
+        seq: e.seq, at: e.at, userId: e.userId, text: e.text, self: e.self,
+      })),
+      stats: chatLog.stats(chat.key),
+    };
+  };
+
+  tools.push({
+    name: 'qq_get_recent_messages',
+    description: '取某个会话最近的聊天记录（含自己发的，最多 50 条）。注意：只有机器人上线之后的消息，历史不会回补。',
+    parameters: {
+      chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
+      limit: { type: 'number', description: '取多少条，默认 20，最多 50' },
+    },
+    output: OUTPUT,
+    isConcurrencySafe: () => true,
+    execute: async (args) => {
+      const r = readLog(args);
+      if (r.error) return { ok: false, degraded: !!r.degraded, message: r.error };
+      return { ok: true, message: `最近 ${r.list.length} 条`, messages: r.list, stats: r.stats };
+    },
+  });
+
+  tools.push({
+    name: 'qq_get_unread_messages',
+    description: '取上次 mark_read 之后的新消息（别人说的，不含自己发的）。开口之前先看这个，避免重复回应。',
+    parameters: {
+      chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
+      limit: { type: 'number', description: '最多取多少条，默认 20' },
+    },
+    output: OUTPUT,
+    isConcurrencySafe: () => true,
+    execute: async (args) => {
+      const r = readLog(args, { onlyUnread: true });
+      if (r.error) return { ok: false, degraded: !!r.degraded, message: r.error };
+      return { ok: true, message: `${r.list.length} 条未读`, messages: r.list, stats: r.stats };
+    },
+  });
+
+  // ── qq_wait_for_messages ────────────────────────────────────────
+  tools.push({
+    name: 'qq_wait_for_messages',
+    description: '等一条新消息（最长 60 秒）。想潜水但不想错过接话时用；超时会正常返回 timeout，不是错误。',
+    parameters: {
+      chat_id: { type: 'string', required: true, description: '目标会话：group:<群号> 或 private:<QQ号>' },
+      timeout_ms: { type: 'number', description: '等多久，默认 30000，最大 60000' },
+    },
+    output: OUTPUT,
+    isConcurrencySafe: () => true,
+    execute: async (args) => {
+      const chat = parseChatId(args?.chat_id);
+      if (!chat) return { ok: false, message: 'chat_id 格式不对' };
+      if (!chatLog) return { ok: false, degraded: true, message: '会话缓冲不可用' };
+      const timeoutMs = Math.min(60_000, Math.max(1_000, Number(args?.timeout_ms) || 30_000));
+      const r = await chatLog.waitFor(chat.key, { timeoutMs });
+      if (!r.ok) return { ok: true, reason: 'timeout', message: `${Math.round(timeoutMs / 1000)} 秒内没有新消息` };
+      return { ok: true, message: '来新消息了', message_: r.entry, seq: r.entry.seq, text: r.entry.text, userId: r.entry.userId };
+    },
+  });
+
   // ── qq_get_prompt ───────────────────────────────────────────────
   tools.push({
     name: 'qq_get_prompt',
@@ -147,13 +216,17 @@ export function createTools({ channel, sidecar = null, log = () => {} } = {}) {
       const chat = parseChatId(args?.chat_id);
       if (!chat) return { ok: false, message: 'chat_id 格式不对' };
       if (!sidecar?.postIntent) {
-        return { ok: false, degraded: true, message: 'sidecar 未连接：已读水位没有落库（被动回复仍可用）' };
+        const through = Number(args?.through_seq ?? 0) || 0;
+        if (chatLog) chatLog.markRead(chat.key, through || undefined);
+        return { ok: false, degraded: true, message: 'sidecar 未连接：已读水位只记在内存（重启会丢）' };
       }
       try {
+        const through = Number(args?.through_seq ?? 0) || 0;
+        if (chatLog) chatLog.markRead(chat.key, through || undefined);
         await sidecar.postIntent({
           key: chat.key,
           intent: 'read.mark',
-          payload: { throughSeq: Number(args?.through_seq ?? 0) || 0 },
+          payload: { throughSeq: through },
         });
         return { ok: true, message: `已标记已读：${chat.key}` };
       } catch (e) {

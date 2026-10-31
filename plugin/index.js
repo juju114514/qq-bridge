@@ -17,6 +17,7 @@
 
 import { sessionIdFor as sessionIdOf } from './agent-driver.js';
 import { createTools } from './tools.js';
+import { createChatLog } from './chat-log.js';
 
 export const name = 'qq-bridge';
 
@@ -83,6 +84,8 @@ export function apply(ctx, rawConfig) {
   // 工具在挂载时注册（宿主只给一次机会），通道稍后才启动 —— 所以用可变 holder。
   // 注意：必须在 createTools() 之前声明，否则 getter 会踩 TDZ（Cannot access before initialization）。
   const toolRuntime = { channel: null, sidecar: null };
+  // 会话语料缓冲：入站/出站都记，供 qq_get_recent / unread / wait 使用（重启即丢，持久化归 sidecar）
+  const chatLog = createChatLog();
   // sidecar 客户端在挂载时就建好：即使不 enabled（不连 QQ），工具也能读快照/写意图。
   // 用动态 import 是为了让"没装 sidecar 也能加载插件"这条降级路径成立。
   let sidecarClient = null;
@@ -138,6 +141,7 @@ export function apply(ctx, rawConfig) {
     const toolDeps = {
       get channel() { return toolRuntime.channel; },
       get sidecar() { return toolRuntime.sidecar; },
+      chatLog,
       log: (m) => log(m),
     };
     for (const tool of createTools(toolDeps)) {
@@ -207,6 +211,15 @@ export function apply(ctx, rawConfig) {
           clientOptions: { url: config.onebotUrl, accessToken: config.accessToken || undefined },
           log: (m) => log(m),
           onInbound: (event) => {
+            // 先进缓冲再判定：没唤醒的消息也要能被 qq_get_recent_messages 看到，
+            // 否则模型会以为群里很安静（这是"潜水观察"的前提）。
+            const key = String(event?.group_id ? 'group:' + event.group_id : (event?.user_id ? 'private:' + event.user_id : ''));
+            const text = Array.isArray(event?.message)
+              ? event.message.filter((s) => s?.type === 'text').map((s) => s.data?.text ?? '').join('')
+              : String(event?.message ?? '');
+            if (key && event?.post_type === 'message' && text.trim()) {
+              chatLog.append(key, { text, userId: String(event.user_id ?? ''), self: String(event.user_id) === String(event.self_id) });
+            }
             const r = gate(event, { selfId: event?.self_id });
             if (!r.handle) return;
             bySession.set(sessionIdOf(r.key), r.key);

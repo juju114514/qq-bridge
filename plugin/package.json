@@ -24,7 +24,8 @@
     "dsh.plugin.json",
     "cordis.patch.yml",
     "tools.js",
-    "sidecar.js"
+    "sidecar.js",
+    "chat-log.js"
   ],
   "dsh": {
     "bundle": {
@@ -38,7 +39,10 @@
         "qq_get_prompt",
         "qq_send_message",
         "qq_reply",
-        "qq_mark_read"
+        "qq_mark_read",
+        "qq_get_recent_messages",
+        "qq_get_unread_messages",
+        "qq_wait_for_messages"
       ]
     }
   }

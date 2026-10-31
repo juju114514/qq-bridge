@@ -26,8 +26,10 @@ const byName = (tools, name) => tools.find((t) => t.name === name);
 
 check('三个工具都注册了，且名字与清单一致', () => {
   const tools = mod.createTools({ channel: fakeChannel() });
-  assert.deepEqual(tools.map((t) => t.name).sort(),
-    ['qq_get_prompt', 'qq_mark_read', 'qq_reply', 'qq_send_message']);
+  assert.deepEqual(tools.map((t) => t.name).sort(), [
+    'qq_get_prompt', 'qq_get_recent_messages', 'qq_get_unread_messages',
+    'qq_mark_read', 'qq_reply', 'qq_send_message', 'qq_wait_for_messages',
+  ]);
   for (const t of tools) {
     assert.equal(typeof t.execute, 'function');
     assert.equal(typeof t.output.render, 'function');
@@ -148,6 +150,56 @@ await checkAsync('qq_get_prompt：304 缓存命中 → notModified=true', async 
   const t = byName(mod.createTools({ channel: fakeChannel(), sidecar }), 'qq_get_prompt');
   const r = await t.execute({ chat_id: 'group:1' }, {});
   assert.equal(r.notModified, true);
+});
+
+// ── 消息类工具（chatLog）──────────────────────────────────────────────
+const { createChatLog } = await import(pathToFileURL(path.join(pluginDir, 'chat-log.js')).href);
+
+function withLog() {
+  const chatLog = createChatLog();
+  chatLog.append('group:1', { text: '早', userId: 'u1' });
+  chatLog.append('group:1', { text: '在吗', userId: 'u2' });
+  chatLog.append('group:1', { text: '我在', userId: 'self', self: true });
+  return { chatLog, tools: mod.createTools({ channel: fakeChannel(), chatLog }) };
+}
+
+await checkAsync('qq_get_recent_messages：按条数返回，含自己发的', async () => {
+  const { tools } = withLog();
+  const t = byName(tools, 'qq_get_recent_messages');
+  const r = await t.execute({ chat_id: 'group:1', limit: 2 }, {});
+  assert.equal(r.ok, true);
+  assert.equal(r.messages.length, 2);
+  assert.equal(r.messages[1].text, '我在');
+});
+
+await checkAsync('qq_get_unread_messages：不含自己发的；mark_read 后清零', async () => {
+  const { chatLog, tools } = withLog();
+  const t = byName(tools, 'qq_get_unread_messages');
+  const before = await t.execute({ chat_id: 'group:1' }, {});
+  assert.equal(before.messages.length, 2, '自己发的不算未读');
+  chatLog.markRead('group:1');
+  const after = await t.execute({ chat_id: 'group:1' }, {});
+  assert.equal(after.messages.length, 0);
+});
+
+await checkAsync('qq_get_unread_messages：没有 chatLog → degraded', async () => {
+  const t = byName(mod.createTools({ channel: fakeChannel() }), 'qq_get_unread_messages');
+  const r = await t.execute({ chat_id: 'group:1' }, {});
+  assert.equal(r.degraded, true);
+});
+
+await checkAsync('qq_wait_for_messages：有新消息立即返回，超时返回 timeout（不是错误）', async () => {
+  const { chatLog, tools } = withLog();
+  const t = byName(tools, 'qq_wait_for_messages');
+  const p = t.execute({ chat_id: 'group:1', timeout_ms: 1000 }, {});
+  setTimeout(() => chatLog.append('group:1', { text: '来了', userId: 'u3' }), 30);
+  const r = await p;
+  assert.equal(r.ok, true);
+  assert.equal(r.text, '来了');
+
+  const r2 = await t.execute({ chat_id: 'group:1', timeout_ms: 1000 }, {});
+  assert.equal(r2.ok, true);
+  assert.equal(r2.reason, 'timeout');
 });
 
 const failed = results.filter(([s]) => s !== 'ok');
