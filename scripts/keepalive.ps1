@@ -117,7 +117,8 @@ if ($oldPid) {
 }
 Log "旧监听 pid=$oldPid  epoch=$oldEpoch"
 
-& schtasks /end /tn "\$TASK" | Out-Null
+# 用 cmdlet 而不是 schtasks.exe：后者每次都会新开一个控制台窗口（就是那个"偶尔闪一下"）
+try { Stop-ScheduledTask -TaskName $TASK -ErrorAction Stop } catch { & schtasks /end /tn "\$TASK" | Out-Null }
 
 # 等旧 Node 真退出（最多 30s）—— 不能只等 PowerShell 退出
 $freed = $false
@@ -136,7 +137,7 @@ if (-not $freed) {
 }
 Log "旧进程已退出，端口 $PORT 已释放，启动主任务"
 
-& schtasks /run /tn "\$TASK" | Out-Null
+try { Start-ScheduledTask -TaskName $TASK -ErrorAction Stop } catch { & schtasks /run /tn "\$TASK" | Out-Null }
 
 # 等新实例就绪（最多 60s）
 $recovered = $false

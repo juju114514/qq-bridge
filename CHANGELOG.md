@@ -2,6 +2,45 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.100：排查"偶尔跳出 PowerShell 黑框"
+
+用户："我屏幕偶尔会跳出powershell。排查一下"
+
+### 排查结论（有证据）
+
+| 项 | 结果 |
+| --- | --- |
+| 谁在跑 | `qq-bridge-watchdog`，**每 5 分钟**一次 `keepalive.ps1` |
+| 怎么跑的 | 任务动作 `powershell.exe -NoProfile -WindowStyle Hidden …`，Principal 是 **InteractiveToken**（跑在你的桌面会话里） |
+| 为什么还闪 | **`-WindowStyle Hidden` 挡不住闪窗** —— 控制台窗口在 `conhost.exe` 启动那一刻就创建好了，`-WindowStyle` 是之后才生效的 |
+| 还有谁帮忙闪 | `keepalive.ps1` 里用 `& schtasks /end|/run` 起子进程，`schtasks.exe` 每次又新开一个控制台 |
+
+所以频率和"每 5 分钟"对得上。
+
+### 修法（两处）
+
+1. **任务动作换成 `wscript.exe //B hidden-launch.vbs "<原来的命令行>"`**
+   `WScript.Shell.Run(cmd, 0, False)` 用 0 号窗口样式启动 —— 窗口**从头到尾不创建**，不是"创建后隐藏"。
+2. **`keepalive.ps1` 里的 `schtasks.exe` 换成 `Start-ScheduledTask` / `Stop-ScheduledTask`**
+   cmdlet 不新开控制台。
+
+### 新增
+
+- `scripts/hidden-launch.vbs` —— 静默启动器（纯 VBS，无依赖）
+- `scripts/fix-hidden-tasks.ps1` —— 把计划任务改造成静默版；**默认演练**，`-Apply` 才改，改前把 XML 备份到 `state/task-backup-*.xml`
+
+### 需要管理员
+
+改计划任务要提升权限；当前会话是 UAC 中完整性（`IsInRole(Administrator)=False`），
+`schtasks /create` 返回 **Access is denied**。所以这步得你手动跑一次（见下）。
+
+### 已验证
+
+- VBS 静默启动实测：`wscript //B hidden-launch.vbs "cmd /c timeout /t 3"` 期间**没有新控制台窗口**
+- 演练输出正确识别了两个任务并给出改造后的命令行
+
+> 另外确认：全机只有 `qq-bridge` 与 `qq-bridge-watchdog` 两个任务在跑 powershell/cmd，
+> 其余是系统自带（`dsregcmd` 等，不常触发）。
 ## 2026-11-01 — 0.4.99：会话备份可恢复（含老的、久远的备份）
 
 用户："11-01 05:58 994920175会话记录恢复一下，还有加上支持恢复较久的会话记录"
