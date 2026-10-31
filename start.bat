@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
 rem Harden state/ ACLs (Windows needs WRITE_DAC; the directory owner normally has it,
@@ -11,7 +11,7 @@ node src/bridge.js
 set code=%errorlevel%
 if "%code%"=="2" (
     echo [%date% %time%] bridge already running in another window. Exiting.
-    rem (0.4.43) 去掉 pause：窗口不再卡住等人按键
+    rem 0.4.43: no pause (a paused window waits for a key)
     exit /b 2
 )
 echo [%date% %time%] bridge exited (code %code%), restarting in 5 seconds...

@@ -65,7 +65,7 @@ bridge 退出（code X），5 秒后重启
 
 ```powershell
 # 管理员 PowerShell
-cd D:\deepseek工作区\qq-bridge
+cd <部署目录>
 powershell -ExecutionPolicy Bypass -File scripts\harden-scheduled-task.ps1 -Apply
 ```
 
