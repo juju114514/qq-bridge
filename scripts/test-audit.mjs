@@ -145,6 +145,7 @@ const tests = [
   'test-instance-lock.mjs',
   'test-instance-lock-os.mjs',
   'test-wake-funnel.mjs',
+  'test-quiet-suggest.mjs',
   // 外部触发入口：鉴权/白名单/限流/prompt|say。
   'test-inject.mjs',
   // B 站增强：bvid 提取/字幕/热评/拼装/降级接线。

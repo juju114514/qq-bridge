@@ -4937,6 +4937,36 @@ function loadWakeFunnel() {
 }
 
 // ── 会话活跃热力图（0.4.53）────────────────────────────────────────────
+// 依据热力图给出静默时段建议：找「连续 N 小时消息最少」的窗口（跨零点也算）。
+// 返回 { start, end, total }，start/end 为 0~23 的整点，end 可小于 start（跨零点）。
+function suggestQuietWindow(grid, hours) {
+  const L = Math.max(1, Math.min(12, Number(hours) || 8));
+  const col = new Array(24).fill(0);
+  for (let d = 0; d < 7; d += 1) {
+    for (let hr = 0; hr < 24; hr += 1) col[hr] += Number((grid[d] && grid[d][hr]) || 0);
+  }
+  let best = { start: 0, end: L % 24, total: Infinity };
+  for (let s = 0; s < 24; s += 1) {
+    let sum = 0;
+    for (let k = 0; k < L; k += 1) sum += col[(s + k) % 24];
+    if (sum < best.total) best = { start: s, end: (s + L) % 24, total: sum };
+  }
+  return best;
+}
+// 当前配置的静默窗口在同一口径下的消息量，用来对比"值不值得改"
+function quietWindowScore(grid, start, end) {
+  const col = new Array(24).fill(0);
+  for (let d = 0; d < 7; d += 1) {
+    for (let hr = 0; hr < 24; hr += 1) col[hr] += Number((grid[d] && grid[d][hr]) || 0);
+  }
+  const s = ((Number(start) % 24) + 24) % 24;
+  const e = ((Number(end) % 24) + 24) % 24;
+  let total = 0;
+  let hr = s;
+  let guard = 0;
+  while (hr !== e && guard < 24) { total += col[hr]; hr = (hr + 1) % 24; guard += 1; }
+  return total;
+}
 let heatCache = null;
 async function loadHeatmap() {
   const canvas = document.getElementById('heatCanvas');
@@ -5022,7 +5052,15 @@ function renderHeatTop() {
         + ' <span style="opacity:.55">(' + k.total + ')</span></div>'
         + '<div style="opacity:.7;font-size:11px">' + (top || '—') + '</div></div>';
     }).join('');
-  box.innerHTML = '<div style="opacity:.7;margin-bottom:6px">会话活跃时段 Top 8</div>' + (rows || '（没有消息）');
+  const sug = suggestQuietWindow(heatCache.grid, 8);
+  const pad = function (n) { return String(n).padStart(2, '0'); };
+  const suggest = '<div style="margin-top:12px;padding:8px 10px;border:1px solid rgba(120,180,255,.28);border-radius:8px;background:rgba(28,44,72,.45)">'
+    + '<div style="font-size:12px;opacity:.75;margin-bottom:4px">静默时段建议</div>'
+    + '<div style="font-size:13px">建议 <b>' + pad(sug.start) + ':00 – ' + pad(sug.end) + ':00</b>'
+    + ' <span style="opacity:.6;font-size:11px">（该窗口共 ' + sug.total + ' 条）</span></div>'
+    + '<div style="font-size:11px;opacity:.6;margin-top:4px">口径：按最近消息统计，窗口内消息越少越适合静默</div>'
+    + '</div>';
+  box.innerHTML = suggest + '<div style="opacity:.7;margin-bottom:6px;margin-top:12px">会话活跃时段 Top 8</div>' + (rows || '（没有消息）');
 }
 // ── 花费结构（0.4.53）：按会话 Top N + 高峰/空闲占比 ──────────────────
 async function loadUsageStructure() {
