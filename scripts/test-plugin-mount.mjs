@@ -40,21 +40,26 @@ check('清单文件与入口一致（id / main / tools 声明）', async () => {
   assert.match(manifest.engines?.dsh ?? '', />=0\.2\.1/);
 });
 
-let registered = null;
-let disposed = false;
+// 现在会注册多个工具（qq_ping + N1 三件套），所以要收集成数组再按名字找。
+let registeredAll = [];
+let disposed = 0;
 const fakeCtx = {
   tools: {
     register(tool) {
-      registered = tool;
-      return () => { disposed = true; };
+      registeredAll.push(tool);
+      return () => { disposed += 1; };
     },
   },
 };
+const toolByName = (n) => registeredAll.find((t) => t.name === n);
+let registered = null; // 由 qq_ping 填充（下面测试用）
 
 const dispose = mod.apply(fakeCtx, { sidecarUrl: 'http://127.0.0.1:9', requireMention: false });
 
 check('注册了 qq_ping，且参数/输出/execute 齐全', () => {
-  assert.ok(registered, '没有注册任何工具');
+  registered = toolByName('qq_ping');
+  assert.ok(registered, '没有注册 qq_ping');
+  assert.ok(registeredAll.length >= 4, `至少应有 4 个工具（ping + 发送/回复/已读），实际 ${registeredAll.length}`);
   assert.equal(registered.name, 'qq_ping');
   assert.equal(typeof registered.execute, 'function');
   assert.deepEqual(registered.parameters, {});
@@ -72,10 +77,11 @@ await checkAsync('qq_ping 在 sidecar 不可达时返回 degraded=true（降级�
   assert.match(out.note, /sidecar 不在/);
 });
 
-check('apply 返回卸载函数，调用后释放工具', () => {
+check('apply 返回卸载函数，调用后释放全部工具', () => {
   assert.equal(typeof dispose, 'function');
+  const before = disposed;
   dispose();
-  assert.equal(disposed, true);
+  assert.ok(disposed > before, 'dispose 应该释放所有已注册工具');
 });
 
 check('缺 ctx.tools.register 时必须 fail-loud（不静默挂载）', () => {

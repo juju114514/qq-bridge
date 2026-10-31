@@ -22,7 +22,8 @@
     "agent-driver.js",
     "user-message.js",
     "dsh.plugin.json",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "tools.js"
   ],
   "dsh": {
     "bundle": {
@@ -32,7 +33,10 @@
   "dshx": {
     "contributes": {
       "tools": [
-        "qq_ping"
+        "qq_ping",
+        "qq_send_message",
+        "qq_reply",
+        "qq_mark_read"
       ]
     }
   }

@@ -16,6 +16,7 @@
  */
 
 import { sessionIdFor as sessionIdOf } from './agent-driver.js';
+import { createTools } from './tools.js';
 
 export const name = 'qq-bridge';
 
@@ -77,6 +78,9 @@ export function apply(ctx, rawConfig) {
 
   const disposers = [];
   const state = { startedAt: Date.now(), config, sidecar: { ok: null } };
+  // 工具在挂载时注册（宿主只给一次机会），通道稍后才启动 —— 所以用可变 holder。
+  // 注意：必须在 createTools() 之前声明，否则 getter 会踩 TDZ（Cannot access before initialization）。
+  const toolRuntime = { channel: null, sidecar: null };
 
   // ── 工具：进程内注册（D7 的 D2：不再走 MCP，少一跳）────────────────
   const ping = {
@@ -114,6 +118,15 @@ export function apply(ctx, rawConfig) {
 
   if (typeof ctx?.tools?.register === 'function') {
     disposers.push(ctx.tools.register(ping));
+    // N1 第一批：发送 / 引用回复 / 标记已读（进程内工具，不走 MCP）
+    const toolDeps = {
+      get channel() { return toolRuntime.channel; },
+      get sidecar() { return toolRuntime.sidecar; },
+      log: (m) => log(m),
+    };
+    for (const tool of createTools(toolDeps)) {
+      disposers.push(ctx.tools.register(tool));
+    }
   } else {
     throw new Error('[qq-plugin] 挂载失败：ctx.tools.register 不可用（DSH 版本不匹配？）');
   }
@@ -165,6 +178,8 @@ export function apply(ctx, rawConfig) {
           },
         });
         await channel.start();
+        toolRuntime.channel = channel;
+        toolRuntime.sidecar = null; // N2 接上 sidecar 后再赋值
         log('QQ 通道已启动');
       } catch (e) {
         log('QQ 通道启动失败（插件仍可用，只是不连 QQ）：' + (e?.message ?? e));

@@ -4,8 +4,15 @@
   "version": "0.0.1",
   "main": "./index.js",
   "description": "把 qq-bridge 的消息通路装进 DSH：OneBot v11 通道 + qq_* 工具，共享 sidecar 的记忆/记账/控制台（薄插件 + 复用核心）。",
-  "engines": { "dsh": ">=0.2.1-0 <0.3.0-0" },
+  "engines": {
+    "dsh": ">=0.2.1-0 <0.3.0-0"
+  },
   "contributes": {
-    "tools": ["qq_ping"]
+    "tools": [
+      "qq_ping",
+      "qq_send_message",
+      "qq_reply",
+      "qq_mark_read"
+    ]
   }
 }
