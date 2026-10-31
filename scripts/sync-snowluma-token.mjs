@@ -81,17 +81,24 @@ function main() {
     process.exit(1);
   }
 
-  // 1) 桥接 config.json：snowluma.accessToken（HTTP 用；桥接自己会再加 WS 的）
-  const before = String((cfg.snowluma ?? {}).accessToken ?? '');
-  const target = httpToken || wsToken;
-  if (before === target) {
-    console.log('  · config.json 的 snowluma.accessToken 已是最新');
+  // 1) 桥接 config.json：
+  //    ⚠️ 真机结论（2026-10-31）：accessToken 实际用于 **WS 连接**，HTTP 调用看 httpToken。
+  //    以前统一写 HTTP token → WS 能连上但动作返回 unauthorized（踩过）。
+  const beforeWs = String((cfg.snowluma ?? {}).accessToken ?? '');
+  const beforeHttp = String((cfg.snowluma ?? {}).httpToken ?? '');
+  const patch = { ...(cfg.snowluma ?? {}) };
+  if (beforeWs !== wsToken) patch.accessToken = wsToken;
+  if (httpToken && beforeHttp !== httpToken) patch.httpToken = httpToken;
+  const cfgChanged = beforeWs !== patch.accessToken || beforeHttp !== patch.httpToken;
+  if (!cfgChanged) {
+    console.log('  · config.json 的 token 已是最新（accessToken=WS / httpToken=HTTP）');
   } else if (DRY) {
-    console.log('  [dry] 会改 config.json: snowluma.accessToken ' + mask(before) + ' → ' + mask(target));
+    console.log('  [dry] 会改 config.json: accessToken ' + mask(beforeWs) + ' → ' + mask(wsToken)
+      + (httpToken ? '；httpToken ' + mask(beforeHttp) + ' → ' + mask(httpToken) : ''));
   } else {
-    cfg.snowluma = { ...(cfg.snowluma ?? {}), accessToken: target };
+    cfg.snowluma = patch;
     fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
-    console.log('  ✓ config.json: snowluma.accessToken 已更新（' + mask(before) + ' → ' + mask(target) + '）');
+    console.log('  ✓ config.json: accessToken → WS token；httpToken → HTTP token');
   }
 
   // 2) DSH profile：cordis.patch.yml 里 qq-bridge 的 accessToken（插件用 WS token）
