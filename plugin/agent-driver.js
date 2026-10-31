@@ -29,6 +29,7 @@ export function createAgentDriver({
   setup = undefined,
   // 宿主建 agent 时 meta 必带 cwd，并且会先把目录建出来（dsh-api-session-controller L511-525）。
   // 没有 cwd 的 agent 跑不起 turn —— 真机表现同样是"入队了但没反应"。
+  agentPreset = undefined,
   cwdOf = null,
   fsForCwd = null,
   pathForCwd = null,
@@ -54,7 +55,7 @@ export function createAgentDriver({
     try {
       handle = await agents.create({
         sessionId,
-        meta: { ...meta, chatKey, ...(cwd ? { cwd } : {}) },
+        meta: { ...meta, chatKey, ...(cwd ? { cwd } : {}), ...(agentPreset ? { agentPreset } : {}) },
         agentOptions,
         setup,
       });
@@ -65,7 +66,7 @@ export function createAgentDriver({
       log(`agent create 失败（${e?.message ?? e}），换 id 重试：${fallbackId}`);
       handle = await agents.create({
         sessionId: fallbackId,
-        meta: { ...meta, chatKey, ...(cwd ? { cwd } : {}) },
+        meta: { ...meta, chatKey, ...(cwd ? { cwd } : {}), ...(agentPreset ? { agentPreset } : {}) },
         agentOptions,
         setup,
       });

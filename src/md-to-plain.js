@@ -31,6 +31,8 @@ export function mdToPlain(md) {
   // 表格：按行保留文本
   s = s.split('\n').filter((line) => !/^\s*\|?[\s:|-]+\|?\s*$/.test(line) || line.includes('|') === false || /\S/.test(line.replace(/[\s:|-]/g, ''))).join('\n');
   s = s.replace(/^\s*\|/gm, '').replace(/\|\s*$/gm, '');
+  // 表格中间的分隔符也换掉：QQ 里 `a | b | c` 很难读，改成 `a · b · c`
+  s = s.replace(/\s*\|\s*/g, ' · ');
   // 折叠的连续空行
   s = s.replace(/\n{3,}/g, '\n\n');
   return s.trim();

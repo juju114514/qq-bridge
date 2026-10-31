@@ -55,6 +55,9 @@ const DEFAULTS = {
   // 必须和 sidecar 的 state/ 是同一个目录：通道认领文件要写在那里才起互斥作用
   stateDir: './state',
   allowGroups: [],
+  // 建 agent 时用的 DSH preset：它带 persona（角色卡）+ QQ 场景规则 + 工具面。
+  // 不指定的话 agent 就是通用助手，群里说话完全不像"小鲸鱼"（真机发现）。
+  agentPreset: 'qq-chat-v2',
 };
 
 export function normalizeConfig(raw = {}) {
@@ -68,6 +71,7 @@ export function normalizeConfig(raw = {}) {
     sidecarToken: String(cfg.sidecarToken || ''),
     stateDir: String(cfg.stateDir || './state'),
     // 注意：Number(null) === 0 且是有限数 —— 只 .filter(Number.isFinite) 会把 null 变成群号 0。
+    agentPreset: String(cfg.agentPreset ?? 'qq-chat-v2'),
     allowGroups: Array.isArray(cfg.allowGroups)
       ? cfg.allowGroups
           .filter((x) => x !== null && x !== undefined && String(x).trim() !== '')
@@ -272,6 +276,7 @@ export function apply(ctx, rawConfig) {
 
         driver = createAgentDriver({
           agents: ctx.agents,
+          agentPreset: config.agentPreset,
           fsForCwd: fs, pathForCwd: path,
           // ⚠️ Windows 不允许文件名里有 ':' —— 保留它会让 mkdir 直接 ENOENT（真机踩过）
           cwdOf: (chatKey) => path.join(config.stateDir, 'agents', String(chatKey).replace(/[^a-zA-Z0-9_-]/g, '_')),
