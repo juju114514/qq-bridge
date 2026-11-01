@@ -25,6 +25,7 @@ import { handleDeviceAuthRoute } from './device-auth-route.js';
 import { handleOfficialBindRoute } from './official-bind-route.js';
 import { handleOfficialTestRoute } from './official-test-route.js';
 import { handleUpdateRoute } from './update-route.js';
+import { handleT2iPreviewRoute } from './t2i-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -34,7 +35,7 @@ import { createSchedulerRoutes } from './scheduler-routes.js';
 let schedulerRoutes = null;
 
 export async function handleExtraRoutes(ctx = {}) {
-  const { req, url, sendJson } = ctx;
+  const { req, url, res, sendJson } = ctx;
   if (!url || !req) return false;
   const resolveDeps = () => (typeof ctx.deps === 'function' ? ctx.deps() : (ctx.deps || {}));
 
@@ -112,6 +113,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // 长文本转图预览（0.4.118）
+  if (await handleT2iPreviewRoute({ req, url, res, sendJson, deps: resolveDeps })) return true;
 
   // 版本更新检查（0.4.114）
   if (await handleUpdateRoute({ req, url, sendJson, deps: resolveDeps })) return true;

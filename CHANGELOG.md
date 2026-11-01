@@ -2,6 +2,56 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.118：长文本转图片（t2i）——**代码完成，桥接里跑不起来**
+
+个人号（OneBot）不吃 markdown，长回复排版全丢。照 AstrBot 的 `ResultDecorateStage`
+做了「纯文本超阈值 → 渲染成卡片图」这一层。
+
+### 已完成（CLI 下验证通过）
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/browser-detect.js` | 按 **Edge → Chrome** 顺序找渲染器（Windows 自带 Edge，不依赖用户装 Chrome） |
+| `src/t2i.js` | 拼卡片 HTML + headless 截图 + 串行队列 + 失败重试 |
+| `src/t2i-send.js` | 「该不该转 + 转 + 出图段」收口，给 bridge 一行调用 |
+| `src/api/t2i-route.js` | `GET /api/t2i/preview`：控制台能直接看卡片长什么样 |
+
+实测（命令行直接跑）：
+
+```
+预热 1.7s（之后每次 ~1.8s）
+卡片 676×503、26 KB，中文排版正常
+```
+
+### ⚠️ 没解决：桥接进程里 spawn Edge 会「exit 0 但不产出」
+
+```
+[bridge] [t2i] 首次渲染没出图（exit 0），改用独立 profile 重试
+[bridge] [t2i] 渲染失败（edge, exit 0）
+```
+
+同一个函数在命令行里好使，在计划任务拉起的桥接进程里就不行：
+`exit 0`、没有 stderr、没有产物。已排除：
+
+- ❌ profile 被占用（换过独立 profile，一样）
+- ❌ TEMP 缺失（改成 `state/t2i-tmp` + `state/t2i-profile`，一样）
+- ❌ 缺 `--no-sandbox`（加了，一样）
+- ❌ 并发抢 profile（加了串行队列，一样）
+- ❌ 找不到浏览器（Edge 路径探测正常，`--screenshot` 参数也对）
+
+**下一步方向**：改成「常驻 headless + CDP 截图」——由**启动器**在用户会话里拉起一个
+headless 实例（而不是由桥接去 spawn），桥接只连 CDP 端口截图。这样绕开「计划任务上下文里
+Edge 起不来」这个根因，顺带把每次 1.8 秒降到 ~200ms。
+
+### 配置（默认关闭）
+
+```json
+"t2i": { "enabled": false, "threshold": 150, "width": 640 }
+```
+
+现在 **enabled 必须保持 false**——打开也只会在日志里报错，然后回退发文本（不会丢消息）。
+
+**审计**：改动未破坏现有闸门（体积/路由/隐私都过）。
 ## 2026-11-02 — 0.4.117：告诉模型「官方通道支持 markdown」
 
 用户实测发现：机器人自己在群里说「加粗这种吗，发出来就是一堆星号，QQ 不吃这套」，

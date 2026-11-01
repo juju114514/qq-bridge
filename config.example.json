@@ -419,5 +419,12 @@
     "switchCooldownMs": 60000,
     "_说明": "默认用 SnowLuma（主程序）；连续失败 3 次降级 NapCat，连续成功 5 次回切。NapCat 收藏表情只读，功能上不如 SnowLuma",
     "configDir": ""
+  },
+  "t2i": {
+    "enabled": false,
+    "threshold": 150,
+    "width": 640,
+    "title": "",
+    "footer": "qq-bridge"
   }
 }

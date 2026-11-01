@@ -40,6 +40,17 @@
 > `已对 agent 应用工具白名单`、`agent 已建：preset=qq-chat-v2`。
 > 桥接模式（路线 A）本来就有这层边界，见 `docs/guides/SECURITY_BASELINE.md`。
 
+
+## 下载（国内加速）
+
+GitHub 直连不稳定时，用下面任一加速通道（实测可用，随时可能失效）：
+
+- 源码 zip：`https://ghproxy.com/https://github.com/juju114514/qq-bridge/archive/refs/heads/main.zip`
+- 仓库页面：`https://gh-proxy.com/https://github.com/juju114514/qq-bridge`
+
+> 这类公益加速服务会随时关停（kkgithub / bgithub 已经 404）。如果两个都失效，
+> 把上面的 `ghproxy.com` 换成当时的可用镜像即可——链接格式是 `<镜像>/<原始 URL>`。
+
 ## 你已经装了什么？不用换，直接用
 
 | 你现在的环境 | 能不能直接用 | 怎么做 |
@@ -256,7 +267,7 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 
 ## 版本怎么看
 
-> 📌 **文档版本：0.4.117**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
+> 📌 **文档版本：0.4.118**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
 > 有守卫 `check-readme-version.mjs` 校验它和代码是否一致。）
 
 

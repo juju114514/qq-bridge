@@ -109,6 +109,8 @@ import { createDeviceStore, createPairingCodes, signRequest, verifyRequest, crea
 import { createBindSession } from './official-bind.js';
 import { createUpdateChecker } from './update-check.js';
 import { createOfficialTestSend } from './official-test-send.js';
+import { makeTextImageSegment } from './t2i-send.js';
+import { warmUpT2i } from './t2i.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -4430,7 +4432,7 @@ async function main() {
         // ── 反馈 / 自己消息 / 消息详情 / 活跃成员 ────────────────────────────
 
         if (await handleExtraRoutes({
-          req, url, sendJson, readBody,
+          req, url, res, sendJson, readBody,
           // 惰性：只在命中路由时求值（否则每请求一次，VM 注入不全时会 ReferenceError）
   deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, sendToQQ, onebotSend, allowed, resolveMode: () => currentMode,
             // 总览仪表盘（/api/overview）用的访问器
@@ -5071,7 +5073,12 @@ async function main() {
       log(`发送内容包含会话令牌，已阻止发送 (${kind}:${id})`);
       throw new Error('发送内容包含会话令牌，已阻止发送');
     }
-    segments.push({ type: 'text', data: { text: escapeCqText(rawMessage) } });
+    // 长文本转图（0.4.118）：判断/渲染/降级都在 t2i-send.js
+    if (!isOfficialId(id)) {
+      try { const seg = await makeTextImageSegment(rawMessage, cfg.t2i || {}, log, { profileDir: path.join(STATE_DIR, 't2i-profile'), workRoot: path.join(STATE_DIR, 't2i-tmp') }); if (seg) segments.push(seg); }
+      catch (error) { log(`[t2i] 转图失败，改发文本：${error?.message ?? error}`); }
+    }
+    if (!segments.some((s) => s.type === 'image')) segments.push({ type: 'text', data: { text: escapeCqText(rawMessage) } });
     // 官方通道：id 是 `official-<openid>`（openid 不是 QQ 号，Number(id) 会变 NaN）。
     // 文本直接走官方 API；@ 降级成 "@名字" 文字（官方 @ 需要 tiny_id，另议）。
     if (isOfficialId(id)) {
