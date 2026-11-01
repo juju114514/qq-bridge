@@ -10,6 +10,7 @@
 // 文档：https://bot.q.qq.com/wiki/develop/api-v2/
 
 import { buildUploadBody, buildMediaMessage, pickFileInfo } from './official-media.js';
+import { retryDelayMs, describeOfficialError, classifyOfficialResult, RETRYABLE_STATUS, OFFICIAL_ERROR_HINTS } from './official-errors.js';
 const PROD_API = 'https://api.sgroup.qq.com';
 const SANDBOX_API = 'https://sandbox.api.sgroup.qq.com';
 const TOKEN_URL = 'https://bots.qq.com/app/getAppAccessToken';
@@ -75,28 +76,9 @@ export function toBridgeEvent(t, d) {
   return null;
 }
 
-/**
- * 被动回复的 msg_seq 计数：同一 msg_id 最多 5 次（官方限制），超过就返回 null，
- * 让调用方降级成"合并成一条"而不是撞墙。
- */
-export class ReplySeqTracker {
-  constructor(max = 5) { this.max = max; this.map = new Map(); }
 
-  next(msgId) {
-    const key = String(msgId ?? '');
-    if (!key) return null;
-    const used = this.map.get(key) ?? 0;
-    if (used >= this.max) return null;
-    const seq = used + 1;
-    this.map.set(key, seq);
-    // 只留最近 500 条，避免无限增长
-    if (this.map.size > 500) {
-      const first = this.map.keys().next().value;
-      this.map.delete(first);
-    }
-    return seq;
-  }
-}
+export { ReplySeqTracker, PASSIVE_LIMITS } from './official-limits.js';
+import { ReplySeqTracker } from './official-limits.js';
 
 export class OfficialQqBot {
   constructor(opts = {}) {
@@ -211,22 +193,52 @@ export class OfficialQqBot {
     if (event) handlers.onEvent?.(event);
   }
 
-  async _post(pathName, body) {
-    const token = await this.accessToken();
-    const res = await fetch(`${this.api}${pathName}`, {
-      method: 'POST',
-      headers: { authorization: `QQBot ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20000)
-    });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch { /* ignore */ }
-    if (!res.ok) {
-      const detail = data?.message || data?.code || String(text).slice(0, 160);
-      throw new Error(`发送失败：HTTP ${res.status} ${detail}`);
+  /**
+   * POST + 限流退避（0.4.113）。
+   *
+   * 以前是"一次不成就抛"——官方一限流（429），这条消息就彻底丢了。
+   * 现在：429/502/503/504 按 retry-after 或指数退避重试（最多 maxAttempts 次）；
+   * 其余 4xx 不重试（重试只会更惹限流），直接把中文原因抛出去。
+   */
+  async _post(pathName, body, { maxAttempts = 3 } = {}) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const token = await this.accessToken();
+      const res = await fetch(`${this.api}${pathName}`, {
+        method: 'POST',
+        headers: { authorization: `QQBot ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000)
+      });
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch { /* ignore */ }
+      // res.ok 不够：官方 201/202 是"异步成功"，响应体里仍可能带 err_code
+      const verdict = classifyOfficialResult(res.status, data, text);
+      if (verdict.ok) return data ?? {};
+      // 40054005 = 同 msg_id+msg_seq 重复：上一次大概率已经发出去了，当成功
+      if (verdict.duplicate) {
+        this.log(`[official] 命中去重（40054005），按已发送处理：${pathName}`);
+        return { duplicated: true };
+      }
+
+      const detail = verdict.reason;
+      const wait = retryDelayMs({
+        status: res.status,
+        retryAfterHeader: res.headers.get('retry-after'),
+        attempt,
+        maxAttempts
+      });
+      lastError = new Error(`发送失败：${detail}`);
+      // 被动回复的重试必须换 msg_seq：同 msg_id+msg_seq 重发会被官方去重直接拒
+      if (wait !== null && body && body.msg_id) {
+        body.msg_seq = (Number(body.msg_seq) || 1) + 1;
+      }
+      if (wait === null) throw lastError;
+      this.log(`[official] ${res.status} 重试第 ${attempt} 次，等 ${wait}ms：${pathName}`);
+      await new Promise((r) => setTimeout(r, wait));
     }
-    return data ?? {};
+    throw lastError ?? new Error('发送失败：未知原因');
   }
 
   /** 群聊文本。传 msgId 就是被动回复（5 分钟内、最多 5 条），不传就是主动消息（有频控）。 */
@@ -281,7 +293,7 @@ export class OfficialQqBot {
    * @param {{kind:string,id:string,msgId?:string}} event 触发回复的那条事件
    */
   async reply(event, content) {
-    const msgSeq = event?.msgId ? this.seqTracker.next(event.msgId) : null;
+    const msgSeq = event?.msgId ? this.seqTracker.next(event.msgId, event.kind === 'private' ? 'private' : 'group') : null;
     if (event?.msgId && msgSeq === null) {
       throw new Error('这条消息的被动回复次数已用完（官方上限 5 次），请合并成一条');
     }

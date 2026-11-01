@@ -192,7 +192,7 @@ export function createOfficialTransport(opts = {}) {
     const msgId = passive ? target.msgId : '';
     // msg_seq 必须**递增且不重复**：官方同一 msg_id 最多回 5 条，重复序号直接 400
     // （真机踩过：文本回复用掉 seq=1 后，发图用 1 会被判"消息被去重"）
-    const msgSeq = passive && msgId ? bot.seqTracker.next(msgId) : null;
+    const msgSeq = passive && msgId ? bot.seqTracker.next(msgId, kind === 'private' ? 'private' : 'group') : null;
     if (passive && msgId && msgSeq === null) {
       // 被动次数用完：退回主动消息（多数机器人无权限，但让上层看到真实错误比静默失败好）
       opts = { ...opts, proactive: true };
