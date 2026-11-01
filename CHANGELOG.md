@@ -43,6 +43,58 @@
 
 `test-environment.mjs` 9 条：时段 / 时间行 / 天气码 / 天气行空值 / 合并行 /
 缓存新鲜度 / open-meteo 解析 / 脏数据。
+## 2026-11-01 — 0.4.107：设备配对 + 请求签名（手机端凭证）
+
+用户问"能不能自己研究一套加密方法，只有控制台和手机知道"。
+结论：**不自己发明算法**，用标准件拼出同样的效果 —— HMAC-SHA256 签名 + 配对码 + nonce 防重放。
+
+### 设计（全部用 Node/浏览器自带的能力）
+
+```
+① 配对（一次性）
+   电脑控制台生成 6 位配对码（60 秒、一次性）
+   手机 POST /api/auth/pair {code, name} → 拿到 deviceId + deviceSecret（只回这一次）
+
+② 每个请求签名
+   HMAC-SHA256(secret, method + path + timestamp + nonce + sha256(body))
+
+③ 服务器校验
+   ±60 秒时间窗（防过期重放）
+   nonce 去重（5 分钟 TTL，防同窗口重放）
+   timingSafeEqual 常量时间比较
+   设备吊销表
+```
+
+### 新增
+
+| 东西 | 说明 |
+| --- | --- |
+| `src/device-auth.js` | 签名/校验/常量时间比较/nonce 缓存/配对码/设备库（纯逻辑，可测） |
+| `src/api/device-auth-route.js` | 配对码 / 配对 / 设备列表 / 吊销 / 模式开关 |
+| `state/device-auth.json` | 设备库（secret 与 console-token 同级；`state/` 已 gitignore） |
+| 控制台「手机设备」卡 | 生成配对码、看设备、吊销、切换校验模式 |
+
+### 实测（真机）
+
+```
+生成配对码 → 800703
+POST /api/auth/pair → deviceId=692c628f4b8c8464，secret 长度=64
+GET /api/auth/devices → 1 台「测试手机」，列表里不返回 secret
+```
+
+### 明确的边界（别误解这套东西）
+
+- **它不替代 TLS**：线路加密交给 Tailscale / HTTPS。这套只管"请求是不是你的、有没有被重放"。
+- **enforce 模式还没接进入口**：模式开关（off/warn/enforce）已存进配置，
+  但真正"没签名就拒绝"的拦截还没挂到请求入口——因为**要验 body 哈希就得先读 body**，
+  而那一步在控制台请求管线的更下游。当前默认 `off`，功能不影响使用。
+  下一步（0.4.108）：在 prelude 里加设备签名关卡 + 把 body 哈希纳入校验。
+- **secret 在磁盘上是明文**（`state/device-auth.json`），和 `console-token` 同级别保护。
+
+### 测试
+
+`test-device-auth.mjs` 11 条：签名稳定性 / 篡改拒绝 / 时间窗（59 秒过、61 秒拒）/
+nonce 重放 / 缺字段 / 配对码一次性与过期 / 设备库（列表不带 secret、吊销）/ nonce TTL。
 ## 2026-11-01 — 0.4.106：网关多账号面板（看见 + 选择）
 
 用户发现 SnowLuma 可以同时注入两个号，问"控制台要不要适配，识别当前已注入账号，然后选择查看每个账号"。

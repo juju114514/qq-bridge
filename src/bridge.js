@@ -103,6 +103,7 @@ import { readRoleAppearance, appearancePromptLine } from './role-image.js';
 import { listPlannedMarkers } from './restart-classify.js';
 import { createEnvironment } from './environment-runtime.js';
 import { createAreaTree } from './area-tree.js';
+import { createDeviceStore, createPairingCodes } from './device-auth.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -227,6 +228,9 @@ const HEARTBEAT_FILE = path.join(STATE_DIR, 'heartbeat.json');
 let envRuntime = null;
 // 行政区三级树（0.4.105）：省 → 地级市 → 区县，供控制台级联选择
 const areaTree = createAreaTree({ cacheFile: path.join(STATE_DIR, 'area-cache.json'), log });
+// 设备配对 + 签名（0.4.107）：手机端凭证与校验
+const deviceStore = createDeviceStore(path.join(STATE_DIR, 'device-auth.json'));
+const pairingCodes = createPairingCodes();
 function getEnvRuntime() {
   if (!envRuntime) envRuntime = createEnvironment({
   cacheFile: path.join(STATE_DIR, 'weather-cache.json'),
@@ -4425,6 +4429,10 @@ async function main() {
               areaChildren: (code) => areaTree.children(code || ''),
               detectIpCity: () => getEnvRuntime().detectIpCity(),
               // 网关多账号（0.4.106）：看每个号的注入状态，并把桥接指向其中一个
+              // 设备配对（0.4.107）
+              deviceStore, pairingCodes,
+              getDeviceAuthMode: () => String(cfg.security?.deviceAuth || 'off'),
+              setDeviceAuthMode: (mode) => { cfg.security = { ...(cfg.security || {}), deviceAuth: String(mode) }; },
               gatewayConfigDir: (() => { try { return String(cfg.gateway?.configDir || process.env.QQB_GATEWAY_CONFIG_DIR || ''); } catch { return ''; } })(),
               getGatewayBinding: () => ({ httpUrl: String(cfg.snowluma?.httpUrl || ''), wsUrl: String(cfg.snowluma?.wsUrl || ''), ownerQQ: cfg.ownerQQ || '' }),
               areaFindPath: (name) => areaTree.findPath(name),

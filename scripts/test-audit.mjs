@@ -153,6 +153,7 @@ const tests = [
   'test-environment.mjs',
   'test-area-tree.mjs',
   'test-gateway-accounts.mjs',
+  'test-device-auth.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

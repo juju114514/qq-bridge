@@ -108,6 +108,12 @@ export function runPrelude(ctx) {
     return null;
   }
 
+  // 2.7) 设备配对：手机第一次连上来时**还没有控制台令牌**，只能靠 6 位配对码。
+  //      必须在令牌校验之前放行；配对码一次性、60 秒、只由控制台生成。
+  if (pathname === '/api/auth/pair') {
+    return null;
+  }
+
   // 2.6) sidecar 契约（插件通道）：/health /snapshot /events /intents
   //      它们**自带** bearer 校验（state/plugin-token，缺省回退 console token），
   //      校验在 handler 里用定长比较做。这里只放行，不再让控制台令牌先拦一刀

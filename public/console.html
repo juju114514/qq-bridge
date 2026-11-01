@@ -2734,6 +2734,24 @@ button:active:not(:disabled) {
       <span class="meta">切换账号 = 改桥接的 config.json，**必须重启桥接**才生效；同一时刻桥接只服务一个号。</span></div>
   </section>
 
+<section data-page="operations" class="card span-all">
+    <h2 data-note="手机端用配对码领取凭证；开启 enforce 后，未签名请求一律拒绝">手机设备</h2>
+    <div class="meta" id="deviceAuthMeta">加载中…</div>
+    <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+      <input type="text" id="devicePairName" placeholder="设备名，如 我的手机" style="flex:0 1 180px">
+      <button id="devicePairIssue">生成配对码</button>
+      <span class="meta" id="devicePairCode"></span>
+      <label style="flex:0 0 auto;margin-left:12px">校验模式</label>
+      <select id="deviceAuthMode" style="flex:0 1 130px">
+        <option value="off">off（不校验）</option>
+        <option value="warn">warn（只记日志）</option>
+        <option value="enforce">enforce（强制签名）</option>
+      </select>
+    </div>
+    <div id="deviceList" style="font-size:12.5px;margin-top:8px"></div>
+    <div class="meta">不开 enforce 时手机也能用（只带控制台令牌）；开了之后手机必须用配对得到的 secret 对每个请求签名。</div>
+  </section>
+
 <section id="section-notify" data-page="operations" class="card span-all">
       <h2>后台控制端引导</h2>
       <div class="meta">直接向指定 QQ 会话的 DSH agent 投递一条“后台控制端提醒”，用于给 AI 引导/提醒；该消息不是群友消息。二代模式（reserved2）下会自动附带会话令牌和二代工具协议说明，AI 的文本输出不会自动转发，发言需通过发送工具。</div>
@@ -3522,6 +3540,59 @@ function bindRoleMap() {
 }
 
 // ── 环境感知（0.4.103）──────────────────────────────────────────
+// ── 手机设备（0.4.107）──────────────────────────────────────────
+async function loadDevices() {
+  const meta = document.getElementById('deviceAuthMeta');
+  const list = document.getElementById('deviceList');
+  if (!list) return;
+  try {
+    const [r, mode] = await Promise.all([api('/api/auth/devices'), api('/api/auth/mode')]);
+    const devs = (r && r.devices) || [];
+    const sel = document.getElementById('deviceAuthMode');
+    if (sel && mode && mode.mode) sel.value = mode.mode;
+    if (meta) meta.textContent = `已配对 ${devs.length} 台设备 · 当前校验模式 ${(mode && mode.mode) || 'off'}`;
+    list.innerHTML = devs.length ? devs.map((d) => `
+      <div class="row" style="gap:10px;align-items:center;padding:3px 0">
+        <span style="flex:0 0 200px">${d.name || '未命名'}</span>
+        <span style="flex:0 0 150px;opacity:.75">${d.id}</span>
+        <span style="flex:0 0 130px;opacity:.75">${d.revoked ? '已吊销' : (d.lastSeenAt ? '最近使用 ' + new Date(d.lastSeenAt).toLocaleString('zh-CN') : '未使用')}</span>
+        ${d.revoked ? '' : `<button data-revoke="${d.id}">吊销</button>`}
+      </div>`).join('') : '<div class="meta">还没有配对过设备</div>';
+    list.querySelectorAll('[data-revoke]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        if (!confirm('吊销这台设备？它会立刻失去签名权限')) return;
+        await api('/api/auth/devices', 'POST', { action: 'revoke', id: b.dataset.revoke });
+        loadDevices();
+      });
+    });
+  } catch (e) {
+    if (meta) meta.textContent = '读取失败：' + e.message;
+  }
+}
+
+async function issuePairingCode() {
+  const el = document.getElementById('devicePairCode');
+  const name = (document.getElementById('devicePairName')?.value || '').trim();
+  localStorage.setItem('qqb_pair_name', name);
+  const r = await api('/api/auth/pairing-code', 'POST', {});
+  if (el) el.textContent = r && r.ok ? ('配对码：' + r.code + '（60 秒内有效）') : ('生成失败：' + ((r && r.error) || '未知'));
+}
+
+function bindDevicePanel() {
+  const btn = document.getElementById('devicePairIssue');
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', issuePairingCode);
+    document.getElementById('deviceAuthMode')?.addEventListener('change', async (e) => {
+      const r = await api('/api/auth/mode', 'POST', { mode: e.target.value });
+      if (r && r.ok) loadDevices(); else alert((r && r.error) || '设置失败');
+    });
+    const saved = localStorage.getItem('qqb_pair_name');
+    if (saved) { const inp = document.getElementById('devicePairName'); if (inp) inp.value = saved; }
+  }
+  loadDevices();
+}
+
 // ── 网关多账号（0.4.106）────────────────────────────────────────
 async function loadGatewayAccounts() {
   const box = document.getElementById('gwAccounts');
@@ -7048,7 +7119,7 @@ async function spaceDeletePost(tid, btn) {
     'social-v2': ['loadVoiceLibrary'],
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
     'role-map': ['bindRoleMap'],
-    operations: ['bindGatewayAccountsPanel'],
+    operations: ['bindGatewayAccountsPanel', 'bindDevicePanel'],
     persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage', 'bindEnvironment']
   };
 

@@ -275,6 +275,9 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     createEnvironment: () => ({ getEnvironmentLine: async () => '', refreshWeather: async () => null, searchCity: async () => [], config: () => ({}), setConfig: () => ({}) }),
     // 行政区三级树（0.4.105）：bridge 顶层会建这个工厂
     createAreaTree: () => ({ children: async () => [], findPath: async () => [] }),
+    // 设备配对（0.4.107）：bridge 顶层会建这两个工厂
+    createDeviceStore: () => ({ list: () => [], find: () => null, add: () => ({ id: 'x', secret: 'y' }), touch: () => true, revoke: () => true }),
+    createPairingCodes: () => ({ issue: () => ({ code: '000000', expiresAt: 0 }), consume: () => ({ ok: true }), peek: () => null }),
     atomicWriteJson, atomicWriteText, renameWithRetry,
     capturePendingStickers, rememberMessageMedia,
     runSocialIncomingStage,

@@ -21,6 +21,7 @@ import { handleRoleImageRoute } from './role-image-route.js';
 import { handleRoleMapRoute } from './role-map-route.js';
 import { handleEnvironmentRoute } from './environment-route.js';
 import { handleGatewayAccountsRoute } from './gateway-accounts-route.js';
+import { handleDeviceAuthRoute } from './device-auth-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -108,6 +109,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // 设备配对 / 签名（0.4.107）
+  if (await handleDeviceAuthRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {
