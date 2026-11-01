@@ -101,6 +101,7 @@ import { migrateFromLegacy } from './memory-store.js';
 import { captureReply as captureQzoneDraft } from './qzone-draft.js';
 import { readRoleAppearance, appearancePromptLine } from './role-image.js';
 import { listPlannedMarkers } from './restart-classify.js';
+import { createEnvironment } from './environment-runtime.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -221,6 +222,23 @@ const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
 const QZONE_DRAFT_FILE = path.join(STATE_DIR, 'qzone-draft.json');
 // 断电/崩溃检测（0.4.84）：心跳 + 运行标记 + 异常事件
 const HEARTBEAT_FILE = path.join(STATE_DIR, 'heartbeat.json');
+// 环境感知（0.4.103）：时间 + 天气，注入提示词一行
+let envRuntime = null;
+function getEnvRuntime() {
+  if (!envRuntime) envRuntime = createEnvironment({
+  cacheFile: path.join(STATE_DIR, 'weather-cache.json'),
+  configFile: path.join(STATE_DIR, 'env-config.json'),
+  getConfig: () => ({}),   // 环境配置只认 state/env-config.json（不碰 cfg，避免作用域/写冲突）
+  log
+});
+  return envRuntime;
+}
+let cachedEnvLine = '';
+async function refreshEnvLine() {
+  try { cachedEnvLine = await getEnvRuntime().getEnvironmentLine(); } catch { cachedEnvLine = ''; }
+}
+void refreshEnvLine();
+try { const envTimer = setInterval(refreshEnvLine, 10 * 60 * 1000); envTimer.unref?.(); } catch { /* 定时器失败不影响启动 */ }({ cacheFile: path.join(STATE_DIR, 'weather-cache.json'), getConfig: () => cfg, log });
 const RUNTIME_MARKER_FILE = path.join(STATE_DIR, 'runtime-marker.json');
 const INCIDENTS_FILE = path.join(STATE_DIR, 'incidents.jsonl');
 const SLANG_FILE = path.join(STATE_DIR, 'slang.json');
@@ -4397,6 +4415,11 @@ async function main() {
             getBootIncident: () => bootIncident, getRolesByKey: () => readRolesByKey(),
             getGlobalRole: () => (readRoleState()?.role ?? null),
             getRoleCfg: () => (cfg.role || {}), setRoleForKey: (key, role) => writeRoleStateForKey(key, role, 'active'),
+            getEnvironmentLine: () => cachedEnvLine,
+            refreshEnvironment: () => refreshEnvLine(),
+            getEnvConfig: () => getEnvRuntime().config(),
+              searchCity: (q) => getEnvRuntime().searchCity(q),
+              setEnvConfig: (patch) => getEnvRuntime().setConfig(patch),
             listPlannedRestarts: () => listPlannedMarkers(path.join(STATE_DIR, 'planned-restarts.jsonl')),
             restoreConversation: (key, patch) => { const st = socialV2.conversations.get(key) || { key, wakeConfig: { mode: 'diving', infinite: true, triggers: {} }, recentMessages: [], unread: [] }; if (Array.isArray(patch.recentMessages)) st.recentMessages = patch.recentMessages; if (Array.isArray(patch.unread)) st.unread = patch.unread; socialV2.conversations.set(key, st); saveSocialV2State(); return { key, recent: st.recentMessages.length, unread: st.unread.length }; },
             // 一键重置会话（可选备份）
@@ -7262,7 +7285,11 @@ async function main() {
     // 外观照片（0.4.97）：只注入一句话描述，不塞图（一张图 ≈ 上千 token，每轮都发会烧钱）
     let appearance = '';
     try { const r = String(readRoleState()?.role ?? ''); if (r) appearance = appearancePromptLine(readRoleAppearance(path.join(STATE_DIR, 'role-images'), r)); } catch { /* 读不到就不加 */ }
-    return appearance ? `${body}\n\n${appearance}` : body;
+    // 环境感知（0.4.103）：时间 + 天气各一行，让「你那边冷吗」这类对话有实感
+    let envLine = '';
+    try { envLine = String(cachedEnvLine || ''); } catch { envLine = ''; }
+    const extra = [appearance, envLine].filter(Boolean).join('\n');
+    return extra ? `${body}\n\n${extra}` : body;
   }
   /**
    * 「按需」小节的开关：人格卡里标了 〔按需：唱歌,说话〕 的大段内容，

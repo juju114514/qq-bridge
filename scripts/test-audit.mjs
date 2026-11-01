@@ -150,6 +150,7 @@ const tests = [
   'test-console-boot.mjs',
   'test-report-build.mjs',
   'test-restart-classify.mjs',
+  'test-environment.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

@@ -1936,6 +1936,23 @@ button:active:not(:disabled) {
         </div>
       </details>
 
+      <details class="settings-group">
+        <summary>环境感知（时间 / 天气）</summary>
+        <div class="settings-content">
+          <div class="meta">给模型一句「现在几点、外面什么天气」。天气会失败——拿不到就只给时间，不会编。</div>
+          <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+            <label style="flex:0 0 auto"><input type="checkbox" id="envEnabled" checked> 启用</label>
+            <input type="text" id="envCityQuery" placeholder="输入城市名，如 杭州" style="flex:0 1 160px">
+            <button id="envSearch">搜索</button>
+            <select id="envStation" style="flex:0 1 220px"><option value="">（先搜索）</option></select>
+            <button id="envSave">保存并刷新</button>
+            <button id="envRefresh">刷新</button>
+          </div>
+          <div class="meta" id="envLine" style="margin-top:6px">（还没读到）</div>
+          <div class="meta">数据源：<b>中国气象局</b>（weather.cma.cn，实况 + 今日高低温）。搜城市 → 选站点 → 保存；没选站点就只有时间，不会编天气。</div>
+        </div>
+      </details>
+
       <h3 class="layer-heading">仿真提示词（预设内置）<span class="meta" id="simPromptStatus">加载中…</span></h3>
       <div class="row" style="margin-bottom:8px">
         <label style="flex:0 0 auto">仿真代次</label>
@@ -3491,6 +3508,76 @@ function bindRoleMap() {
   const btn = document.getElementById('roleMapRefresh');
   if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', loadRoleMap); }
   loadRoleMap();
+}
+
+// ── 环境感知（0.4.103）──────────────────────────────────────────
+async function loadEnvironment() {
+  const lineEl = document.getElementById('envLine');
+  if (!lineEl) return;
+  try {
+    const r = await api('/api/environment');
+    if (!r || !r.ok) { lineEl.textContent = '读取失败：' + ((r && r.error) || '未知'); return; }
+    const cfg = r.config || {};
+    const city = cfg.city || {};
+    const en = document.getElementById('envEnabled');
+    if (en) en.checked = cfg.enabled !== false;
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v == null ? '' : String(v); };
+    const sel = document.getElementById('envStation');
+    if (sel && cfg.stationId) {
+      const name = city.name || cfg.stationId;
+      sel.innerHTML = `<option value="${cfg.stationId}" data-name="${name}" selected>${name}（${cfg.stationId}）</option>`;
+    }
+    lineEl.textContent = r.line ? '当前注入：' + r.line : '（当前没有注入：未启用或时间读取失败）';
+  } catch (e) {
+    lineEl.textContent = '读取失败：' + e.message;
+  }
+}
+
+async function searchEnvCity() {
+  const q = (document.getElementById('envCityQuery')?.value || '').trim();
+  const sel = document.getElementById('envStation');
+  if (!q || !sel) return;
+  sel.innerHTML = '<option value="">搜索中…</option>';
+  try {
+    const r = await api('/api/environment?q=' + encodeURIComponent(q));
+    const list = (r && r.candidates) || [];
+    sel.innerHTML = list.length
+      ? list.map((x) => `<option value="${x.id}" data-name="${x.name}">${x.name}（${x.id}）</option>`).join('')
+      : '<option value="">没搜到，换个写法试试</option>';
+  } catch {
+    sel.innerHTML = '<option value="">搜索失败</option>';
+  }
+}
+
+async function saveEnvironment() {
+  const sel = document.getElementById('envStation');
+  const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  const stationId = sel ? sel.value : '';
+  const cityName = opt ? (opt.dataset.name || '') : '';
+  const body = {
+    enabled: Boolean(document.getElementById('envEnabled')?.checked),
+    stationId,
+    city: { name: cityName }
+  };
+  const r = await api('/api/environment', 'POST', body);
+  const lineEl = document.getElementById('envLine');
+  if (lineEl) lineEl.textContent = r && r.ok ? ('当前注入：' + (r.line || '（未启用）')) : ('保存失败：' + ((r && r.error) || '未知'));
+}
+
+async function refreshEnvironment() {
+  const r = await api('/api/environment', 'POST', { action: 'refresh' });
+  const lineEl = document.getElementById('envLine');
+  if (lineEl) lineEl.textContent = r && r.ok ? ('当前注入：' + (r.line || '（未启用）')) : ('刷新失败：' + ((r && r.error) || '未知'));
+}
+
+function bindEnvironment() {
+  const save = document.getElementById('envSave');
+  if (save && !save.dataset.bound) {
+    save.dataset.bound = '1';
+    save.addEventListener('click', saveEnvironment);
+    document.getElementById('envRefresh')?.addEventListener('click', refreshEnvironment);
+  }
+  loadEnvironment();
 }
 
 // ── 人物卡外观照片（0.4.97）──────────────────────────────────────
@@ -6781,7 +6868,7 @@ async function spaceDeletePost(tid, btn) {
     'social-v2': ['loadVoiceLibrary'],
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
     'role-map': ['bindRoleMap'],
-    persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage']
+    persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage', 'bindEnvironment']
   };
 
   function runPageHooks(page) {
