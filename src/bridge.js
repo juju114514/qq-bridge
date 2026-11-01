@@ -106,6 +106,8 @@ import { listPlannedMarkers } from './restart-classify.js';
 import { createEnvironment } from './environment-runtime.js';
 import { createAreaTree } from './area-tree.js';
 import { createDeviceStore, createPairingCodes, signRequest, verifyRequest, createNonceCache } from './device-auth.js';
+import { createBindSession } from './official-bind.js';
+import { createUpdateChecker } from './update-check.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -234,6 +236,15 @@ const areaTree = createAreaTree({ cacheFile: path.join(STATE_DIR, 'area-cache.js
 const deviceStore = createDeviceStore(path.join(STATE_DIR, 'device-auth.json'));
 const pairingCodes = createPairingCodes();
 const deviceNonces = createNonceCache();
+// 官方扫码绑定（0.4.114）：一次只允许一个绑定会话
+const officialBind = createBindSession({ log });
+// 版本更新检查（0.4.114）：6 小时缓存，失败静默
+const updateChecker = createUpdateChecker({
+  currentVersion: (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || '0.0.0'; } catch { return '0.0.0'; } })(),
+  repo: 'juju114514/qq-bridge',
+  cacheFile: path.join(STATE_DIR, 'update-check.json'),
+  log
+});
 // 访问守卫（0.4.110）：限流 + 审计
 const authLimiter = createRateLimiter({ windowMs: 60_000, max: 12 });
 const accessLog = createAccessLog({ file: path.join(STATE_DIR, 'access-log.jsonl'), maxLines: 3000 });
@@ -4500,7 +4511,8 @@ async function main() {
               },
               // 网关多账号（0.4.106）：看每个号的注入状态，并把桥接指向其中一个
               // 设备配对（0.4.107）
-              deviceStore, pairingCodes,
+              deviceStore, pairingCodes, officialBind,
+      updateCheck: (opts) => updateChecker.check(opts),
               getDeviceAuthMode: () => String(cfg.security?.deviceAuth || 'off'),
               setDeviceAuthMode: (mode) => { cfg.security = { ...(cfg.security || {}), deviceAuth: String(mode) }; },
               gatewayConfigDir: (() => { try { return String(cfg.gateway?.configDir || process.env.QQB_GATEWAY_CONFIG_DIR || ''); } catch { return ''; } })(),

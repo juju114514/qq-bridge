@@ -2,6 +2,68 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.114：官方扫码绑定 + 版本更新提示（+ markdown 调研）
+
+两件事并行做的：主线写扫码绑定/更新提示，两个只读子代理分别逆扫码协议、查 markdown 规格。
+
+### 1) 官方机器人扫码绑定
+
+用户不用再去开发者后台翻 AppID/AppSecret。协议是照 AstrBot 逆出来的（`login_registration.py`）：
+
+```
+① POST https://q.qq.com/lite/create_bind_task   {"key": base64(32 随机字节)}
+   → {"retcode":0,"data":{"task_id":"..."}}
+② 二维码内容是一个 URL 字符串（不是图片）：
+   https://q.qq.com/qqbot/openclaw/connect.html?task_id=<id>&_wv=2
+③ POST https://q.qq.com/lite/poll_bind_result   {"task_id":"..."}
+   → data.status: 0/1 等待、2 完成、3 过期
+④ 完成时返回 bot_appid + bot_encrypt_secret，用 ① 的 key 做 AES-256-GCM 解密
+   （nonce=前12字节、tag=后16字节、无 AAD），明文是**裸 AppSecret 字符串**
+```
+
+新增：`src/official-bind.js`（解密/状态/会话）、`src/api/official-bind-route.js`（start/poll/apply），
+官方通道页新增「扫码绑定」区块（复用已有的 qrcode 库），成功后一键「写入配置」。
+
+真机实测（会真的向 q.qq.com 发请求）：
+
+```
+POST /api/official/bind/start → taskId=18fedeff-f29d-415b-8515-3bb6c914f483
+二维码 = https://q.qq.com/qqbot/openclaw/connect.html?task_id=18fedeff...&_wv=2
+POST /api/official/bind/poll  → status=pending
+```
+
+### 2) 版本更新提示
+
+`src/update-check.js`（子代理写的，274 行）+ `GET /api/update/check` + 控制台顶部横幅。
+
+- GitHub Releases 最新版 vs 当前版本（semver，含预发布比较）
+- 6 小时缓存（`state/update-check.json`），失败静默，绝不打扰
+- 横幅「知道了」按版本号记 localStorage，不再重复弹
+
+注：当前 GitHub 上最新是 `0.4.106`（0.4.107 之后都只在本地），所以现在显示「无更新」是**正确行为**。
+
+### 3) 官方错误码再订正（markdown 相关）
+
+按官方「发送群聊/单聊消息」页的码表补了 22006/40034008/40034009/40034011/40034124/
+40034127/304036/40054010/40054007/40054018；并把查不到出处的码（50056/11241/11244/
+304003/304023/22009/100017）挪进 `UNVERIFIED_CODES`，**不让它们驱动降级逻辑**。
+
+### 4) 入站兜底
+
+`text: stripMention(d.content || d.markdown?.content || '')`——
+万一官方改推 markdown 事件（`content` 为空），不会变成空消息。
+
+### 5) markdown 出站：还没做（调研结论先记下）
+
+| 结论 | 说明 |
+| --- | --- |
+| 格式 | `msg_type: 2` + `markdown.content`，**且 content 必须为空**（否则 22006/40034008） |
+| 权限 | 2026/04/23 起群聊/单聊自定义 markdown **全量开放**，不用申请模板 |
+| 与图片互斥 | 一条消息只能一种 msg_type；图文要拆两条，或把图片 URL 写进 markdown |
+| 长度 | 官方没给数字，只有 40054007；第三方按 2000 码点切（未证实） |
+| 降级判据 | 按 err_code（22006/40034008/40034009/40034011/40034124 → 降级纯文本），**不要学 AstrBot 用 message 字符串** |
+
+**审计 171/171。**
 ## 2026-11-02 — 0.4.113：官方通道退避重试 + 错误码订正 + 被动配额修正
 
 起因："官方通道一直不好修"。先看了 AstrBot 的实现（`qqofficial/` 1092 行 + `login_registration.py`），

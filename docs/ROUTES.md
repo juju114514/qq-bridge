@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**132** 条（36 个文件）
+- 已搬进模块：**137** 条（38 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（7 条）
@@ -67,6 +67,15 @@
 | 方法 | 路径 | handler |
 |---|---|---|
 | POST | `/api/mode` | createModeHandler |
+
+## src/api/official-bind-route.js（4 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| ANY | `/api/official/bind/` | handleOfficialBindRoute |
+| POST | `/api/official/bind/apply` | handleOfficialBindRoute |
+| POST | `/api/official/bind/poll` | handleOfficialBindRoute |
+| POST | `/api/official/bind/start` | handleOfficialBindRoute |
 
 ## src/api/official-route.js（1 条）
 
@@ -303,6 +312,12 @@
 | GET | `/api/tokens/summary` | createTokensHandler |
 | GET | `/api/tokens/turns` | createTokensHandler |
 
+## src/api/update-route.js（1 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| GET | `/api/update/check` | handleUpdateRoute |
+
 ## src/api/voice-send.js（3 条）
 
 | 方法 | 路径 | handler |
@@ -322,5 +337,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4411 |
-| ANY | `/api/tokens/` | L4411 |
+| ANY | `/api/tokens/summary` | L4422 |
+| ANY | `/api/tokens/` | L4422 |

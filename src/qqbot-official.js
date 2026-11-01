@@ -44,7 +44,7 @@ export function toBridgeEvent(t, d) {
       transport: 'official',
       kind: 'group',
       id: openid,
-      text: stripMention(d.content),
+      text: stripMention(d.content || d.markdown?.content || ''),   // 官方若改发 markdown，content 会是空的
       msgId: String(d.id ?? ''),
       msgSeq: 0,
       authorId: String(d.author?.member_openid ?? ''),
@@ -62,7 +62,7 @@ export function toBridgeEvent(t, d) {
       transport: 'official',
       kind: 'private',
       id: openid,
-      text: stripMention(d.content),
+      text: stripMention(d.content || d.markdown?.content || ''),
       msgId: String(d.id ?? ''),
       msgSeq: 0,
       authorId: openid,

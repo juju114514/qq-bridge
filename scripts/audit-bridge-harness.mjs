@@ -286,6 +286,10 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     signRequest: () => 'sign',
     verifyRequest: () => ({ ok: true }),
     createNonceCache: () => ({ claim: () => true, size: () => 0 }),
+    // 官方扫码绑定（0.4.114）
+    createBindSession: () => ({ start: async () => ({ taskId: 't', qrUrl: 'u', interval: 2 }), poll: async () => ({ status: 'pending' }), peek: () => null }),
+    // 版本更新检查（0.4.114）
+    createUpdateChecker: () => ({ check: async () => ({ ok: true, hasUpdate: false }) }),
     atomicWriteJson, atomicWriteText, renameWithRetry,
     capturePendingStickers, rememberMessageMedia,
     runSocialIncomingStage,

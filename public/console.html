@@ -1845,6 +1845,12 @@ button:active:not(:disabled) {
       <div class="topbar-actions"><span class="status-badge" id="statusText" role="status">正在连接…</span><button id="themeToggle" class="icon-button" type="button" aria-label="切换深色模式" aria-pressed="false" title="切换深色 / 浅色主题">☾</button><button id="refreshConsole" class="icon-button" aria-label="刷新控制台状态" title="刷新状态">↻</button></div>
     </header>
     <main id="mainContent" tabindex="-1">
+  <div id="updateBar" hidden style="margin:0 0 14px;padding:10px 14px;border-radius:10px;border:1px solid #3b5b8c;background:rgba(40,80,140,.18);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span id="updateBarText"></span>
+    <a id="updateBarLink" href="#" target="_blank" rel="noreferrer" style="color:#8ec5ff">看更新</a>
+    <button class="btn" id="updateBarClose" type="button" style="margin-left:auto">知道了</button>
+  </div>
+
       <div class="page-heading"><div><div class="eyebrow">QQ BRIDGE / CONSOLE</div><h1 id="pageTitle">让每一次连接，都自然发生。</h1><p id="pageDescription">掌握桥接状态，轻松管理你的 QQ 智能伙伴。</p></div>
         <div class="search-wrap"><label class="sr-only" for="consoleSearch">搜索功能或参数</label><input id="consoleSearch" type="search" placeholder="搜索功能或参数…" autocomplete="off" aria-controls="searchResults" aria-expanded="false"><div id="searchResults" class="search-results" hidden></div></div>
       </div>
@@ -3044,6 +3050,18 @@ button:active:not(:disabled) {
   <div id="offState" style="margin-top:10px"></div>
   <div id="offChecklist" style="margin-top:10px;font-size:13px;color:#c8d4ea">（加载中…）</div>
   <div id="offNext" style="margin-top:12px"></div>
+  <div style="margin-top:16px;border-top:1px solid #24344f;padding-top:12px">
+    <h3 style="margin:0 0 6px">扫码绑定（不用手抄 AppID/Secret）</h3>
+    <div class="meta">手机 QQ 扫下面的码，扫完这里会自动拿到 AppID 与密钥；确认后写入配置，重启桥接生效。</div>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn" id="offBindStart" type="button">生成绑定二维码</button>
+      <span class="meta" id="offBindStatus"></span>
+    </div>
+    <div id="offBindQrBox" style="display:none;margin-top:10px">
+      <div id="offBindQr" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
+    </div>
+    <div id="offBindResult" style="margin-top:10px;font-size:13px"></div>
+  </div>
 </section>
 <section data-page="report" class="card span-all" hidden id="section-report">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -3712,6 +3730,97 @@ function bindMobile() {
   }
   mobileRefresh();
   mobileSessions();
+}
+
+// ── 版本更新提示（0.4.114）──────────────────────────────────────
+async function checkForUpdate(force) {
+  const bar = document.getElementById('updateBar');
+  const text = document.getElementById('updateBarText');
+  const link = document.getElementById('updateBarLink');
+  if (!bar) return;
+  try {
+    const r = await api('/api/update/check' + (force ? '?force=1' : ''));
+    if (!r || !r.hasUpdate) { bar.hidden = true; return; }
+    if (text) text.textContent = `有新版本：${r.current} → ${r.latest}`;
+    if (link && r.url) link.href = r.url;
+    const dismissed = localStorage.getItem('qqb_update_dismissed');
+    if (dismissed === String(r.latest) && !force) { bar.hidden = true; return; }
+    bar.hidden = false;
+  } catch { /* 检查失败就当没有，不打扰 */ }
+}
+
+// ── 官方扫码绑定（0.4.114）──────────────────────────────────────
+let offBindTimer = null;
+let offBindTask = '';
+
+function offBindSetStatus(text) {
+  const el = document.getElementById('offBindStatus');
+  if (el) el.textContent = text || '';
+}
+
+async function offBindStart() {
+  const box = document.getElementById('offBindQrBox');
+  const qr = document.getElementById('offBindQr');
+  const out = document.getElementById('offBindResult');
+  if (out) out.textContent = '';
+  try {
+    const r = await api('/api/official/bind/start', 'POST', {});
+    if (!r || !r.ok) { offBindSetStatus('生成失败：' + ((r && r.error) || '未知')); return; }
+    offBindTask = r.taskId;
+    offBindSetStatus('等待扫码…（60 秒内有效）');
+    if (qr && typeof QRCode !== 'undefined') {
+      qr.innerHTML = '';
+      new QRCode(qr, { text: r.qrUrl, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+      if (box) box.style.display = 'block';
+    } else if (out) {
+      out.textContent = '二维码库没加载到，直接打开这个链接也可以：' + r.qrUrl;
+    }
+    clearInterval(offBindTimer);
+    let tries = 0;
+    offBindTimer = setInterval(async () => {
+      tries += 1;
+      if (tries > 60) { clearInterval(offBindTimer); offBindSetStatus('超时了，重新生成一次'); return; }
+      try {
+        const p = await api('/api/official/bind/poll', 'POST', { taskId: offBindTask });
+        if (p && p.status === 'created') {
+          clearInterval(offBindTimer);
+          offBindSetStatus('扫码成功');
+          renderBindResult(p);
+        } else if (p && p.status === 'expired') {
+          clearInterval(offBindTimer);
+          offBindSetStatus('二维码已过期，重新生成');
+        } else if (p && p.ok === false && p.status !== 'pending') {
+          clearInterval(offBindTimer);
+          offBindSetStatus('轮询失败：' + (p.error || '未知'));
+        }
+      } catch { /* 网络抖一下就继续轮 */ }
+    }, 2000);
+  } catch (e) {
+    offBindSetStatus('生成失败：' + e.message);
+  }
+}
+
+function renderBindResult(p) {
+  const out = document.getElementById('offBindResult');
+  if (!out) return;
+  const masked = String(p.secret || '').replace(/.(?=.{4})/g, '•');
+  out.innerHTML = `
+    <div>AppID：<b>${p.appid}</b></div>
+    <div>密钥：<code>${masked}</code>（只显示这一次）</div>
+    <div style="margin-top:8px"><button class="btn" id="offBindApply">写入配置</button>
+    <span class="meta" id="offBindApplyMsg"></span></div>`;
+  const btn = document.getElementById('offBindApply');
+  if (btn) {
+    btn.dataset.appid = p.appid;
+    btn.dataset.secret = p.secret;
+    btn.addEventListener('click', async () => {
+      const r = await api('/api/official/bind/apply', 'POST', {
+        appid: btn.dataset.appid, secret: btn.dataset.secret
+      });
+      const msg = document.getElementById('offBindApplyMsg');
+      if (msg) msg.textContent = r && r.ok ? (r.note || '已写入') : ('失败：' + ((r && r.error) || '未知'));
+    });
+  }
 }
 
 // ── 手机设备（0.4.107）──────────────────────────────────────────
@@ -8517,5 +8626,14 @@ if ('serviceWorker' in navigator) {
     const open = n?.classList.toggle('open');
     e.currentTarget.textContent = open ? '收起 ▴' : '全部功能 ▾';
   });
+  document.getElementById('updateBarClose')?.addEventListener('click', () => {
+    const bar = document.getElementById('updateBar');
+    const txt = document.getElementById('updateBarText')?.textContent || '';
+    const ver = txt.split('→').pop().trim();
+    if (ver) localStorage.setItem('qqb_update_dismissed', ver);
+    if (bar) bar.hidden = true;
+  });
+  setTimeout(() => checkForUpdate(false), 1500);
+  document.getElementById('offBindStart')?.addEventListener('click', offBindStart);
   document.getElementById('mgHelpBtn')?.addEventListener('click', () => document.querySelector('.mg-side')?.classList.toggle('open'));
 </html>

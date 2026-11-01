@@ -22,6 +22,8 @@ import { handleRoleMapRoute } from './role-map-route.js';
 import { handleEnvironmentRoute } from './environment-route.js';
 import { handleGatewayAccountsRoute } from './gateway-accounts-route.js';
 import { handleDeviceAuthRoute } from './device-auth-route.js';
+import { handleOfficialBindRoute } from './official-bind-route.js';
+import { handleUpdateRoute } from './update-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -109,6 +111,12 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // 版本更新检查（0.4.114）
+  if (await handleUpdateRoute({ req, url, sendJson, deps: resolveDeps })) return true;
+
+  // 官方机器人扫码绑定（0.4.114）
+  if (await handleOfficialBindRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // GET /api/console/addresses —— 手机能用哪些地址连（0.4.111）
   if (req.method === 'GET' && url.pathname === '/api/console/addresses') {

@@ -157,6 +157,8 @@ const tests = [
   'test-lan-hosts.mjs',
   'test-access-guard.mjs',
   'test-official-retry.mjs',
+  'test-official-bind.mjs',
+  'test-update-check.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

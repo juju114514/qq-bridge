@@ -28,11 +28,17 @@ export const OFFICIAL_ERROR_HINTS = {
   40034006: '消息内容违规',
   40054007: '消息长度超限',
   50006: '消息内容为空',
-  22006: 'msg_type 与内容不匹配（发文本要用 0）',
-  // markdown
-  50056: '不允许发送 markdown content',
-  304036: '没有 markdown 模板权限',
+  // markdown（码表来自官方「发送群聊消息 / 发送单聊消息」两页）
+  22006: 'msg_type 与内容不匹配（发 markdown 时 content 必须为空）',
+  40034008: 'markdown 参数里有空值',
+  40034009: 'markdown 参数里有换行符',
+  40034011: '无效的 markdown 内容',
+  40034124: 'markdown 消息参数错误',
   40034127: '没有 markdown 模板权限',
+  304036: '没有 markdown 模板权限（频道场景需要内邀）',
+  40054010: '不允许发送 URL（群里链接太多会被拦）',
+  40054018: '消息过长或异常',
+  40054007: '消息长度超限',
   // 凭据
   100016: 'AppID/AppSecret 不正确（拿 token 就失败了）',
   100017: 'access_token 与 AppID 不匹配'
@@ -48,6 +54,12 @@ export const NO_RETRY_CODES = new Set([
 
 /** 这个码表示"大概已经发过了"，应当当成功处理，绝不能继续重试 */
 export const DUPLICATE_CODE = 40054005;
+
+/**
+ * 官方两张码表里**查不到**的码。
+ * 只是留档：不要用它们驱动降级/重试逻辑（来路不明的码最容易被误判）。
+ */
+export const UNVERIFIED_CODES = new Set([50056, 11241, 11244, 304003, 304023, 22009, 100017]);
 
 /**
  * 判定一次响应到底算不算成功。
