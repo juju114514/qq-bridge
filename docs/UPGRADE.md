@@ -54,6 +54,28 @@ Copy-Item D:\qq-bridge\config.json "$env:TEMP\config-backup-$ts.json"
 
 ## 四、按版本的动作清单
 
+### 0.4.107 → 0.4.121（2026-11-01 ~ 11-02）—— 没有破坏性变更，但有 4 个新配置项
+
+**必须做的**：同步 `src/` `public/` `scripts/`（新增 31 个文件，缺了就启动即崩），然后重启。
+
+**可选的新配置**（不写就用默认值，都能跑）：
+
+| 配置 | 默认 | 作用 |
+| --- | --- | --- |
+| `official.markdown` | `false` | 官方通道用 markdown 发消息（开了才有标题/加粗/列表） |
+| `t2i.enabled` | `false` | 长文本自动转图片；需要先跑 `scripts/t2i-sidecar.ps1` 起渲染侧车 |
+| `t2i.threshold` | `150` | 超过多少字转图 |
+| `gateway.configDir` | 空 | 网关多账号面板要读 SnowLuma 的 `config/` |
+| `security.deviceAuth` | `off` | `warn` 只记日志 / `enforce` 强制手机端签名 |
+
+**新增的三个东西**（不装也能跑，装了更好用）：
+
+1. **绿色整合包**：`node scripts/build-portable.mjs` → `dist/qq-bridge-portable-*.zip`（自带 Node）
+2. **下载页**：`node scripts/build-download-page.mjs` → `dist/download.html`
+3. **t2i 侧车**：`powershell -File scripts/t2i-sidecar.ps1`（常驻 headless Edge，端口 9222）
+
+**升级后自检**：`node scripts/test-audit.mjs` 应该 `174/174`；控制台首页能看到「版本更新」横幅（有新版时）。
+
 ### 0.4.x（2026-10-31）—— 没有破坏性变更，但有一条安全修复必须升
 
 | 版本 | 你要做什么 |

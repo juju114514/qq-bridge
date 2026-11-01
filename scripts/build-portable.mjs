@@ -132,6 +132,13 @@ if (fs.existsSync(nm)) {
   console.log('  ⚠ 仓库里没有 node_modules，包里会缺依赖（先 npm i / pnpm i）');
 }
 
+// ── 排错程序.exe（GUI 入口，比 cmd 友好）──
+const guiExe = path.join(ROOT, '\u6392\u9519\u7a0b\u5e8f.exe');
+if (fs.existsSync(guiExe)) {
+  fs.copyFileSync(guiExe, path.join(stage, '\u6392\u9519\u7a0b\u5e8f.exe'));
+  console.log('  \u2713 \u5df2\u5e26\u4e0a \u6392\u9519\u7a0b\u5e8f.exe\uff08GUI \u5165\u53e3\uff09');
+}
+
 // ── 配置 ──
 const example = path.join(ROOT, 'config.example.json');
 const cfg = JSON.parse(fs.readFileSync(example, 'utf8').replace(/^\uFEFF/, ''));

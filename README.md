@@ -3,18 +3,16 @@
 > **想参与或报告问题？** → [CONTRIBUTING.md](CONTRIBUTING.md)（分支/测试/PR 流程）· [SECURITY.md](SECURITY.md)（漏洞怎么私下报）
 > **维护模式（2026-10-31 起）**：本仓库**独立维护**，不以「追平上游」为目标。上游只作为安全与技术情报来源，有价值的修复按 [docs/UPSTREAM-SECURITY-REGISTER.md](docs/UPSTREAM-SECURITY-REGISTER.md) 登记后**定向移植**。
 
-> 🔧 **Official 通道（QQ 官方机器人）正在调试与维修**：代码已修完审计的 3 个缺口（0.4.29），
-> 真机 e2e 正在做，**预计 3~5 天内更新**（2026-11-03 前）。**期间建议先等一等**，不必急着启用。
-> 状态 🔒 上锁 + 🧪 EXPERIMENTAL（未验证）。原因、时间窗、解锁条件与**免责声明**见 [LOCK.md](LOCK.md)。
-> 后续开发在分仓库 [qq-bridge-official](https://github.com/juju114514/qq-bridge-official)，**验证完一次性合并回本仓库**（不做零散提交）。
-> **踩到报错先看这个** → [docs/guides/OFFICIAL-TROUBLESHOOTING.md](docs/guides/OFFICIAL-TROUBLESHOOTING.md)：
-> 实测过的 8 类报错（两层白名单、not-friend、被动回复窗口、鉴权、去重…）逐条给了调整办法。
-> **仍然上锁、仍然不合并**：本文档只解决「配置/白名单/窗口」，不代表官方通道已验证可用。
+> ✅ **Official 通道（QQ 官方机器人）已验证可用**（2026-11-02）：
+> 群 @ / 单聊收发、**markdown 渲染**（标题/加粗/列表/引用/链接）、图片、主动消息 + 频控账本、
+> **扫码绑定**（不用手抄 AppID/Secret，手机扫一次即得）、429 退避重试、被动回复配额按群/单聊分别记账。
+> 踩到报错先看 [docs/guides/OFFICIAL-TROUBLESHOOTING.md](docs/guides/OFFICIAL-TROUBLESHOOTING.md)。
+> 仍在打磨的部分：语音/视频发送、按钮交互、频道（guild）场景。
 > **只锁仓库口径，不锁本地运行**：个人号通道、插件模式、控制台、记忆全部不受影响。
-> **双击就能用**：根目录 `排错程序.exe`（GUI，12 个按钮：体检/日志/自检/检查更新/网关扫码/停止…）。
-> **插件形态已提交 DSH 插件市场**（PR [#10986](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/10986)）：
+> **双击就能用**：根目录 `排错程序.exe`（GUI，按钮式：体检/日志/自检/检查更新/网关扫码/停止…）。
+> **插件形态已提交 DSH 插件市场**（PR [#10986](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/10986)），
 > 收录后可直接 `dsh plugin add github:juju114514/qq-bridge#path:/plugin` 安装，见 [plugin/](plugin/)。
-> ⚠️ 你若自行启用官方通道，**风险自负**；本项目按 MIT「现状」提供，作者不承担使用后果。
+
 
 > **这是个人增强分支（fork）**：在上游 `qq-bridge` 基础上加了攻略模板、点歌/唱歌/说话、斗图、
 > 点赞、发动态、人格卡、守护进程等能力，改动清单见 [FORK.md](FORK.md)。
@@ -40,6 +38,17 @@
 > `已对 agent 应用工具白名单`、`agent 已建：preset=qq-chat-v2`。
 > 桥接模式（路线 A）本来就有这层边界，见 `docs/guides/SECURITY_BASELINE.md`。
 
+
+## 三种安装方式（按你的情况选）
+
+| 方式 | 适合谁 | 怎么装 |
+| --- | --- | --- |
+| **绿色整合包** `qq-bridge-portable-*.zip`（约 43 MB） | 绝大多数人 | 解压 → 双击 `启动.cmd` → 浏览器开 `http://127.0.0.1:3100`。**不用装 Node、不用开命令行** |
+| **手机 APK** `QQ桥接-*.apk`（约 4 MB） | 只想用手机管 | 装 APK → 电脑控制台「调试与运维 → 手机设备 → 显示连接二维码」→ 手机扫一下 |
+| **源码** | 想改代码 / 部署到服务器 | `git clone` → `npm i` → `node src/bridge.js` |
+
+> 绿色包自带 `node.exe` 与全部依赖（已扁平化，无符号链接），解压即用；
+> 里含 `排错程序.exe`（GUI 入口）与 `说明.txt`（三步上手 + 手机怎么连 + 常见问题）。
 
 ## 下载（国内加速）
 
@@ -267,7 +276,7 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 
 ## 版本怎么看
 
-> 📌 **文档版本：0.4.120**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
+> 📌 **文档版本：0.4.121**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
 > 有守卫 `check-readme-version.mjs` 校验它和代码是否一致。）
 
 
@@ -279,6 +288,17 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 > 想知道两个版本之间改了什么：`git log v0.4.26..v0.4.84 --oneline`（换成你想比的两端）。
 
 ## 最近更新
+
+### 2026-11-02：官方通道打通 + 手机端 + 长文本转图（0.4.85 → 0.4.121）
+
+- **官方通道**：扫码绑定（AES-256-GCM 解密）、markdown 渲染（按 err_code 自动降级纯文本）、
+  429 退避重试（重试换 `msg_seq` 防去重）、单聊被动配额修正为 4 条/60 分钟、错误码表订正
+- **手机端**：手机版页面（六个大按钮）+ 可安装 PWA、二维码改编局域网地址、窄屏排版折叠
+- **安全**：设备配对 + HMAC 请求签名、控制台限流（12 次/分钟 → 429）、访问审计 JSONL
+- **渲染**：长文本转图片（Edge headless + CDP 侧车，约 0.75 秒/张，失败自动回退纯文本）
+- **人格**：通道能力提示（让模型知道当前通道支不支持 markdown）、示例对话 few-shot
+- **分发**：绿色整合包（免装 Node）、下载页生成器、README 国内加速链接
+- **质量**：审计从 163 涨到 174 个脚本，全绿
 
 ### 2026-11-01：从"能跑"到"能自己起来、能自己说清状态"（0.4.27 → 0.4.84）
 

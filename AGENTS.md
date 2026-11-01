@@ -8,6 +8,26 @@
 > 给 **AI coding agent** 的入口文件。人类看 [README.md](README.md)。
 > 你（AI）被要求"装这个项目 / 修这个项目"时，**先读本文件**，再按需读链接。
 
+## 0.4.107~0.4.121 新增的模块（改之前先读这里）
+
+| 模块 | 职责 | 别踩 |
+| --- | --- | --- |
+| `src/device-auth.js` + `src/api/device-auth-route.js` | 设备配对、HMAC 请求签名、nonce 去重、吊销 | 签名 base 顺序固定：`method\npath\nts\nnonce\nbodyHash`，改了就两端同时改 |
+| `src/access-guard.js` | 控制台限流 + 访问审计（`state/access-log.jsonl`） | 限流是**单进程内存**，重启清零 |
+| `src/lan-hosts.js` | Host 白名单（回环 + 私有 IP + Tailscale `100.64/10`） | 只解决"能不能连上"，鉴权仍靠令牌/签名 |
+| `src/official-bind.js` + `src/api/official-bind-route.js` | 官方扫码绑定（q.qq.com 轮询 + AES-256-GCM 解密） | 轮询体是 `{task_id}`，不是 `{key}`；解密 `nonce=前12/tag=后16`，无 AAD |
+| `src/official-errors.js` | 官方错误码表 + 退避策略 + 结果分类 | **只用 err_code 判定**，别学上游匹配 message 字符串 |
+| `src/official-limits.js` | 被动回复配额（群 5/5min、单聊 4/60min）+ `ReplySeqTracker` | 重试必须 `msg_seq+1`，否则 40054005 去重 |
+| `src/md-to-qq-markdown.js` | 标准 markdown → QQ 子集（代码块去围栏、表格转列表、`---`→`***`） | 转换器只服务 markdown 出站；纯文本走 `md-to-plain.js` |
+| `src/t2i.js` `src/t2i-cdp.js` `src/t2i-send.js` `src/browser-detect.js` | 长文本转图片（Edge 优先；CDP 侧车 0.75s） | 桥接进程里 spawn Edge **会 exit 0 无产物**，必须走 CDP 侧车 |
+| `src/role-dialogues.js` | 人格「示例对话」解析 + few-shot 注入 | 从正文摘除，避免重复占预算；最多 6 行 |
+| `src/update-check.js` + `src/api/update-route.js` | GitHub Releases 版本检查（6 小时缓存） | 失败静默，不能影响控制台 |
+| `scripts/build-portable.mjs` | 绿色整合包（自带 node.exe、依赖扁平化） | 必须**扁平化** node_modules：直接拷 pnpm 符号链接会 305MB |
+| `scripts/build-download-page.mjs` | 下载页生成（APK + 绿色包 + SHA256） | `dist/` 是产物，守卫已跳过 |
+
+> 体积闸门：`src/bridge.js` 有 +50 行/次的增量上限。新功能请**优先拆独立模块**，
+> 把 bridge 里的接线压到 1~3 行（这个仓库已经这么干了 5 次）。
+
 ## 两件必须先读的事
 
 1. **兼容与适配**：环境/版本/协议对不上时，按 [COMPAT.md](COMPAT.md) 的「硬契约 + 适配步骤」改，
