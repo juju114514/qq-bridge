@@ -6,7 +6,7 @@
 //
 // 用法：
 //   node scripts/build-download-page.mjs
-//   node scripts/build-download-page.mjs --apk "C:\path\to\app.apk" --lanpan "https://wwxx.lanzou.com/xxxx"
+//   node scripts/build-download-page.mjs --apk <APK 路径> --lanpan <蓝奏云链接>
 //
 // 产物：dist/download.html（单文件，可直接丢到任何静态托管 / 蓝奏云笔记 / OSS）
 import fs from 'node:fs';

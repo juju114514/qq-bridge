@@ -11,6 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { findBrowser, screenshotArgs } from './browser-detect.js';
+import { renderHtmlViaCdp, probeCdp } from './t2i-cdp.js';
 
 const DEFAULT_WIDTH = 640;
 const MAX_WIDTH = 900;
@@ -114,8 +115,10 @@ export async function renderTextImage(text, {
 
 async function renderTextImageInner(text, { width, title, footer, timeoutMs, log, profileDir, workRoot }) {
   const browser = findBrowser();
-  if (!browser) {
-    log('[t2i] 没找到 Edge/Chrome，跳过转图');
+  const cdpBase = String(process.env.QQB_T2I_CDP || 'http://127.0.0.1:9222');
+  const cdpAlive = await probeCdp(cdpBase);
+  if (!browser && !cdpAlive) {
+    log('[t2i] 既没有浏览器也没有 CDP 侧车，跳过转图');
     return null;
   }
   const w = Math.max(320, Math.min(Number(width) || DEFAULT_WIDTH, MAX_WIDTH));
@@ -136,6 +139,16 @@ async function renderTextImageInner(text, { width, title, footer, timeoutMs, log
     const lines = String(text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 26)), 0);
     const height = Math.min(2400, 160 + lines * 27 + (title ? 46 : 0));
 
+    // ① 优先走常驻侧车（快、且不受"桥接里 spawn 不动"影响）
+    if (cdpAlive) {
+      const buf = await renderHtmlViaCdp(htmlFile, { width: w + 36, height, cdpBase, log });
+      if (buf && buf.length > 1024) {
+        log(`[t2i] CDP 渲染成功（${Math.round(buf.length / 1024)}KB）`);
+        return { buffer: buf, width: w + 36, height, browser: 'cdp' };
+      }
+      log('[t2i] CDP 没出图，退回 spawn');
+    }
+    if (!browser) return null;
     const result = await runBrowser(browser.exe, screenshotArgs({
       profileDir: profDir, outFile: pngFile, width: w + 36, height
     }).concat([`file:///${htmlFile.replace(/\\/g, '/')}`]), timeoutMs);

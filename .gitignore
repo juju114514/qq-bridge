@@ -33,3 +33,6 @@ pnpm-lock.yaml
 
 # 本机凭证目录（image-api.json 里是视觉 API key，绝不入库）
 config/
+
+# 构建产物（下载页里含 APK 哈希，每次构建都变）
+dist/

@@ -6,22 +6,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// 只用环境变量；缺了就返回空，让探测自然跳过（不写死盘符，换机器也不会指错）
+const PF = process.env.ProgramFiles || '';
+const PF86 = process.env['ProgramFiles(x86)'] || '';
+const LOCAL = process.env.LOCALAPPDATA || '';
+
+// 路径全部由环境变量拼出来：换机器/换盘符也能找到（portability 守卫也不允许写死盘符）
 const CANDIDATES = [
-  // Edge（系统自带）
+  // Edge（Windows 10/11 出厂自带，覆盖绝大多数用户）
   { name: 'edge', paths: [
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+    PF86 ? `${PF86}\\Microsoft\\Edge\\Application\\msedge.exe` : '',
+    PF ? `${PF}\\Microsoft\\Edge\\Application\\msedge.exe` : ''
   ] },
   // Chrome（装了才用）
   { name: 'chrome', paths: [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
+    `${PF}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${PF86}\\Google\\Chrome\\Application\\chrome.exe`,
+    LOCAL ? `${LOCAL}\\Google\\Chrome\\Application\\chrome.exe` : ''
   ] },
   // 其它 Chromium 系（有就用，flags 兼容性未逐一验证）
   { name: 'chromium-ish', paths: [
-    'C:\\Program Files (x86)\\Microsoft\\Edge Beta\\Application\\msedge.exe',
-    'C:\\Program Files\\Chromium\\Application\\chrome.exe'
+    `${PF86}\\Microsoft\\Edge Beta\\Application\\msedge.exe`,
+    `${PF}\\Chromium\\Application\\chrome.exe`
   ] }
 ];
 

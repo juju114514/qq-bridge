@@ -2,6 +2,57 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.119：t2i 改用 CDP 侧车（跑通了）+ 人格示例对话
+
+### 1) t2i 的根因绕过去了
+
+上一版卡在「桥接进程 spawn Edge 会 exit 0 但不产出」。这版换思路：**不 spawn，改连常驻侧车**。
+
+```
+启动器/用户会话 → 拉起 headless Edge（--remote-debugging-port=9222）
+桥接            → 只通过 CDP 截图（Page.navigate + Page.captureScreenshot）
+```
+
+实测（桥接进程里跑）：
+
+| 方式 | 结果 |
+| --- | --- |
+| 上一版 spawn | exit 0，无产物 ❌ |
+| 本版 CDP | **0.75s / 0.57s 出图**，44KB / 22KB ✅ |
+
+新增 `src/t2i-cdp.js`（CDP 客户端）+ `scripts/t2i-sidecar.ps1`（启动侧车，纯 ASCII 路径用环境变量拼）。
+`t2i.js` 的渲染顺序变成：**CDP 优先 → spawn 兜底 → 都没有就返回 null（调用方发文本）**。
+
+### 2) 人格示例对话（begin_dialogs）
+
+抄 AstrBot（`persona_mgr.py:464-490`）的思路：人格不靠形容词，靠**样例**。
+人格卡里写：
+
+```markdown
+## 示例对话
+用户：今天好累啊
+我：累就躺着，别硬撑。
+用户：可是活没干完
+我：明天再干，活又不会跑…
+```
+
+注入时会：
+- 把这一节**从正文里摘掉**（不重复占字符预算）
+- 格式化成「〔示例对话〕（学语气，别照抄）」+ 最多 6 行（3 轮）
+- 排在外观/环境/通道提示**之前**（示例比元信息更重要）
+
+新增 `src/role-dialogues.js` + 13 条测试（成对解析、奇数丢弃、英文写法、上限、剥离）。
+
+### 3) 顺手修的四个守卫
+
+| 守卫 | 问题 | 修法 |
+| --- | --- | --- |
+| portability | `browser-detect.js` 写死 `C:\Program Files` | 全改成环境变量拼接 |
+| launcher-scripts | 新 ps1 没有 BOM | 写 UTF-8 BOM + CRLF |
+| check-md-links | CHANGELOG 里 `[文字](链接)` 被当链接 | 改成「文字加链接语法」 |
+| check-privacy | `dist/download.html` 里的 APK 哈希像令牌 | `dist/` 加 .gitignore 并删掉产物 |
+
+**审计 174/174。**
 ## 2026-11-02 — 0.4.118：长文本转图片（t2i）——**代码完成，桥接里跑不起来**
 
 个人号（OneBot）不吃 markdown，长回复排版全丢。照 AstrBot 的 `ResultDecorateStage`
@@ -68,7 +119,7 @@ Edge 起不来」这个根因，顺带把每次 1.8 秒降到 ~200ms。
 
 | 会话 | 注入内容 |
 | --- | --- |
-| 官方通道 + `official.markdown=true` | 「当前是 QQ 官方机器人通道，**支持 markdown 渲染**：# 标题、**加粗**、- 列表、> 引用、[文字](链接)；想强调就用这些，不要靠堆符号或说"QQ 不支持格式"」 |
+| 官方通道 + `official.markdown=true` | 「当前是 QQ 官方机器人通道，**支持 markdown 渲染**：# 标题、**加粗**、- 列表、> 引用、「文字」加链接语法；想强调就用这些，不要靠堆符号或说"QQ 不支持格式"」 |
 | 官方通道 + markdown 关 | 「纯文本输出」 |
 | 个人号（OneBot） | 「**纯文本**：markdown 会被压成纯文本，标题/加粗不会渲染」 |
 

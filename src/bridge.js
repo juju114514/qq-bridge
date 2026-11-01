@@ -110,6 +110,7 @@ import { createBindSession } from './official-bind.js';
 import { createUpdateChecker } from './update-check.js';
 import { createOfficialTestSend } from './official-test-send.js';
 import { makeTextImageSegment } from './t2i-send.js';
+import { splitForPrompt } from './role-dialogues.js';
 import { warmUpT2i } from './t2i.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
@@ -5073,11 +5074,7 @@ async function main() {
       log(`发送内容包含会话令牌，已阻止发送 (${kind}:${id})`);
       throw new Error('发送内容包含会话令牌，已阻止发送');
     }
-    // 长文本转图（0.4.118）：判断/渲染/降级都在 t2i-send.js
-    if (!isOfficialId(id)) {
-      try { const seg = await makeTextImageSegment(rawMessage, cfg.t2i || {}, log, { profileDir: path.join(STATE_DIR, 't2i-profile'), workRoot: path.join(STATE_DIR, 't2i-tmp') }); if (seg) segments.push(seg); }
-      catch (error) { log(`[t2i] 转图失败，改发文本：${error?.message ?? error}`); }
-    }
+    if (!isOfficialId(id)) try { const seg = await makeTextImageSegment(rawMessage, cfg.t2i || {}, log, { profileDir: path.join(STATE_DIR, 't2i-profile'), workRoot: path.join(STATE_DIR, 't2i-tmp') }); if (seg) segments.push(seg); } catch (e) { log(`[t2i] 转图失败，改发文本：${e?.message ?? e}`); }
     if (!segments.some((s) => s.type === 'image')) segments.push({ type: 'text', data: { text: escapeCqText(rawMessage) } });
     // 官方通道：id 是 `official-<openid>`（openid 不是 QQ 号，Number(id) 会变 NaN）。
     // 文本直接走官方 API；@ 降级成 "@名字" 文字（官方 @ 需要 tiny_id，另议）。
@@ -7390,7 +7387,10 @@ async function main() {
   function roleHintForMode(mode, key) {
     const selected = selectRoleText(roleRawContent(key), mode, [...roleActiveNeedTags]);
     if (!selected) return '';
-    const body = selected.length > roleInjectMaxChars ? truncateText(selected, roleInjectMaxChars) : selected;
+    // 示例对话（0.4.119）：摘出「## 示例对话」节，按样例注入
+    const split = splitForPrompt(selected, String(readRoleState()?.name || '').trim());
+    const dialogueBlock = split.block;
+    const body = split.body.length > roleInjectMaxChars ? truncateText(split.body, roleInjectMaxChars) : split.body;
     // 外观照片（0.4.97）：只注入一句话描述，不塞图（一张图 ≈ 上千 token，每轮都发会烧钱）
     let appearance = '';
     try { const r = String(readRoleState()?.role ?? ''); if (r) appearance = appearancePromptLine(readRoleAppearance(path.join(STATE_DIR, 'role-images'), r)); } catch { /* 读不到就不加 */ }
@@ -7400,7 +7400,7 @@ async function main() {
     // 通道能力（0.4.117）：官方通道支持 markdown，但模型默认以为"QQ 不支持格式"，
     // 会主动说"发出来就是一堆星号"。这一行把真实能力告诉它，它才敢用。
     const channelLine = channelCapabilityLine(key);
-    const extra = [appearance, envLine, channelLine].filter(Boolean).join('\n');
+    const extra = [dialogueBlock, appearance, envLine, channelLine].filter(Boolean).join('\n');
     return extra ? `${body}\n\n${extra}` : body;
   }
   /**
