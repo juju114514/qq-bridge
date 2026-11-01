@@ -1131,8 +1131,9 @@ tr:last-child td {
   }
   #mainNav {
     display:flex;
-    gap:5px;
-    overflow-x:auto;
+    flex-wrap:wrap;
+    gap:6px;
+    overflow-x:visible;
     padding-bottom:6px
   }
   .nav-label,.sidebar-bottom,.nav-icon,.nav-note,.nav-count {
@@ -1772,6 +1773,28 @@ button:active:not(:disabled) {
     .m-grid { grid-template-columns:1fr }
     .m-btn { min-height:72px; font-size:16px }
   }
+
+  /* 窄屏修整（0.4.112） */
+  .mg-help-btn { display:none }
+  @media (max-width: 760px) {
+    .mg-body { grid-template-columns: 1fr !important; }
+    #mgCanvas { height: 340px !important; }
+    .mg-side { max-height: none !important; display: none; }
+    .mg-side.open { display: block; }
+    .mg-help-btn { display: inline-flex; }
+    .nav-item { font-size: 13px !important; padding: 8px 10px !important; }
+    /* 导航别把首屏吃掉：默认两行，点「全部功能」展开 */
+    #mainNav { max-height: 92px; overflow: hidden; position: relative; }
+    #mainNav.open { max-height: none; }
+  }
+    #mainNav:not(.open)::after {
+      content: '';
+      position: absolute; left: 0; right: 0; bottom: 0; height: 16px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.92));
+      pointer-events: none;
+    }
+  .nav-more { display: none }
+  @media (max-width: 760px) { .nav-more { display: inline-flex } }
 </style>
 <script src="/vendor/qrcode.min.js" defer></script>
 </head>
@@ -1813,6 +1836,7 @@ button:active:not(:disabled) {
         <button data-view="official" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>官方通道</button>
         <button data-view="report" class="nav-item"><span class="nav-icon" aria-hidden="true">▦</span>运行报告</button>
       </nav>
+      <button class="nav-more" id="navMore" type="button">全部功能 ▾</button>
     <div class="sidebar-bottom"><span class="local-dot"></span>本地控制台<small>QQ ↔ DeepSeek Harness</small></div>
   </aside>
   <div class="workspace">
@@ -2789,6 +2813,10 @@ button:active:not(:disabled) {
       </select>
     </div>
     <div id="devQrBox" style="display:none;margin-top:10px;text-align:center">
+      <div class="row" style="justify-content:center;gap:8px;margin-bottom:8px">
+        <span class="meta">手机连接地址</span>
+        <select id="devQrHost" style="flex:0 1 320px"></select>
+      </div>
       <div id="devQrCanvas" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
       <div class="meta" id="devQrText" style="margin-top:6px"></div>
     </div>
@@ -3053,16 +3081,17 @@ button:active:not(:disabled) {
             <label style="font-size:12px;opacity:.85"><input id="mgShowAtoms" type="checkbox" checked style="vertical-align:middle"> 记忆层</label>
             <button class="btn" id="mgRefresh" type="button">刷新</button>
             <button class="btn" id="mgRelayout" type="button">重新布局</button>
+            <button class="btn mg-help-btn" id="mgHelpBtn" type="button">图例</button>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px">
+        <div class="mg-body" style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px">
           <div style="position:relative;background:radial-gradient(circle at 50% 40%,#101a2b 0%,#0a1120 70%);border:1px solid #1e2b45;border-radius:10px;overflow:hidden">
             <canvas id="mgCanvas" style="display:block;width:100%;height:520px;cursor:grab"></canvas>
             <div id="mgTip" style="position:absolute;pointer-events:none;background:rgba(10,16,28,.95);border:1px solid #2a3b5c;border-radius:8px;padding:6px 9px;font-size:12px;color:#dbe6ff;max-width:320px;display:none"></div>
             <div id="mgEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7f8ea8;font-size:13px">点击「刷新」加载记忆</div>
             <div id="mgChips" style="position:absolute;left:8px;bottom:8px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 16px)"></div>
           </div>
-          <div style="border:1px solid #1e2b45;border-radius:10px;padding:10px;font-size:12px;color:#c8d4ea;overflow:auto;max-height:540px">
+          <div class="mg-side" style="border:1px solid #1e2b45;border-radius:10px;padding:10px;font-size:12px;color:#c8d4ea;overflow:auto;max-height:540px">
             <div style="opacity:.7;margin-bottom:6px">选中记忆</div>
             <div id="mgDetail" style="white-space:pre-wrap;line-height:1.6">（点一个星点看详情）</div>
             <hr style="border:none;border-top:1px solid #1e2b45;margin:10px 0">
@@ -3701,11 +3730,28 @@ async function showDeviceQr() {
   // 令牌来源：地址栏 ?token= → localStorage（控制台改过令牌时存在这里）
   const tok = new URLSearchParams(location.search).get('token') || localStorage.getItem('consoleToken') || '';
   if (!tok) { if (text) text.textContent = '当前地址里没有令牌，生成不了二维码'; return; }
-  const payload = 'qqbridge://pair?url=' + encodeURIComponent(location.origin) + '&token=' + encodeURIComponent(tok);
+
+  // 地址不能直接用 location.origin：如果控制台是 http://127.0.0.1 打开的，
+  // 二维码里就会是 127.0.0.1 —— 手机扫了连的是**手机自己**（ERR_CONNECTION_REFUSED）。
+  const sel = document.getElementById('devQrHost');
+  let bases = [];
+  try {
+    const r = await api('/api/console/addresses');
+    bases = (r && r.hosts) || [];
+  } catch { bases = []; }
+  if (!bases.length) bases = [location.origin.replace('127.0.0.1', 'localhost')];
+  if (sel) {
+    const keep = sel.value || '';
+    sel.innerHTML = bases.map((u) => `<option value="${u}">${u}</option>`).join('');
+    if (keep && bases.includes(keep)) sel.value = keep;
+    else sel.value = bases[0];
+  }
+  const base = (sel && sel.value) || bases[0];
+  const payload = 'qqbridge://pair?url=' + encodeURIComponent(base) + '&token=' + encodeURIComponent(tok);
   holder.innerHTML = '';
   try {
     new QRCode(holder, { text: payload, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
-    if (text) text.textContent = location.origin + '（手机扫完自动连接，不用手抄令牌）';
+    if (text) text.textContent = base + '（手机扫完自动连接；换地址就换上面那个下拉）';
   } catch (e) {
     if (text) text.textContent = '生成失败：' + e.message;
   }
@@ -3754,6 +3800,7 @@ function bindDevicePanel() {
     btn.dataset.bound = '1';
     btn.addEventListener('click', issuePairingCode);
     document.getElementById('devQrBtn')?.addEventListener('click', showDeviceQr);
+    document.getElementById('devQrHost')?.addEventListener('change', showDeviceQr);
     document.getElementById('deviceAuthMode')?.addEventListener('change', async (e) => {
       const r = await api('/api/auth/mode', 'POST', { mode: e.target.value });
       if (r && r.ok) loadDevices(); else alert((r && r.error) || '设置失败');
@@ -8465,4 +8512,10 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </body>
+  document.getElementById('navMore')?.addEventListener('click', (e) => {
+    const n = document.getElementById('mainNav');
+    const open = n?.classList.toggle('open');
+    e.currentTarget.textContent = open ? '收起 ▴' : '全部功能 ▾';
+  });
+  document.getElementById('mgHelpBtn')?.addEventListener('click', () => document.querySelector('.mg-side')?.classList.toggle('open'));
 </html>

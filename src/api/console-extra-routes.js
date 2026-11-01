@@ -110,6 +110,17 @@ export async function handleExtraRoutes(ctx = {}) {
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
+  // GET /api/console/addresses —— 手机能用哪些地址连（0.4.111）
+  if (req.method === 'GET' && url.pathname === '/api/console/addresses') {
+    let hosts = [];
+    try {
+      const d = typeof resolveDeps === 'function' ? (resolveDeps() || {}) : (resolveDeps || {});
+      hosts = typeof d.consoleAddresses === 'function' ? d.consoleAddresses() : [];
+    } catch { hosts = []; }
+    sendJson({ ok: true, hosts });
+    return true;
+  }
+
   // 设备配对 / 签名（0.4.107）
   if (await handleDeviceAuthRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 

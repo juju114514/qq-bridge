@@ -4476,6 +4476,28 @@ async function main() {
               searchCity: (q) => getEnvRuntime().searchCity(q),
               areaChildren: (code) => areaTree.children(code || ''),
               detectIpCity: () => getEnvRuntime().detectIpCity(),
+              // 控制台可被手机访问的地址（0.4.111）：二维码里必须用它，不能用 127.0.0.1
+              consoleAddresses: () => {
+                const port = Number(cfg.consolePort ?? 3100);
+                const out = [];
+                try {
+                  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+                    for (const info of Array.isArray(list) ? list : []) {
+                      const v4 = info && (info.family === 'IPv4' || info.family === 4) && !info.internal;
+                      const ip = String(info?.address || '');
+                      if (v4 && ip && !out.includes(`http://${ip}:${port}`)) out.push(`http://${ip}:${port}`);
+                    }
+                  }
+                } catch { /* 拿不到网卡就只给回环 */ }
+                try {
+                  for (const h of (cfg.consoleHosts || [])) {
+                    const host = String(h).replace(/:\d+$/, '');
+                    const u = `http://${host}:${port}`;
+                    if (host && !out.includes(u)) out.push(u);
+                  }
+                } catch { /* ignore */ }
+                return out;
+              },
               // 网关多账号（0.4.106）：看每个号的注入状态，并把桥接指向其中一个
               // 设备配对（0.4.107）
               deviceStore, pairingCodes,
