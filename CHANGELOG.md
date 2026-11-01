@@ -38,6 +38,59 @@
 ### 说明
 
 这两处都在 `public/console.html` 的响应式部分，**不改 APK**——手机下拉刷新就生效。
+## 2026-11-02 — 0.4.111 + APK 0.5.x：二维码地址修正、手机端排版、WebView 视口
+
+### 1) 二维码里不能再是 127.0.0.1（0.4.111）
+
+用户在手机上扫码后报 `ERR_CONNECTION_REFUSED`——因为控制台是用 `http://127.0.0.1:3100`
+打开的，二维码里就编了 127.0.0.1，而**在手机上 127.0.0.1 指的是手机自己**。
+
+新增 `GET /api/console/addresses` 返回本机所有局域网地址：
+```
+http://192.168.1.2:3100   http://192.168.56.1:3100   http://172.30.16.1:3100
+```
+二维码上方加了下拉，默认选第一个局域网地址。
+
+### 2) 手机端排版（0.4.112）
+
+- 顶部导航：`overflow-x:auto` 单行横滑 → 换行；再收成**两行 + 渐隐 + 「全部功能 ▾」**
+- 记忆星图：窄屏单列、canvas 520→340px、图例默认收起（点「图例」展开）
+
+### 3) APK：卡死界面 + 视口错位（0.4.0 ~ 0.5.2）
+
+| 版本 | 修了什么 |
+| --- | --- |
+| 0.4.0 | **☰ 悬浮设置**（重新加载/换服务器/复制地址）；加载失败改用**原生错误页**；载入前 3 秒探活 `/health` |
+| 0.5.0 | 连接前判断网络类型：移动数据 + 192.168.x → 弹窗提醒；错误页显示"当前网络" |
+| 0.5.1 | **关掉 `setUseWideViewPort` / `setLoadWithOverviewMode`** |
+| 0.5.2 | 支持 `qqbridge://` deep link（系统相机扫码也能直接开） |
+
+### 4) 视口那个坑（最值得记）
+
+用户手机截图：整页**左右都被切掉、还偏到一边**。
+
+原因不是 CSS（Chrome 在 390 宽下 `scrollWidth == innerWidth`，无溢出），而是 WebView：
+
+```java
+s.setUseWideViewPort(true);        // 按桌面宽度(≈980px)排版
+s.setLoadWithOverviewMode(true);   // 再整体缩放
+```
+
+页面里有 `width=device-width` 的 viewport meta，两者叠加就变成"宽布局 + 缩放 + 偏移"。
+
+改成：
+```java
+s.setUseWideViewPort(false);
+s.setLoadWithOverviewMode(false);
+```
+真机尺寸（1080×2400 @420dpi）复测：导航两行、卡片满宽、无裁切。
+
+### 5) 测试方法（记一下，免得下次又踩）
+
+- MuMu 改分辨率：`adb shell wm size 1080x2400` + `wm density 420`，测完 `wm size reset`
+- 竖屏锁定：`settings put system user_rotation 0`
+- **`am start -d` 里的 `&` 会被吃掉**：验证 deep link 时要把 token 塞进 url 参数，
+  只用 `?url=<encode(含token的完整地址)>` 这种单参数形式
 ## 2026-11-02 — 0.4.110：控制台限流 + 访问审计 + 设备签名强制
 
 上公网/隧道之前的安全地基。
