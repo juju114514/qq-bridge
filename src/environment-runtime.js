@@ -154,5 +154,53 @@ export function createEnvironment({ cacheFile, configFile, getConfig, log = () =
     return environmentLine({ now: Date.now(), weather, tzOffsetMinutes: c.tzOffsetMinutes, cityName: c.cityName });
   }
 
-  return { getEnvironmentLine, refreshWeather, searchCity, config, setConfig, cacheFile, configFile };
+
+  /** 按公网 IP 猜城市（国内源 ipip.net，退路 ip.sb）。返回 {ip, province, city, source} */
+  async function detectIpCity() {
+    const grab = async (url, asJson, attempt = 0) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      try {
+        const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'curl/8.5.0' } });
+        if (!res.ok) return null;
+        return asJson ? await res.json() : await res.text();
+      } catch (error) {
+        // 首次请求常因 DNS/代理预热失败：重试一次再放弃
+        if (attempt < 1) {
+          await new Promise((r) => setTimeout(r, 400));
+          return grab(url, asJson, attempt + 1);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    // 1) ipip.net：文本「当前 IP：1.2.3.4  来自于：中国 新疆 乌鲁木齐  移动」
+    try {
+      const text = await grab('https://myip.ipip.net', false);
+      if (text) {
+        const ip = (/当前 ?IP[:：]\s*([^\s]+)/.exec(text) || [])[1] || '';
+        const m = /来自于[:：]\s*([^\n]+)/.exec(text);
+        if (m) {
+          // 形如「中国 新疆 乌鲁木齐  移动」→ 先去掉国名，剩下 [省, 市, 运营商]
+          const parts = String(m[1]).trim().split(/\s+/).filter((x) => x && x !== '中国' && x !== 'China');
+          const province = parts[0] || '';
+          const city = parts[1] || parts[0] || '';
+          if (city) return { ip, province, city, source: 'ipip.net' };
+        }
+      }
+    } catch (error) {
+      log(`[env] ipip 定位失败：${error?.message ?? error}`);
+    }
+    // 2) ip.sb（英文，可能和真实位置不一致）
+    try {
+      const j = await grab('https://api.ip.sb/geoip', true);
+      if (j && j.city) return { ip: String(j.ip || ''), province: String(j.region || ''), city: String(j.city), source: 'ip.sb' };
+    } catch (error) {
+      log(`[env] ip.sb 定位失败：${error?.message ?? error}`);
+    }
+    return null;
+  }
+
+  return { getEnvironmentLine, refreshWeather, searchCity, detectIpCity, config, setConfig, cacheFile, configFile };
 }

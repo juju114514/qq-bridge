@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**122** 条（34 个文件）
+- 已搬进模块：**125** 条（34 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（6 条）
@@ -30,11 +30,14 @@
 | ANY | `/api/socialV2/dead-letter` | createDeadLetterHandler |
 | ANY | `/api/socialV2/dead-letter/requeue` | createDeadLetterHandler |
 
-## src/api/environment-route.js（1 条）
+## src/api/environment-route.js（4 条）
 
 | 方法 | 路径 | handler |
 |---|---|---|
 | ANY | `/api/environment` | handleEnvironmentRoute |
+| ANY | `/api/environment/areas` | handleEnvironmentRoute |
+| ANY | `/api/environment/detect` | handleEnvironmentRoute |
+| ANY | `/api/environment/resolve` | handleEnvironmentRoute |
 
 ## src/api/inject.js（1 条）
 
@@ -302,5 +305,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4356 |
-| ANY | `/api/tokens/` | L4356 |
+| ANY | `/api/tokens/summary` | L4359 |
+| ANY | `/api/tokens/` | L4359 |

@@ -102,6 +102,7 @@ import { captureReply as captureQzoneDraft } from './qzone-draft.js';
 import { readRoleAppearance, appearancePromptLine } from './role-image.js';
 import { listPlannedMarkers } from './restart-classify.js';
 import { createEnvironment } from './environment-runtime.js';
+import { createAreaTree } from './area-tree.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -224,6 +225,8 @@ const QZONE_DRAFT_FILE = path.join(STATE_DIR, 'qzone-draft.json');
 const HEARTBEAT_FILE = path.join(STATE_DIR, 'heartbeat.json');
 // 环境感知（0.4.103）：时间 + 天气，注入提示词一行
 let envRuntime = null;
+// 行政区三级树（0.4.105）：省 → 地级市 → 区县，供控制台级联选择
+const areaTree = createAreaTree({ cacheFile: path.join(STATE_DIR, 'area-cache.json'), log });
 function getEnvRuntime() {
   if (!envRuntime) envRuntime = createEnvironment({
   cacheFile: path.join(STATE_DIR, 'weather-cache.json'),
@@ -4419,6 +4422,9 @@ async function main() {
             refreshEnvironment: () => refreshEnvLine(),
             getEnvConfig: () => getEnvRuntime().config(),
               searchCity: (q) => getEnvRuntime().searchCity(q),
+              areaChildren: (code) => areaTree.children(code || ''),
+              detectIpCity: () => getEnvRuntime().detectIpCity(),
+              areaFindPath: (name) => areaTree.findPath(name),
               setEnvConfig: (patch) => getEnvRuntime().setConfig(patch),
             listPlannedRestarts: () => listPlannedMarkers(path.join(STATE_DIR, 'planned-restarts.jsonl')),
             restoreConversation: (key, patch) => { const st = socialV2.conversations.get(key) || { key, wakeConfig: { mode: 'diving', infinite: true, triggers: {} }, recentMessages: [], unread: [] }; if (Array.isArray(patch.recentMessages)) st.recentMessages = patch.recentMessages; if (Array.isArray(patch.unread)) st.unread = patch.unread; socialV2.conversations.set(key, st); saveSocialV2State(); return { key, recent: st.recentMessages.length, unread: st.unread.length }; },

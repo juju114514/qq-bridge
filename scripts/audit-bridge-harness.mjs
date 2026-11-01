@@ -273,6 +273,8 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     createRuntime,
     // 环境感知（0.4.104）：bridge 顶层会建这个工厂，VM 里必须能拿到名字
     createEnvironment: () => ({ getEnvironmentLine: async () => '', refreshWeather: async () => null, searchCity: async () => [], config: () => ({}), setConfig: () => ({}) }),
+    // 行政区三级树（0.4.105）：bridge 顶层会建这个工厂
+    createAreaTree: () => ({ children: async () => [], findPath: async () => [] }),
     atomicWriteJson, atomicWriteText, renameWithRetry,
     capturePendingStickers, rememberMessageMedia,
     runSocialIncomingStage,

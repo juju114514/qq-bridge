@@ -1942,14 +1942,17 @@ button:active:not(:disabled) {
           <div class="meta">给模型一句「现在几点、外面什么天气」。天气会失败——拿不到就只给时间，不会编。</div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
             <label style="flex:0 0 auto"><input type="checkbox" id="envEnabled" checked> 启用</label>
-            <input type="text" id="envCityQuery" placeholder="输入城市名，如 杭州" style="flex:0 1 160px">
-            <button id="envSearch">搜索</button>
-            <select id="envStation" style="flex:0 1 220px"><option value="">（先搜索）</option></select>
+            <select id="envProvince" style="flex:0 1 110px"><option value="">省…</option></select>
+            <select id="envCity" style="flex:0 1 120px"><option value="">市…</option></select>
+            <select id="envCounty" style="flex:0 1 120px"><option value="">区/县…</option></select>
+            <input type="text" id="envCityQuery" placeholder="或直接搜：乌鲁木齐" style="flex:0 1 140px">
+            <select id="envStation" style="flex:0 1 150px"><option value="">（站点）</option></select>
+            <button id="envLocate">按IP定位</button>
             <button id="envSave">保存并刷新</button>
             <button id="envRefresh">刷新</button>
           </div>
           <div class="meta" id="envLine" style="margin-top:6px">（还没读到）</div>
-          <div class="meta">数据源：<b>中国气象局</b>（weather.cma.cn，实况 + 今日高低温）。搜城市 → 选站点 → 保存；没选站点就只有时间，不会编天气。</div>
+          <div class="meta">数据源：<b>中国气象局</b>（实况 + 今日高低温）。选「省 → 市 → 区/县」自动解析站点；也可直接输入名字（输入即搜）。「按IP定位」可能被代理误导，定完核对再保存。</div>
         </div>
       </details>
 
@@ -3511,6 +3514,106 @@ function bindRoleMap() {
 }
 
 // ── 环境感知（0.4.103）──────────────────────────────────────────
+// ── 三级级联 + IP 定位（0.4.105）────────────────────────────────
+async function loadAreaOptions(level, code) {
+  const map = { 1: 'envProvince', 2: 'envCity', 3: 'envCounty' };
+  const sel = document.getElementById(map[level]);
+  if (!sel) return [];
+  try {
+    const r = await api('/api/environment/areas' + (code ? '?code=' + encodeURIComponent(code) : ''));
+    const items = (r && r.items) || [];
+    const ph = level === 1 ? '省…' : (level === 2 ? '市…' : '区/县…');
+    sel.innerHTML = `<option value="">${ph}</option>` + items.map((x) => `<option value="${x.code}" data-name="${x.name}">${x.name}</option>`).join('');
+    return items;
+  } catch {
+    sel.innerHTML = '<option value="">读取失败</option>';
+    return [];
+  }
+}
+
+async function onAreaChange(level) {
+  if (level === 1) {
+    await loadAreaOptions(2, document.getElementById('envProvince')?.value || '');
+    await loadAreaOptions(3, '');
+  } else if (level === 2) {
+    await loadAreaOptions(3, document.getElementById('envCity')?.value || '');
+  } else {
+    const name = document.getElementById('envCounty')?.selectedOptions?.[0]?.dataset?.name || '';
+    if (name) await resolveStationByName(name);
+  }
+}
+
+async function resolveStationByName(name) {
+  const st = document.getElementById('envStation');
+  if (!st) return;
+  st.innerHTML = '<option value="">解析中…</option>';
+  try {
+    const r = await api('/api/environment/resolve?name=' + encodeURIComponent(name));
+    const s = r && r.station;
+    st.innerHTML = s
+      ? `<option value="${s.id}" data-name="${s.name}" selected>${s.name}（${s.id}）</option>`
+      : '<option value="">没解析到站点</option>';
+  } catch {
+    st.innerHTML = '<option value="">解析失败</option>';
+  }
+}
+
+async function selectAreasByName(name) {
+  if (!name) return;
+  try {
+    const provinces = await loadAreaOptions(1, '');
+    const p = provinces.find((x) => name.includes(x.name)) || provinces[0];
+    if (!p) return;
+    const ps = document.getElementById('envProvince');
+    if (ps) ps.value = p.code;
+    const cities = await loadAreaOptions(2, p.code);
+    const city = cities.find((x) => x.name === name) || cities.find((x) => name.includes(x.name));
+    if (!city) return;
+    const cs = document.getElementById('envCity');
+    if (cs) cs.value = city.code;
+    const counties = await loadAreaOptions(3, city.code);
+    const county = counties.find((x) => x.name === name);
+    const cos = document.getElementById('envCounty');
+    if (county && cos) cos.value = county.code;
+  } catch { /* 回填失败不影响直接保存 */ }
+}
+
+async function locateByIp() {
+  const msg = document.getElementById('envLine');
+  try {
+    const r = await api('/api/environment/detect');
+    if (!r || !r.ok) { if (msg) msg.textContent = '定位失败：' + ((r && r.error) || '未知'); return; }
+    if (r.city) {
+      const q = document.getElementById('envCityQuery');
+      if (q) q.value = r.city;
+      await selectAreasByName(r.city);
+    }
+    if (r.station) {
+      const st = document.getElementById('envStation');
+      if (st) st.innerHTML = `<option value="${r.station.id}" data-name="${r.station.name}" selected>${r.station.name}（${r.station.id}）</option>`;
+    }
+    if (msg) msg.textContent = `IP 定位：${r.ip || '?'} → ${r.province || ''}${r.city || ''}（代理/VPN 会影响，请核对再保存）`;
+  } catch (e) {
+    if (msg) msg.textContent = '定位失败：' + e.message;
+  }
+}
+
+async function searchEnvCity() {
+  const q = (document.getElementById('envCityQuery')?.value || '').trim();
+  const sel = document.getElementById('envStation');
+  if (!q || !sel) return;
+  sel.innerHTML = '<option value="">搜索中…</option>';
+  try {
+    const r = await api('/api/environment?q=' + encodeURIComponent(q));
+    const list = (r && r.candidates) || [];
+    sel.innerHTML = list.length
+      ? list.map((x) => `<option value="${x.id}" data-name="${x.name}">${x.name}（${x.id}）</option>`).join('')
+      : '<option value="">没搜到，换个写法试试</option>';
+  } catch {
+    sel.innerHTML = '<option value="">搜索失败</option>';
+  }
+}
+
 async function loadEnvironment() {
   const lineEl = document.getElementById('envLine');
   if (!lineEl) return;
@@ -3526,6 +3629,10 @@ async function loadEnvironment() {
     if (sel && cfg.stationId) {
       const name = city.name || cfg.stationId;
       sel.innerHTML = `<option value="${cfg.stationId}" data-name="${name}" selected>${name}（${cfg.stationId}）</option>`;
+    }
+    if (typeof loadAreaOptions === 'function') {
+      await loadAreaOptions(1, '');
+      if (city.name) await selectAreasByName(city.name);
     }
     lineEl.textContent = r.line ? '当前注入：' + r.line : '（当前没有注入：未启用或时间读取失败）';
   } catch (e) {
@@ -3553,12 +3660,14 @@ async function saveEnvironment() {
   const sel = document.getElementById('envStation');
   const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
   const stationId = sel ? sel.value : '';
-  const cityName = opt ? (opt.dataset.name || '') : '';
+  const countyName = document.getElementById('envCounty')?.selectedOptions?.[0]?.dataset?.name || '';
+  const cityName = (opt && opt.dataset.name) || countyName || '';
   const body = {
     enabled: Boolean(document.getElementById('envEnabled')?.checked),
-    stationId,
-    city: { name: cityName }
+    stationId
   };
+  // 名字为空就别覆盖（保留上次的城市名，否则注入行会显示成站点号）
+  if (cityName) body.city = { name: cityName };
   const r = await api('/api/environment', 'POST', body);
   const lineEl = document.getElementById('envLine');
   if (lineEl) lineEl.textContent = r && r.ok ? ('当前注入：' + (r.line || '（未启用）')) : ('保存失败：' + ((r && r.error) || '未知'));
@@ -3575,6 +3684,24 @@ function bindEnvironment() {
   if (save && !save.dataset.bound) {
     save.dataset.bound = '1';
     save.addEventListener('click', saveEnvironment);
+    save.dataset.eventsBound = '1';
+    document.getElementById('envProvince')?.addEventListener('change', () => onAreaChange(1));
+    document.getElementById('envCity')?.addEventListener('change', () => onAreaChange(2));
+    document.getElementById('envCounty')?.addEventListener('change', () => onAreaChange(3));
+    let envSearchTimer = null;
+    document.getElementById('envCityQuery')?.addEventListener('input', (e) => {
+      clearTimeout(envSearchTimer);
+      const q = (e.target.value || '').trim();
+      envSearchTimer = setTimeout(async () => {
+        await searchEnvCity();
+        await selectAreasByName(q);
+      }, 300);
+    });
+    document.getElementById('envStation')?.addEventListener('change', () => {
+      const nm = document.getElementById('envStation')?.selectedOptions?.[0]?.dataset?.name;
+      if (nm) selectAreasByName(nm);
+    });
+    document.getElementById('envLocate')?.addEventListener('click', locateByIp);
     document.getElementById('envRefresh')?.addEventListener('click', refreshEnvironment);
   }
   loadEnvironment();
