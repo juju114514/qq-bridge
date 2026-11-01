@@ -49,7 +49,7 @@
 | --- | --- | --- |
 | portability | `browser-detect.js` 写死 `C:\Program Files` | 全改成环境变量拼接 |
 | launcher-scripts | 新 ps1 没有 BOM | 写 UTF-8 BOM + CRLF |
-| check-md-links | CHANGELOG 里 `[文字](链接)` 被当链接 | 改成「文字加链接语法」 |
+| check-md-links | CHANGELOG 里 `「文字」+链接语法` 被当链接 | 改成「文字加链接语法」 |
 | check-privacy | `dist/download.html` 里的 APK 哈希像令牌 | `dist/` 加 .gitignore 并删掉产物 |
 
 **审计 174/174。**
