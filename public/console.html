@@ -2726,6 +2726,14 @@ button:active:not(:disabled) {
       </div>
       <div class="meta">由守护窗口启动时，重启后 5 秒自动恢复；清空工作区会归档全部 QQ 会话并清空活动日志。</div>
     </section>
+<section data-page="operations" class="card span-all">
+    <h2 data-note="网关是独立程序，这里只读它的配置并显示每个号的状态">网关账号</h2>
+    <div class="meta" id="gwAccountsMeta">加载中…</div>
+    <div id="gwAccounts" style="font-size:12.5px;margin-top:8px"></div>
+    <div class="row" style="margin-top:8px"><button id="gwAccountsRefresh">刷新</button>
+      <span class="meta">切换账号 = 改桥接的 config.json，**必须重启桥接**才生效；同一时刻桥接只服务一个号。</span></div>
+  </section>
+
 <section id="section-notify" data-page="operations" class="card span-all">
       <h2>后台控制端引导</h2>
       <div class="meta">直接向指定 QQ 会话的 DSH agent 投递一条“后台控制端提醒”，用于给 AI 引导/提醒；该消息不是群友消息。二代模式（reserved2）下会自动附带会话令牌和二代工具协议说明，AI 的文本输出不会自动转发，发言需通过发送工具。</div>
@@ -3514,6 +3522,51 @@ function bindRoleMap() {
 }
 
 // ── 环境感知（0.4.103）──────────────────────────────────────────
+// ── 网关多账号（0.4.106）────────────────────────────────────────
+async function loadGatewayAccounts() {
+  const box = document.getElementById('gwAccounts');
+  const meta = document.getElementById('gwAccountsMeta');
+  if (!box) return;
+  try {
+    const r = await api('/api/gateway/accounts');
+    if (!r || !r.ok) { if (meta) meta.textContent = '读取失败：' + ((r && r.error) || '未知'); return; }
+    const list = r.accounts || [];
+    const b = r.binding || {};
+    if (meta) meta.textContent = `发现 ${list.length} 个号 · 桥接当前指向 ${b.httpUrl || '?'}`;
+    box.innerHTML = list.map((a) => {
+      const badge = a.active ? '（当前绑定）' : (a.online ? '' : '· 离线');
+      const ports = a.configured ? `http:${a.httpPort} ws:${a.wsPort}` : '未配端口';
+      const btn = a.configured && !a.active
+        ? `<button data-bind="${a.uin}" style="margin-left:8px">绑定这个号</button>`
+        : '';
+      return `<div class="row" style="gap:10px;align-items:center;padding:3px 0">
+        <span style="flex:0 0 130px">${a.uin}${badge}</span>
+        <span style="flex:0 0 140px">${a.online ? (a.nickname || '在线') : '—'}</span>
+        <span style="flex:0 0 150px;opacity:.75">${ports}</span>
+        <span style="flex:1">${a.error ? String(a.error).slice(0, 40) : ''}</span>
+        ${btn}
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-bind]').forEach((el) => {
+      el.addEventListener('click', async () => {
+        const uin = el.dataset.bind;
+        if (!confirm('把桥接切到 ' + uin + '？\n会写入 config.json，需要重启桥接才生效。')) return;
+        const res = await api('/api/gateway/accounts', 'POST', { action: 'bind', uin });
+        alert(res && res.ok ? (res.note || '已写入') : ((res && res.error) || '失败'));
+        loadGatewayAccounts();
+      });
+    });
+  } catch (e) {
+    if (meta) meta.textContent = '读取失败：' + e.message;
+  }
+}
+
+function bindGatewayAccountsPanel() {
+  const btn = document.getElementById('gwAccountsRefresh');
+  if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', loadGatewayAccounts); }
+  loadGatewayAccounts();
+}
+
 // ── 三级级联 + IP 定位（0.4.105）────────────────────────────────
 async function loadAreaOptions(level, code) {
   const map = { 1: 'envProvince', 2: 'envCity', 3: 'envCounty' };
@@ -6995,6 +7048,7 @@ async function spaceDeletePost(tid, btn) {
     'social-v2': ['loadVoiceLibrary'],
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
     'role-map': ['bindRoleMap'],
+    operations: ['bindGatewayAccountsPanel'],
     persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage', 'bindEnvironment']
   };
 

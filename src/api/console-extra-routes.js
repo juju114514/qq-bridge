@@ -20,6 +20,7 @@ import { handleSessionBackupsRoute } from './session-backups-route.js';
 import { handleRoleImageRoute } from './role-image-route.js';
 import { handleRoleMapRoute } from './role-map-route.js';
 import { handleEnvironmentRoute } from './environment-route.js';
+import { handleGatewayAccountsRoute } from './gateway-accounts-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -104,6 +105,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/environment —— 时间/天气
   if (await handleEnvironmentRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // GET/POST /api/gateway/accounts —— 网关多账号
+  if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // GET /api/diagnostics —— 诊断与健康（只读）
   if (req.method === 'GET' && url.pathname === '/api/diagnostics') {

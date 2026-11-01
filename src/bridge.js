@@ -4403,7 +4403,7 @@ async function main() {
             },
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
             getOfficialRuntime: () => ({ enabled: Boolean(officialTransport), ready: officialTransport?.ready === true, lastError: String(officialTransport?.lastError ?? '') }),
-            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads'), sessionBackups: path.join(STATE_DIR, 'session-backups'), roleImages: path.join(STATE_DIR, 'role-images'), socialV2: SOCIAL_V2_FILE, rolesByKey: ROLES_BY_KEY_FILE },
+            files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads'), sessionBackups: path.join(STATE_DIR, 'session-backups'), config: path.join(ROOT, 'config.json'), roleImages: path.join(STATE_DIR, 'role-images'), socialV2: SOCIAL_V2_FILE, rolesByKey: ROLES_BY_KEY_FILE },
             deliverPrompt: (key, text, opts) => deliverPromptNow(key, text, opts),
             getStickerEntries: () => {
               // 内存为空时回退读磁盘：启动时 WS 同步失败会让 stickerEntries 是空的
@@ -4424,6 +4424,9 @@ async function main() {
               searchCity: (q) => getEnvRuntime().searchCity(q),
               areaChildren: (code) => areaTree.children(code || ''),
               detectIpCity: () => getEnvRuntime().detectIpCity(),
+              // 网关多账号（0.4.106）：看每个号的注入状态，并把桥接指向其中一个
+              gatewayConfigDir: (() => { try { return String(cfg.gateway?.configDir || process.env.QQB_GATEWAY_CONFIG_DIR || ''); } catch { return ''; } })(),
+              getGatewayBinding: () => ({ httpUrl: String(cfg.snowluma?.httpUrl || ''), wsUrl: String(cfg.snowluma?.wsUrl || ''), ownerQQ: cfg.ownerQQ || '' }),
               areaFindPath: (name) => areaTree.findPath(name),
               setEnvConfig: (patch) => getEnvRuntime().setConfig(patch),
             listPlannedRestarts: () => listPlannedMarkers(path.join(STATE_DIR, 'planned-restarts.jsonl')),

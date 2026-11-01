@@ -152,6 +152,7 @@ const tests = [
   'test-restart-classify.mjs',
   'test-environment.mjs',
   'test-area-tree.mjs',
+  'test-gateway-accounts.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',
