@@ -278,6 +278,14 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     // 设备配对（0.4.107）：bridge 顶层会建这两个工厂
     createDeviceStore: () => ({ list: () => [], find: () => null, add: () => ({ id: 'x', secret: 'y' }), touch: () => true, revoke: () => true }),
     createPairingCodes: () => ({ issue: () => ({ code: '000000', expiresAt: 0 }), consume: () => ({ ok: true }), peek: () => null }),
+    // 访问守卫（0.4.110）
+    createRateLimiter: () => ({ hit: () => ({ ok: true, count: 0, retryAfterMs: 0 }), peek: () => ({ ok: true, count: 0, retryAfterMs: 0 }), clear: () => {}, size: () => 0 }),
+    createAccessLog: () => ({ record: () => ({}), tail: () => [] }),
+    sha256Hex: (x) => String(x ?? ''),
+    isLoopback: () => true,
+    signRequest: () => 'sign',
+    verifyRequest: () => ({ ok: true }),
+    createNonceCache: () => ({ claim: () => true, size: () => 0 }),
     atomicWriteJson, atomicWriteText, renameWithRetry,
     capturePendingStickers, rememberMessageMedia,
     runSocialIncomingStage,

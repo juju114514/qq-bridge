@@ -99,7 +99,7 @@ export async function handleConsoleMiscRoutes(req, url, deps = {}) {
 
   // PWA 静态资源（0.4.108）：manifest / service worker / 图标
   // 只放行这几个固定文件，不做通用静态目录（避免把 state/ 之类的路径暴露出去）
-  if (req.method === 'GET' && (p === '/manifest.webmanifest' || p === '/sw.js' || p.startsWith('/icons/'))) {
+  if (req.method === 'GET' && (p === '/manifest.webmanifest' || p === '/sw.js' || p.startsWith('/icons/') || p === '/vendor/qrcode.min.js')) {
     const rel = p === '/manifest.webmanifest' ? 'manifest.webmanifest'
       : (p === '/sw.js' ? 'sw.js' : p.replace(/^\/+/, ''));
     if (p.startsWith('/icons/') && !/^icons\/[A-Za-z0-9._-]+\.png$/.test(rel)) {

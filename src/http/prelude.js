@@ -98,7 +98,7 @@ export function runPrelude(ctx) {
   const pathname = url.pathname;
 
   // 1.5) PWA 资源：浏览器安装/预取时不带令牌，必须放行（只有三个固定文件）
-  if (req.method === 'GET' && (pathname === '/manifest.webmanifest' || pathname === '/sw.js' || /^\/icons\/[A-Za-z0-9._-]+\.png$/.test(pathname))) {
+  if (req.method === 'GET' && (pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname === '/vendor/qrcode.min.js' || /^\/icons\/[A-Za-z0-9._-]+\.png$/.test(pathname))) {
     return null;
   }
 
@@ -140,12 +140,33 @@ export function runPrelude(ctx) {
   const tokenMatches = consoleToken
     ? constantTimeEqual(crypto, suppliedToken, consoleToken)
     : false;
+  // 3.5) 手机设备签名（0.4.110）
+  // 有设备头时先让 bridge 校验：签名对 = 放行（不再要求控制台令牌）；
+  // 设备模式 off 时这里直接返回 null，行为与以前完全一致。
+  const deviceResult = typeof ctx.checkDevice === 'function' ? ctx.checkDevice(req, pathname) : null;
+  if (deviceResult && deviceResult.ok) {
+    // 通过；POST 的 body 哈希稍后在读到 body 时再核对（见 bridge 的 readBody）
+    return null;
+  }
+
   if (consoleToken && !tokenMatches) {
+    // 限流：连续失败到阈值就 429，并带上等待秒数（挡住扫描器）
+    const limited = typeof ctx.onAuthFail === 'function' ? ctx.onAuthFail(req, pathname, deviceResult) : null;
+    if (limited && limited.blocked) {
+      return {
+        status: 429,
+        json: { ok: false, error: `尝试过于频繁，请 ${Math.ceil((limited.retryAfterMs || 0) / 1000)} 秒后再试` },
+        headers: { 'retry-after': String(Math.ceil((limited.retryAfterMs || 1000) / 1000)) },
+      };
+    }
     if (req.method === 'GET' && pathname === '/') {
       return {
         status: 401,
         html: '<!doctype html><meta charset="utf-8"><title>需要令牌</title><script>const t=prompt(\'请输入控制台访问令牌\');if(t)location.href=\'/?token=\'+encodeURIComponent(t);</script>',
       };
+    }
+    if (deviceResult && deviceResult.error) {
+      return deny(401, `未授权：${deviceResult.error}`);
     }
     return deny(401, '未授权：请提供控制台访问令牌');
   }

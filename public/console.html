@@ -1773,6 +1773,7 @@ button:active:not(:disabled) {
     .m-btn { min-height:72px; font-size:16px }
   }
 </style>
+<script src="/vendor/qrcode.min.js" defer></script>
 </head>
 <body>
   <div class="bg-decor" aria-hidden="true"></div>
@@ -2778,6 +2779,7 @@ button:active:not(:disabled) {
     <div class="row" style="margin-top:8px;gap:8px;align-items:center">
       <input type="text" id="devicePairName" placeholder="设备名，如 我的手机" style="flex:0 1 180px">
       <button id="devicePairIssue">生成配对码</button>
+      <button id="devQrBtn">显示连接二维码</button>
       <span class="meta" id="devicePairCode"></span>
       <label style="flex:0 0 auto;margin-left:12px">校验模式</label>
       <select id="deviceAuthMode" style="flex:0 1 130px">
@@ -2785,6 +2787,10 @@ button:active:not(:disabled) {
         <option value="warn">warn（只记日志）</option>
         <option value="enforce">enforce（强制签名）</option>
       </select>
+    </div>
+    <div id="devQrBox" style="display:none;margin-top:10px;text-align:center">
+      <div id="devQrCanvas" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
+      <div class="meta" id="devQrText" style="margin-top:6px"></div>
     </div>
     <div id="deviceList" style="font-size:12.5px;margin-top:8px"></div>
     <div class="meta">不开 enforce 时手机也能用（只带控制台令牌）；开了之后手机必须用配对得到的 secret 对每个请求签名。</div>
@@ -3680,6 +3686,31 @@ function bindMobile() {
 }
 
 // ── 手机设备（0.4.107）──────────────────────────────────────────
+// 连接二维码（0.4.110）：手机 App 扫一下自动填地址+令牌
+// 载荷：qqbridge://pair?url=<base>&token=<console token>
+async function showDeviceQr() {
+  const box = document.getElementById('devQrBox');
+  const holder = document.getElementById('devQrCanvas');
+  const text = document.getElementById('devQrText');
+  if (!box || !holder) return;
+  box.style.display = 'block';
+  if (typeof QRCode === 'undefined') {
+    if (text) text.textContent = '二维码库没加载到（/vendor/qrcode.min.js）';
+    return;
+  }
+  // 令牌来源：地址栏 ?token= → localStorage（控制台改过令牌时存在这里）
+  const tok = new URLSearchParams(location.search).get('token') || localStorage.getItem('consoleToken') || '';
+  if (!tok) { if (text) text.textContent = '当前地址里没有令牌，生成不了二维码'; return; }
+  const payload = 'qqbridge://pair?url=' + encodeURIComponent(location.origin) + '&token=' + encodeURIComponent(tok);
+  holder.innerHTML = '';
+  try {
+    new QRCode(holder, { text: payload, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+    if (text) text.textContent = location.origin + '（手机扫完自动连接，不用手抄令牌）';
+  } catch (e) {
+    if (text) text.textContent = '生成失败：' + e.message;
+  }
+}
+
 async function loadDevices() {
   const meta = document.getElementById('deviceAuthMeta');
   const list = document.getElementById('deviceList');
@@ -3722,6 +3753,7 @@ function bindDevicePanel() {
   if (btn && !btn.dataset.bound) {
     btn.dataset.bound = '1';
     btn.addEventListener('click', issuePairingCode);
+    document.getElementById('devQrBtn')?.addEventListener('click', showDeviceQr);
     document.getElementById('deviceAuthMode')?.addEventListener('change', async (e) => {
       const r = await api('/api/auth/mode', 'POST', { mode: e.target.value });
       if (r && r.ok) loadDevices(); else alert((r && r.error) || '设置失败');

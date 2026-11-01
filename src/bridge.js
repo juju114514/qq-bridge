@@ -79,6 +79,7 @@ import { SECURITY_HEADERS, writeJson, writeHtml, writeEmpty, applyDenial } from 
 import { readJsonBody } from './http/body.js';
 import { runPrelude, allowedHosts } from './http/prelude.js';
 import { hostAllowList } from './lan-hosts.js';
+import { createRateLimiter, createAccessLog, sha256Hex, isLoopback } from './access-guard.js';
 import { createRouter } from './http/router.js';
 import { fileURLToPath } from 'node:url';
 import { OneBotWsClient, text } from './onebot-ws.js';
@@ -104,7 +105,7 @@ import { readRoleAppearance, appearancePromptLine } from './role-image.js';
 import { listPlannedMarkers } from './restart-classify.js';
 import { createEnvironment } from './environment-runtime.js';
 import { createAreaTree } from './area-tree.js';
-import { createDeviceStore, createPairingCodes } from './device-auth.js';
+import { createDeviceStore, createPairingCodes, signRequest, verifyRequest, createNonceCache } from './device-auth.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -232,6 +233,10 @@ const areaTree = createAreaTree({ cacheFile: path.join(STATE_DIR, 'area-cache.js
 // 设备配对 + 签名（0.4.107）：手机端凭证与校验
 const deviceStore = createDeviceStore(path.join(STATE_DIR, 'device-auth.json'));
 const pairingCodes = createPairingCodes();
+const deviceNonces = createNonceCache();
+// 访问守卫（0.4.110）：限流 + 审计
+const authLimiter = createRateLimiter({ windowMs: 60_000, max: 12 });
+const accessLog = createAccessLog({ file: path.join(STATE_DIR, 'access-log.jsonl'), maxLines: 3000 });
 function getEnvRuntime() {
   if (!envRuntime) envRuntime = createEnvironment({
   cacheFile: path.join(STATE_DIR, 'weather-cache.json'),
@@ -3843,7 +3848,18 @@ async function main() {
       // 让 100+ 个既有调用点（sendJson(obj, status)）一行都不用改。
       const sendJson = (obj, status = 200) => writeJson(res, obj, status);
       // 请求体读取已迁到 src/http/body.js（同样的 1MB 上限、30s 超时、四类错误文案）。
-      const readBody = () => readJsonBody(req);
+      // 请求体：读到后若本请求带了设备签名，就核对 body 哈希（0.4.110）
+      const readBody = async () => {
+        const body = await readJsonBody(req);
+        const pending = req.__devicePending;
+        if (pending) {
+          const actual = sha256Hex(req.__deviceRawBody !== undefined ? req.__deviceRawBody : JSON.stringify(body ?? ''));
+          if (pending.bodyHash && actual !== pending.bodyHash) {
+            throw new Error('设备签名与请求体不匹配（body hash mismatch）');
+          }
+        }
+        return body;
+      };
       // sidecar 契约（N2）：插件 ↔ 常驻进程。见 docs/design/plugin-mode-2026-10-31.md 第 6 节。
       // 认证用 state/plugin-token（没有就退回 console token，省得用户多配一个文件）。
       const handlePluginBridge = createPluginBridgeHandler({
@@ -4264,6 +4280,33 @@ async function main() {
         url,
         boundPort: server.address()?.port ?? port,
         extraHosts,
+        checkDevice: (r, pathname) => {
+          const dev = String(r.headers['x-device-id'] || '');
+          const mode = String(cfg.security?.deviceAuth || 'off');
+          if (!dev || mode === 'off') return null;
+          const record = deviceStore.find(dev);
+          if (!record || record.revoked) return { ok: false, error: '设备未配对或已吊销' };
+          const ts = Number(r.headers['x-timestamp']);
+          const nonce = String(r.headers['x-nonce'] || '');
+          const sign = String(r.headers['x-sign'] || '');
+          const bodyHash = String(r.headers['x-body-hash'] || sha256Hex(''));
+          const expect = signRequest(record.secret, { method: r.method, path: pathname, timestamp: ts, nonce, bodyHash });
+          const verify = verifyRequest({ secret: record.secret, sign, method: r.method, path: pathname, timestamp: ts, nonce, bodyHash, nonces: deviceNonces });
+          if (!verify.ok) return { ok: false, error: verify.error };
+          if (r.method !== 'GET') r.__devicePending = { bodyHash };
+          deviceStore.touch(dev);
+          return { ok: true, device: dev };
+        },
+        onAuthFail: (r, pathname, deviceResult) => {
+          const ip = String(r.socket?.remoteAddress || '');
+          const res = authLimiter.hit(ip);
+          try {
+            accessLog.record({ ip, method: r.method, path: pathname, ok: false,
+              reason: deviceResult?.error || 'unauthorized' });
+          } catch { /* 审计失败不影响拒绝 */ }
+          if (!isLoopback(ip) || true) { /* 本机也记，方便排查 */ }
+          return { blocked: !res.ok, retryAfterMs: res.retryAfterMs, count: res.count };
+        },
         consoleToken,
         crypto,
         isLiveAgentToken,
