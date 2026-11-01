@@ -39,7 +39,7 @@ function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (['node_modules', '.git', 'state', 'logs', 'audio'].includes(entry.name)) continue;
+      if (['node_modules', '.git', 'state', 'logs', 'audio', 'dist'].includes(entry.name)) continue;   // dist 是构建产物（含打包好的副本）
       walk(full, out);
     } else if (/\.(m?js)$/.test(entry.name)) {
       out.push(full);

@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'state', 'audio', 'logs', 'temp']);
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'state', 'audio', 'logs', 'temp', 'dist']);
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

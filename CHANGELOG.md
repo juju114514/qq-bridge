@@ -2,6 +2,58 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.120：绿色整合包（免装 Node，双击就跑）
+
+普通用户不该被"先装 Node、再开命令行"卡住。这一版做出可分发的一包：
+
+```
+dist/qq-bridge-portable/            解压即用目录（120 MB）
+dist/qq-bridge-portable-0.4.120.zip 分发用（43 MB）
+```
+
+### 包内结构
+
+| 文件/目录 | 说明 |
+| --- | --- |
+| `node.exe` | 自带 Node 运行时（89 MB，单文件即可用） |
+| `src/ public/ scripts/` | 源码 |
+| `node_modules/` | 依赖（**已扁平化**，无符号链接） |
+| `config.json` | 从 example 复制，`consoleHost` 默认 `0.0.0.0`（手机能连） |
+| `state/` | 空目录，首次启动自动初始化 |
+| `启动.cmd` | 双击即跑（黑窗 = 服务在跑，关掉就停） |
+| `启动-静默.vbs` | 不弹窗启动 |
+| `说明.txt` | 三步上手 + 手机怎么连 + 常见问题 |
+
+### 踩到的三个坑
+
+1. **只打 src 会 `ERR_MODULE_NOT_FOUND: js-yaml`** —— 桥接依赖 `js-yaml`/`zod`/`@deepseek-ai/*`/`@modelcontextprotocol/sdk`，必须一起打包
+2. **`dereference: true` 直接拷 node_modules 变成 305 MB** —— pnpm 的符号链接被逐份展开
+   → 改成**扁平化**：把 `.pnpm` 里每个包的真实目录拷到顶层，151 个包 / 25 MB
+3. **套一层 `app/` 就起不来** —— bridge 的 ROOT 是 `src/` 的父目录，`config.json` 必须在包根
+   → 去掉 app/ 层，所有文件平铺
+
+### 实测（模拟用户拿到包）
+
+```
+zip 解压到全新目录 → 用它自己的 node 启动
+/health/detail → version=0.4.120
+控制台页面 → HTTP 200（420 KB）
+state/ 自动生成 11 个文件（含 console-token）
+```
+
+### 守卫调整
+
+`dist/` 是构建产物（已 gitignore），但三个守卫会扫工作区：
+`check-md-links` / `test-portability` / `check-privacy` 都加了 `dist` 跳过，
+否则打包结果里的文档副本会被当成"仓库里的坏链"。
+
+### 还没做的
+
+- 绿色包的**开机自启**（现在要手动双击）
+- 把 `排错程序.exe` 一起放进包（它是 GUI 入口）
+- 蓝奏云/OSS 上传（等用户操作）
+
+**审计 174/174。**
 ## 2026-11-02 — 0.4.119：t2i 改用 CDP 侧车（跑通了）+ 人格示例对话
 
 ### 1) t2i 的根因绕过去了

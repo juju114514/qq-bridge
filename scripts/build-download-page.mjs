@@ -64,6 +64,7 @@ const version = readVersion();
 const apkPath = findApk();
 const apk = fileInfo(apkPath);
 const lanpanUrl = arg('lanpan', '');
+const portableName = `qq-bridge-portable-${readVersion()}.zip`;
 const lanpanPass = arg('lanpan-pass', '');
 const ghProxy = `https://ghproxy.com/https://github.com/juju114514/qq-bridge`;
 const ghProxyZip = `${ghProxy}/archive/refs/heads/main.zip`;
@@ -127,6 +128,7 @@ a{color:#8ec5ff}
     <div class="dl-title">电脑端 · 服务端</div>
     <div class="dl-meta">需要一台常开的 Windows 电脑（桥接跑在这里）</div>
     <div class="btns">
+      <a class="btn primary" href="./downloads/${portableName}">绿色包（免装 Node）</a>
       <a class="btn" href="${ghProxyZip}" target="_blank" rel="noreferrer">源码 zip（加速镜像）</a>
       <a class="btn" href="https://github.com/juju114514/qq-bridge" target="_blank" rel="noreferrer">GitHub 仓库</a>
     </div>
@@ -169,6 +171,17 @@ fs.mkdirSync(path.join(outDir, 'downloads'), { recursive: true });
 if (apkPath) {
   fs.copyFileSync(apkPath, path.join(outDir, 'downloads', path.basename(apkPath)));
 }
+// 绿色包也放进 downloads/，页面上的按钮才点得开
+try {
+  const portableZip = path.join(ROOT, 'dist', portableName);
+  if (fs.existsSync(portableZip)) {
+    fs.copyFileSync(portableZip, path.join(outDir, 'downloads', portableName));
+    console.log(`  ✓ 已复制绿色包: downloads/${portableName}`);
+  } else {
+    console.log('  ⚠ 还没构建绿色包（node scripts/build-portable.mjs），页面按钮会 404');
+  }
+} catch (e) { console.log('  ⚠ 复制绿色包失败：' + (e?.message ?? e)); }
+
 fs.writeFileSync(path.join(outDir, 'download.html'), html, 'utf8');
 
 console.log(`  ✓ dist/download.html  (v${version})`);

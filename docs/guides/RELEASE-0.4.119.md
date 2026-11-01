@@ -62,10 +62,10 @@
 ## 四、明天推送步骤
 
 ```powershell
-cd D:\QQBot-open\qq-bridge
+cd <仓库目录>
 
 # 1) 最后一次自检（应该 174/174）
-D:\QQBot-open\..\..\node\bin\node.exe scripts\test-audit.mjs   # 或你的 node 路径
+node scripts/test-audit.mjs   # 或你的 node 路径
 
 # 2) 确认没有敏感内容（应该通过）
 node scripts/check-privacy.mjs
@@ -122,3 +122,25 @@ gh release create v0.4.119 --title "v0.4.119 · 官方通道扫码绑定 + markd
 - [ ] 13 个 tag 都在本地（`git tag -l "v0.4.1*"` 应该有 13 个）
 - [ ] README 里的「下载（国内加速）」段一起推上去
 - [ ] 桌面 APK 与 `dist/download.html` 与这次源码版本一致（APK 0.5.2 对 0.4.119，兼容）
+
+## 七、绿色整合包（0.4.120 新增）
+
+```powershell
+node scripts/build-portable.mjs
+# 产物：dist/qq-bridge-portable/ 与 dist/qq-bridge-portable-<版本>.zip
+```
+
+包内结构（解压即用，不需要装 Node）：
+
+```
+node.exe                自带运行时（约 89 MB）
+src/ public/ scripts/   源码
+node_modules/           依赖（已扁平化，无符号链接）
+config.json             consoleHost 默认 0.0.0.0（手机能连）
+state/                  首次启动自动初始化
+启动.cmd / 启动-静默.vbs / 说明.txt
+```
+
+实测：zip 解压到全新目录 → 双击启动 → `/health/detail` 返回 `version=0.4.119`，控制台页面 200。
+
+体积：**解压 120 MB / zip 43 MB**（Node 运行时占大头）。
