@@ -2,6 +2,44 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.115：官方通道 markdown 出站（带按错误码降级）
+
+调研结论落地：官方 2026/04/23 起群聊/单聊**自定义 markdown 全量开放**，我们之前一直只发纯文本，
+等于主动放弃了标题/加粗/列表/链接的渲染。
+
+### 做了什么
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/md-to-qq-markdown.js` | 标准 markdown → QQ 子集（代码块去围栏、行内 code 去反引号、HTML 删除、表格转 `· a · b`、`---`→`***`） |
+| `src/qqbot-official.js` | 新增 `sendGroupMarkdown` / `sendC2CMarkdown`（`msg_type:2`，**刻意不带 content**） |
+| `src/official-errors.js` | `shouldFallbackToPlain(code)` / `isLengthError(code)`，判据只用 err_code |
+| `src/official-transport.js` | `sendText(..., { markdown: true })`：语法定 → 发 markdown；被拒 → 降级纯文本并**记忆 10 分钟** |
+
+### 三个刻意的设计
+
+1. **不复用 `sendGroupText` 改字段**：它一定带 `content`，而官方要求「传了 markdown 后 content 必须为空」，
+   混用就是 22006 / 40034008 的来源。所以另开两个方法。
+2. **纯文本不走 markdown 通道**：`hasMarkdownSyntax()` 判断没有标题/加粗/列表/链接就不发 markdown，
+   免得为了一个标点白烧一次被动回复配额（群 5 条/5 分钟）。
+3. **降级按 err_code 而不是 message**：官方明说 message 会变，AstrBot 那套字符串匹配不该学。
+   `22006/40034008/40034009/40034011/40034124/304061/40034127/304036` → 降级；
+   `40054007/40054018`（超长）→ 不是降级，交给上层切分；
+   配额/权限类（`40034128` 等）→ 直接抛。
+
+### 开关
+
+`config.official.markdown`（默认 `false`，fail-closed）。打开后正常回复走 markdown，
+控制台播报/降级重发仍走纯文本。
+
+### 测试
+
+`test-qq-markdown.mjs` 14 条：语法保留、代码块/行内 code/HTML/表格/分割线转换、
+纯文本不触发、降级文本复用 `mdToPlain`、降级与切分判定。
+
+踩到一个自己的 bug：表格分隔行的正则没要求竖线，把 `---` 当成表格分隔线整行吃掉了（测试抓到的）。
+
+**审计 172/172。**
 ## 2026-11-02 — 0.4.114：官方扫码绑定 + 版本更新提示（+ markdown 调研）
 
 两件事并行做的：主线写扫码绑定/更新提示，两个只读子代理分别逆扫码协议、查 markdown 规格。

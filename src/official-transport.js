@@ -10,6 +10,8 @@
 
 import fs from 'node:fs';
 import { OfficialQqBot } from './qqbot-official.js';
+import { toQqMarkdown, hasMarkdownSyntax, markdownFallbackText } from './md-to-qq-markdown.js';
+import { shouldFallbackToPlain, isLengthError } from './official-errors.js';
 import { checkImageForOfficial, OFFICIAL_FILE_TYPE } from './official-media.js';
 
 export const OFFICIAL_ID_PREFIX = 'official-';
@@ -166,9 +168,55 @@ export function createOfficialTransport(opts = {}) {
     // opts.proactive = 主动消息：**强制**不带 msg_id（哪怕还在 5 分钟窗口内），
     // 用于控制台手动播报/定时播报；否则按窗口自动选被动或主动。
     const msgId = shouldUsePassiveWindow(target, { proactive: opts.proactive }) ? target.msgId : '';
-    if (kind === 'group') return bot.sendGroupText(openid, text, { msgId });
-    // wakeup：互动召回消息（只有单聊支持；群里发会被官方拒）
-    return bot.sendC2CText(openid, text, { msgId, wakeup: opts.wakeup === true });
+
+    const wantMd = opts.markdown === true
+      && markdownEnabled()
+      && !markdownBlocked(officialId(openid))
+      && hasMarkdownSyntax(text);
+    if (!wantMd) {
+      if (kind === 'group') return bot.sendGroupText(openid, text, { msgId });
+      // wakeup：互动召回消息（只有单聊支持；群里发会被官方拒）
+      return bot.sendC2CText(openid, text, { msgId, wakeup: opts.wakeup === true });
+    }
+
+    const md = toQqMarkdown(text);
+    const seqFor = () => (msgId ? bot.seqTracker.next(msgId, kind === 'private' ? 'private' : 'group') : null);
+    const sendMd = (seq) => (kind === 'group'
+      ? bot.sendGroupMarkdown(openid, md, { msgId, msgSeq: seq ?? 0 })
+      : bot.sendC2CMarkdown(openid, md, { msgId, msgSeq: seq ?? 0, wakeup: opts.wakeup === true }));
+
+    try {
+      return await sendMd(seqFor());
+    } catch (error) {
+      const code = Number(error?.code ?? 0);
+      if (isLengthError(code)) throw error;                    // 超长：不是降级，交给上层切分
+      if (!shouldFallbackToPlain(code)) throw error;           // 其它错误：原样抛
+      // markdown 这条路对这个会话不可用 —— 记 10 分钟，别每条都先失败一次
+      blockMarkdown(officialId(openid));
+      log(`[official] markdown 被拒（${code}），${kind === 'private' ? '单聊' : '群聊'} 降级纯文本`);
+      const plain = markdownFallbackText(text);
+      if (kind === 'group') return bot.sendGroupText(openid, plain, { msgId });
+      return bot.sendC2CText(openid, plain, { msgId, wakeup: opts.wakeup === true });
+    }
+  }
+
+  /** markdown 开关（默认关：新能力先 fail-closed，配置里 official.markdown=true 才开） */
+  function markdownEnabled() {
+    return opts.markdownEnabled === true;
+  }
+
+  // 降级过就在这个会话上记一段时间，避免"每条消息都先失败一次、白烧一次被动配额"
+  const mdBlocked = new Map();
+  const MD_BLOCK_MS = 10 * 60 * 1000;
+  function markdownBlocked(key) {
+    const at = mdBlocked.get(key);
+    if (!at) return false;
+    if (Date.now() - at > MD_BLOCK_MS) { mdBlocked.delete(key); return false; }
+    return true;
+  }
+  function blockMarkdown(key) {
+    mdBlocked.set(key, Date.now());
+    if (mdBlocked.size > 200) mdBlocked.delete(mdBlocked.keys().next().value);
   }
 
   /**

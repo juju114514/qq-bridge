@@ -5103,7 +5103,7 @@ async function main() {
       }
 
       if (text) {
-        const sent = await officialTransport.sendText(kind, id, text);
+        const sent = await officialTransport.sendText(kind, id, text, { markdown: true });
         firstId.push(sent?.id ?? '');
         log(`[official] 已发送（${kind}）：${text.slice(0, 40)}`);
       }
@@ -10059,6 +10059,8 @@ function selfCheckSnapshot() {
       sandbox: officialCfg.sandbox === true,
       intents: Number(officialCfg.intents) || undefined,
       allowAll: officialCfg.allowAll === true,
+      // markdown 出站（0.4.115）：默认关，配置 official.markdown=true 才启用
+      markdownEnabled: officialCfg.markdown === true,
       allow: Array.isArray(officialCfg.allow) ? officialCfg.allow : [],
       legacyGroups: cfg.allow?.groups,
       legacyPrivates: cfg.allow?.private,

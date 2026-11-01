@@ -230,6 +230,8 @@ export class OfficialQqBot {
         maxAttempts
       });
       lastError = new Error(`发送失败：${detail}`);
+      lastError.code = verdict.code;        // 降级/切分判据要用 err_code，不是 message
+      lastError.status = res.status;
       // 被动回复的重试必须换 msg_seq：同 msg_id+msg_seq 重发会被官方去重直接拒
       if (wait !== null && body && body.msg_id) {
         body.msg_seq = (Number(body.msg_seq) || 1) + 1;
@@ -249,12 +251,32 @@ export class OfficialQqBot {
   }
 
   /**
+   * 群聊 markdown（0.4.115）。
+   *
+   * 官方要求：msg_type=2 时 **content 必须为空**。所以刻意不复用 sendGroupText
+   * （它一定带 content，正是 22006 / 40034008 的来源）。
+   */
+  async sendGroupMarkdown(groupOpenid, markdown, { msgId = '', msgSeq = 0 } = {}) {
+    const body = { msg_type: 2, markdown: { content: String(markdown ?? '') } };
+    if (msgId) { body.msg_id = String(msgId); body.msg_seq = Number(msgSeq) || 1; }
+    return this._post(`/v2/groups/${encodeURIComponent(groupOpenid)}/messages`, body);
+  }
+
+  /**
    * 单聊文本，语义同上。
    * wakeup=true 时带 `is_wakeup`：官方**互动召回消息**（用户聊过之后 30 天内 4 个周期各 1 条），
    * 专门用来"叫他回来"，比普通主动消息更不容易被判骚扰。
    */
   async sendC2CText(userOpenid, content, { msgId = '', msgSeq = 0, wakeup = false } = {}) {
     const body = { content: String(content ?? ''), msg_type: 0 };
+    if (msgId) { body.msg_id = String(msgId); body.msg_seq = Number(msgSeq) || 1; }
+    if (wakeup === true) body.is_wakeup = true;
+    return this._post(`/v2/users/${encodeURIComponent(userOpenid)}/messages`, body);
+  }
+
+  /** 单聊 markdown，语义同上（wakeup 只有单聊支持）。 */
+  async sendC2CMarkdown(userOpenid, markdown, { msgId = '', msgSeq = 0, wakeup = false } = {}) {
+    const body = { msg_type: 2, markdown: { content: String(markdown ?? '') } };
     if (msgId) { body.msg_id = String(msgId); body.msg_seq = Number(msgSeq) || 1; }
     if (wakeup === true) body.is_wakeup = true;
     return this._post(`/v2/users/${encodeURIComponent(userOpenid)}/messages`, body);

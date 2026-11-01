@@ -52,6 +52,29 @@ export const NO_RETRY_CODES = new Set([
   100016, 100017
 ]);
 
+
+/**
+ * markdown 发不出去时该不该降级成纯文本（0.4.115）。
+ *
+ * 判据一律用 err_code（官方明说 message 会变，AstrBot 那套字符串匹配不该学）：
+ *   22006 / 40034008 / 40034009 / 40034011 / 40034124 / 304061 / 40034127 / 304036
+ *   → 这条 markdown 对当前会话不可用，换纯文本还能发出去
+ */
+export const MARKDOWN_FALLBACK_CODES = new Set([
+  22006, 40034008, 40034009, 40034011, 40034124, 304061, 40034127, 304036
+]);
+
+/** 长度超限：不是降级，是切分后重发（纯文本一样会超） */
+export const LENGTH_ERROR_CODES = new Set([40054007, 40054018]);
+
+export function shouldFallbackToPlain(code) {
+  return MARKDOWN_FALLBACK_CODES.has(Number(code));
+}
+
+export function isLengthError(code) {
+  return LENGTH_ERROR_CODES.has(Number(code));
+}
+
 /** 这个码表示"大概已经发过了"，应当当成功处理，绝不能继续重试 */
 export const DUPLICATE_CODE = 40054005;
 

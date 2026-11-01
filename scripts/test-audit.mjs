@@ -159,6 +159,7 @@ const tests = [
   'test-official-retry.mjs',
   'test-official-bind.mjs',
   'test-update-check.mjs',
+  'test-qq-markdown.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',
