@@ -7390,7 +7390,10 @@ async function main() {
     // 环境感知（0.4.103）：时间 + 天气各一行，让「你那边冷吗」这类对话有实感
     let envLine = '';
     try { envLine = String(cachedEnvLine || ''); } catch { envLine = ''; }
-    const extra = [appearance, envLine].filter(Boolean).join('\n');
+    // 通道能力（0.4.117）：官方通道支持 markdown，但模型默认以为"QQ 不支持格式"，
+    // 会主动说"发出来就是一堆星号"。这一行把真实能力告诉它，它才敢用。
+    const channelLine = channelCapabilityLine(key);
+    const extra = [appearance, envLine, channelLine].filter(Boolean).join('\n');
     return extra ? `${body}\n\n${extra}` : body;
   }
   /**
