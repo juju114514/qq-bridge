@@ -2,6 +2,58 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-01 — 0.4.101：把真机仓库里 113 个 auto snapshot 合并成一个
+
+用户："合并成一个快照提交日期我来决定" → 定在 **2026-11-01 00:00**。
+
+### 现状（合并前）
+
+`<repo>` 自己的 git 历史：**126 个提交，其中 113 个是**
+`auto snapshot (11-01 07:40:00)` 这种每 10 分钟自动生成的检查点。
+
+### 做法
+
+`scripts/squash-snapshots.ps1`（默认演练，`-Apply` 才动）：
+
+1. 要求工作区干净
+2. `git bundle create state/pre-squash-<时间>.bundle --all` —— **全量备份历史**（16.4 MB）
+3. 打 tag `pre-squash-<时间>` 作回滚点
+4. `checkout --orphan` → `add -A` → **一个**提交（`GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` 用你指定的时间）
+5. 用新分支替换 `main`，并设 upstream
+
+### 结果
+
+```
+合并前：126 个提交（113 个 auto snapshot）
+合并后：1 个提交  f4b9dd3  2026-11-01 00:00  snapshot: 历史合并（日期由用户指定）
+```
+
+### 内容没变（逐个文件哈希比对）
+
+```
+compat.json          ✓ 与合并前一致
+README.md            ✓ 与合并前一致
+public/console.html  ✓ 与合并前一致
+src/bridge.js        ✓ 与合并前一致
+package.json         ✓ 与合并前一致
+与 fork main 比对：无差异
+```
+
+### 回滚
+
+```powershell
+git -C "<repo>" reset --hard pre-squash-20261101-075554
+git -C "<repo>" bundle unbundle state/pre-squash-20261101-075554.bundle
+```
+
+### 踩到的坑（已修进脚本）
+
+`git checkout --orphan` 会把 **正常提示**（`Switched to a new branch …`）写到 stderr，
+而脚本开头是 `$ErrorActionPreference='Stop'` → PowerShell 把它当错误**直接中断**。
+现在调用原生命令的那几处临时切回 `Continue`。
+
+> 另外要说清：这些 auto snapshot 很可能是 **DSH 工作区自己的检查点机制**（不是本仓库的脚本，
+> 全仓搜不到生成器）。合并只是把历史压平，**新快照还会继续产生**；要彻底停得关掉那个机制。
 ## 2026-11-01 — 0.4.100：排查"偶尔跳出 PowerShell 黑框"
 
 用户："我屏幕偶尔会跳出powershell。排查一下"
