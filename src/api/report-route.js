@@ -39,6 +39,7 @@ export function handleReportRoute(ctx = {}) {
   const now = Date.now();
   const since = now - 24 * 3600 * 1000;
   const restarts = runnerEvents.filter((e) => e.kind === 'restart' && e.at >= since).length;
+  const restartEvents = runnerEvents.filter((e) => e.kind === 'restart' && e.at >= since);
   const exits = runnerEvents.filter((e) => e.kind === 'exit' && e.at >= since);
   const lastExit = runnerEvents.filter((e) => e.kind === 'exit').slice(-1)[0] || null;
   const watch24 = watchdogEvents.filter((e) => e.at >= since);
@@ -112,7 +113,8 @@ export function handleReportRoute(ctx = {}) {
       watchdog24h: watch24.length,
       watchdogLatest: lastWatch ? { at: lastWatch.at, text: lastWatch.text } : null
     },
-    gatewayStats: { disconnects, lastRecoverAt },
+    
+    plannedRestarts: typeof d.listPlannedRestarts === 'function' ? (d.listPlannedRestarts() || []) : [],gatewayStats: { disconnects, lastRecoverAt },
     messages: { runs: 0, errors: errorLines, lastError },
     disk: diskOf(path.resolve(process.cwd())),
     bootWatch: {

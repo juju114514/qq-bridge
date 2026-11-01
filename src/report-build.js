@@ -53,7 +53,11 @@ function fmtTime(ts) {
  * @param {string} p.repoPath 用于脱敏
  * @param {number} p.now
  */
+import { judgeRestarts } from './restart-classify.js';
+
 export function buildReport({
+  restartEvents = [],
+  plannedRestarts = [],
   version = '',
   buildId = '',
   processInfo = {},
@@ -86,10 +90,10 @@ export function buildReport({
   else if (days >= 1) add('warn', `连续运行 ${fmtDur(uptimeMs)}`, '不足 3 天，暂时只能算"跑起来了"');
   else add('warn', `连续运行 ${fmtDur(uptimeMs)}`, '运行不足 1 天，只能说"跑起来了"，还谈不上稳定');
 
+  // 重启（0.4.102）：先扣掉"计划内（部署/手动）"再判（判定逻辑在 restart-classify.js）
   const restarts = Number(supervisor.restarts24h) || 0;
-  if (restarts === 0) add('ok', '24h 无重启', '最理想');
-  else if (restarts <= 2) add('warn', `24h 重启 ${restarts} 次`, '偶发；看下面的退出码，非 0 就要查');
-  else add('bad', `24h 重启 ${restarts} 次`, '重启过于频繁，先查退出码与内存');
+  const restartVerdict = judgeRestarts(restarts, plannedRestarts, now);
+  if (restartVerdict.level) add(restartVerdict.level, restartVerdict.title, restartVerdict.detail);
 
   const gw = String(services.gateway || 'unknown');
   if (gw === 'connected') add('ok', '网关已连接', 'QQ 侧收发正常');

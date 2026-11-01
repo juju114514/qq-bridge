@@ -296,5 +296,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4337 |
-| ANY | `/api/tokens/` | L4337 |
+| ANY | `/api/tokens/summary` | L4338 |
+| ANY | `/api/tokens/` | L4338 |

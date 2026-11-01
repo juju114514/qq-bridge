@@ -100,6 +100,7 @@ import { createDecisionTrace } from './decision-trace.js';
 import { migrateFromLegacy } from './memory-store.js';
 import { captureReply as captureQzoneDraft } from './qzone-draft.js';
 import { readRoleAppearance, appearancePromptLine } from './role-image.js';
+import { listPlannedMarkers } from './restart-classify.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -4393,9 +4394,10 @@ async function main() {
             },
             describeImageBuffer: (buf) => describeImageBuffer(buf),
             onebotAction: (action, params, opts) => onebotHttpAction(action, params, opts || {}),
-            getBootIncident: () => bootIncident,
-            getRolesByKey: () => readRolesByKey(), getGlobalRole: () => (readRoleState()?.role ?? null),
+            getBootIncident: () => bootIncident, getRolesByKey: () => readRolesByKey(),
+            getGlobalRole: () => (readRoleState()?.role ?? null),
             getRoleCfg: () => (cfg.role || {}), setRoleForKey: (key, role) => writeRoleStateForKey(key, role, 'active'),
+            listPlannedRestarts: () => listPlannedMarkers(path.join(STATE_DIR, 'planned-restarts.jsonl')),
             restoreConversation: (key, patch) => { const st = socialV2.conversations.get(key) || { key, wakeConfig: { mode: 'diving', infinite: true, triggers: {} }, recentMessages: [], unread: [] }; if (Array.isArray(patch.recentMessages)) st.recentMessages = patch.recentMessages; if (Array.isArray(patch.unread)) st.unread = patch.unread; socialV2.conversations.set(key, st); saveSocialV2State(); return { key, recent: st.recentMessages.length, unread: st.unread.length }; },
             // 一键重置会话（可选备份）
             resetConversation: (key) => getSessionResetter().resetConversation(key),
