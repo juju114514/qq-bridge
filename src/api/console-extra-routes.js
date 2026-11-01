@@ -23,6 +23,7 @@ import { handleEnvironmentRoute } from './environment-route.js';
 import { handleGatewayAccountsRoute } from './gateway-accounts-route.js';
 import { handleDeviceAuthRoute } from './device-auth-route.js';
 import { handleOfficialBindRoute } from './official-bind-route.js';
+import { handleOfficialTestRoute } from './official-test-route.js';
 import { handleUpdateRoute } from './update-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
@@ -114,6 +115,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // 版本更新检查（0.4.114）
   if (await handleUpdateRoute({ req, url, sendJson, deps: resolveDeps })) return true;
+
+  // 官方 markdown 测试发送（0.4.115）
+  if (await handleOfficialTestRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
   // 官方机器人扫码绑定（0.4.114）
   if (await handleOfficialBindRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;

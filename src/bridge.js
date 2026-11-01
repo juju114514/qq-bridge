@@ -108,6 +108,7 @@ import { createAreaTree } from './area-tree.js';
 import { createDeviceStore, createPairingCodes, signRequest, verifyRequest, createNonceCache } from './device-auth.js';
 import { createBindSession } from './official-bind.js';
 import { createUpdateChecker } from './update-check.js';
+import { createOfficialTestSend } from './official-test-send.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
 import { parseRunnerEvents as parseRunnerEventsShared, parseWatchdogEvents as parseWatchdogEventsShared } from './overview-build.js';
 import { decideNoAction } from './turn-guard.js';
@@ -4513,6 +4514,8 @@ async function main() {
               // 设备配对（0.4.107）
               deviceStore, pairingCodes, officialBind,
       updateCheck: (opts) => updateChecker.check(opts),
+      // 官方 markdown 测试发送（0.4.116）：实现挪到 src/official-test-send.js
+      officialTestSend: createOfficialTestSend({ transport: officialTransport, stateDir: STATE_DIR, path }),
               getDeviceAuthMode: () => String(cfg.security?.deviceAuth || 'off'),
               setDeviceAuthMode: (mode) => { cfg.security = { ...(cfg.security || {}), deviceAuth: String(mode) }; },
               gatewayConfigDir: (() => { try { return String(cfg.gateway?.configDir || process.env.QQB_GATEWAY_CONFIG_DIR || ''); } catch { return ''; } })(),

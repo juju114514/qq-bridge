@@ -3062,6 +3062,17 @@ button:active:not(:disabled) {
     </div>
     <div id="offBindResult" style="margin-top:10px;font-size:13px"></div>
   </div>
+  <div style="margin-top:16px;border-top:1px solid #24344f;padding-top:12px">
+    <h3 style="margin:0 0 6px">markdown 测试发送</h3>
+    <div class="meta">发一条覆盖官方全部支持语法的消息，确认在群里渲染成什么样。openid 留空 = 用最近一条入站会话。</div>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="offMdOpenid" placeholder="openid（可留空）" style="flex:1 1 260px">
+      <select id="offMdKind" style="flex:0 0 110px"><option value="group">群聊</option><option value="private">单聊</option></select>
+      <button class="btn" id="offMdSend" type="button">发送 markdown 测试</button>
+    </div>
+    <textarea id="offMdText" rows="8" style="width:100%;margin-top:8px;font-family:ui-monospace,monospace;font-size:12.5px"></textarea>
+    <div class="meta" id="offMdMsg" style="margin-top:6px"></div>
+  </div>
 </section>
 <section data-page="report" class="card span-all" hidden id="section-report">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -3730,6 +3741,46 @@ function bindMobile() {
   }
   mobileRefresh();
   mobileSessions();
+}
+
+// ── 官方 markdown 测试（0.4.115）────────────────────────────────
+const OFF_MD_SAMPLE = [
+  '## markdown 测试',
+  '',
+  '这是 **加粗**、__下划线__、_斜体_、~~删除线~~。',
+  '',
+  '- 列表项一',
+  '- 列表项二',
+  '',
+  '> 引用行',
+  '',
+  '***',
+  '',
+  '[链接示例](https://bot.q.qq.com)'
+].join('\n');
+
+function offMdInit() {
+  const t = document.getElementById('offMdText');
+  if (t && !t.value) t.value = OFF_MD_SAMPLE;
+}
+
+async function offMdSend() {
+  const msg = document.getElementById('offMdMsg');
+  const text = (document.getElementById('offMdText')?.value || '').trim();
+  const openid = (document.getElementById('offMdOpenid')?.value || '').trim();
+  const kind = document.getElementById('offMdKind')?.value || 'group';
+  if (!text) { if (msg) msg.textContent = '内容为空'; return; }
+  if (msg) msg.textContent = '发送中…';
+  try {
+    const r = await api('/api/official/test-markdown', 'POST', { markdown: text, openid, kind });
+    if (r && r.ok) {
+      if (msg) msg.textContent = `已发送（${r.kind} · ${String(r.openid).slice(0, 12)}…）去会话里看渲染`;
+    } else {
+      if (msg) msg.textContent = '失败：' + ((r && r.error) || '未知') + (r && r.code ? `（code ${r.code}）` : '');
+    }
+  } catch (e) {
+    if (msg) msg.textContent = '失败：' + e.message;
+  }
 }
 
 // ── 版本更新提示（0.4.114）──────────────────────────────────────
@@ -8634,6 +8685,9 @@ if ('serviceWorker' in navigator) {
     if (bar) bar.hidden = true;
   });
   setTimeout(() => checkForUpdate(false), 1500);
+  document.getElementById('offMdSend')?.addEventListener('click', offMdSend);
+  document.getElementById('offBindStart')?.addEventListener('click', () => { offMdInit(); });
+  offMdInit();
   document.getElementById('offBindStart')?.addEventListener('click', offBindStart);
   document.getElementById('mgHelpBtn')?.addEventListener('click', () => document.querySelector('.mg-side')?.classList.toggle('open'));
 </html>

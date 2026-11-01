@@ -169,9 +169,11 @@ export function createOfficialTransport(opts = {}) {
     // 用于控制台手动播报/定时播报；否则按窗口自动选被动或主动。
     const msgId = shouldUsePassiveWindow(target, { proactive: opts.proactive }) ? target.msgId : '';
 
+    // forceMarkdown：控制台「发送 markdown 测试」用——绕过配置开关，
+    // 但仍走语法判断与降级（否则测的就只是"会不会报错"）。
     const wantMd = opts.markdown === true
-      && markdownEnabled()
-      && !markdownBlocked(officialId(openid))
+      && (opts.forceMarkdown === true || markdownEnabled())
+      && (opts.forceMarkdown === true || !markdownBlocked(officialId(openid)))
       && hasMarkdownSyntax(text);
     if (!wantMd) {
       if (kind === 'group') return bot.sendGroupText(openid, text, { msgId });
