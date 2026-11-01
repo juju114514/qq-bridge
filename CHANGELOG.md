@@ -43,6 +43,68 @@
 
 `test-environment.mjs` 9 条：时段 / 时间行 / 天气码 / 天气行空值 / 合并行 /
 缓存新鲜度 / open-meteo 解析 / 脏数据。
+## 2026-11-01 — 0.4.108：手机版页 + PWA（本地，未推送）
+
+用户选了"② 手机版页面 + PWA"。目标：手机连上后用起来顺手，而不是把 19 个页面塞进 5 寸屏。
+
+### 手机版（导航第一项）
+
+一屏六个大按钮 + 一张状态卡：
+
+```
+┌ 版本 0.4.108 · 就绪   网关 ✅ · DSH ✅   运行 X 分钟 ┐
+[ 刷新状态 ]  [ 最近日志 ]
+[ 会话列表 ]  [ 重置会话 ]
+[ 空间发说说 ] [ 设备配对 ]
+┌ 发消息：会话下拉（15 个）+ 文本框 + 发送 ┐
+└ 输出区（结果都在这里） ┘
+```
+
+- 触控尺寸：`min-height:64px`，窄屏（<480px）变单列、`72px`
+- 发消息按会话类型自动走 `/api/send/group` 或 `/api/send/private`；留空 = 主人私聊
+- 「重置会话」复用 0.4.91 的接口（**默认先备份**）
+
+### PWA（可安装）
+
+| 文件 | 作用 |
+| --- | --- |
+| `public/manifest.webmanifest` | 名称/图标/standalone/快捷方式（手机版、运行总览） |
+| `public/sw.js` | Service Worker：**页面网络优先**，`/api/*` 一律不缓存（令牌与聊天内容） |
+| `public/icons/icon-192.png` `icon-512.png` `apple-touch-icon.png` | 用 Pillow 现场画的鲸鱼图标 |
+
+静态路由只放行这三个文件（不做通用静态目录，避免把 `state/` 之类暴露出去）；
+prelude 里也放行它们（浏览器安装时不带令牌）。
+
+### 实测
+
+```
+/manifest.webmanifest  HTTP 200  application/manifest+json   773 B
+/sw.js                 HTTP 200  application/javascript     1598 B
+/icons/icon-192.png    HTTP 200  image/png                  1232 B
+```
+
+CDP（390×844 手机视口）：
+```
+手机版页存在: true      按钮: 7      会话下拉: 15
+状态卡: 版本 0.4.108 · 就绪 网关 ✅ · DSH ✅
+manifest link: true     SW 注册: 已注册    JS 异常: 0
+```
+
+### 三个坑
+
+1. **`consolePages` 插入位置错了**：我把 `mobile:` 插到了 `overview: [` 的**中括号里面**，
+   结果 `overview` 的数组元素被挤到 `mobile` 后面 → 整个主脚本 `Unexpected token ':'`。
+2. **`</script>` 被吃掉**：注册 SW 时我用正则替换 `</script></body>`，替换文本没包含 `</script>`，
+   于是上一段脚本没有闭合，新 `<script>` 被当成 JS → `Unexpected token '<'`（第 8425 行）。
+3. **Service Worker 在 http 局域网下不注册**（浏览器要求安全上下文）。所以：
+   **家里 http 访问能装到桌面，但 SW 不生效**；离线壳只有 https/localhost 或 Tailscale 下才有。
+   这点我在页面里做了静默降级，不影响使用。
+
+### 下一步（仍未做）
+
+- enforce 模式的设备签名关卡（需要把 body 哈希纳入校验）
+- Tailscale 文档（0 代码）
+- 「家」视图
 ## 2026-11-01 — 0.4.107：设备配对 + 请求签名（手机端凭证）
 
 用户问"能不能自己研究一套加密方法，只有控制台和手机知道"。

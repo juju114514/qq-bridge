@@ -97,6 +97,30 @@ export async function handleConsoleMiscRoutes(req, url, deps = {}) {
   }
 
 
+  // PWA 静态资源（0.4.108）：manifest / service worker / 图标
+  // 只放行这几个固定文件，不做通用静态目录（避免把 state/ 之类的路径暴露出去）
+  if (req.method === 'GET' && (p === '/manifest.webmanifest' || p === '/sw.js' || p.startsWith('/icons/'))) {
+    const rel = p === '/manifest.webmanifest' ? 'manifest.webmanifest'
+      : (p === '/sw.js' ? 'sw.js' : p.replace(/^\/+/, ''));
+    if (p.startsWith('/icons/') && !/^icons\/[A-Za-z0-9._-]+\.png$/.test(rel)) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('not found');
+      return true;
+    }
+    try {
+      const buf = fs.readFileSync(pathModule.join(rootDir, 'public', rel));
+      const type = rel.endsWith('.png') ? 'image/png'
+        : (rel.endsWith('.js') ? 'application/javascript; charset=utf-8'
+          : 'application/manifest+json; charset=utf-8');
+      res.writeHead(200, { 'content-type': type, 'cache-control': rel === 'sw.js' ? 'no-cache' : 'public, max-age=86400' });
+      res.end(buf);
+    } catch {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('not found');
+    }
+    return true;
+  }
+
   // GET / —— 控制台首页（静态文件，缺失时给一句人话）
   if (req.method === 'GET' && p === '/') {
     try {

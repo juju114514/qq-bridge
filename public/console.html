@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#182030">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="color-scheme" content="light dark">
 <title>QQ 桥接控制台</title>
 <script>
@@ -1755,6 +1760,18 @@ button:active:not(:disabled) {
 #section-usage .usage-legend i.off { background:var(--accent) }
 #section-usage .usage-legend i.mixed { background:var(--accent-hover) }
 
+
+  /* 手机版（0.4.108）：大按钮、单列、触控友好 */
+  .m-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0 }
+  .m-btn { min-height:64px; font-size:15px; border-radius:14px; border:1px solid rgba(120,160,220,.35);
+           background:rgba(40,56,84,.9); color:#e6eeff; cursor:pointer }
+  .m-btn:active { background:rgba(70,110,170,.9) }
+  .m-card { border:1px solid rgba(120,160,220,.22); border-radius:14px; padding:12px; margin:10px 0;
+            background:rgba(22,30,44,.85); font-size:13px; line-height:1.6 }
+  @media (max-width: 480px) {
+    .m-grid { grid-template-columns:1fr }
+    .m-btn { min-height:72px; font-size:16px }
+  }
 </style>
 </head>
 <body>
@@ -1766,6 +1783,7 @@ button:active:not(:disabled) {
     <nav id="mainNav">
         <div class="nav-label">总览</div>
         <button data-view="overview" class="nav-item active" aria-current="page"><span class="nav-icon" aria-hidden="true">◫</span>运行总览</button>
+        <button data-view="mobile" class="nav-item"><span class="nav-icon" aria-hidden="true">◫</span>手机版</button>
 
         <div class="nav-label">群聊</div>
         <button data-view="sessions" class="nav-item"><span class="nav-icon" aria-hidden="true">☷</span>会话与审批<span class="nav-count" id="pendingCount">—</span></button>
@@ -1824,7 +1842,27 @@ button:active:not(:disabled) {
         <button class="metric metric-link" data-view="sessions" data-target="section-pending"><span>待处理请求</span><strong id="metricPending">—</strong><small>提问与工具审批 <span aria-hidden="true">↗</span></small></button>
       </div>
       <div class="grid">
-        <section id="section-mode" data-page="overview" class="card span-all">
+        <section data-page="mobile" class="card span-all" hidden id="section-mobile">
+  <h2 data-note="手机上一屏能点完的六个动作">手机版</h2>
+  <div class="m-card" id="mStatus">读取状态…</div>
+  <div class="m-grid">
+    <button class="m-btn" id="mRefresh">刷新状态</button>
+    <button class="m-btn" id="mLogs">最近日志</button>
+    <button class="m-btn" id="mSession">会话列表</button>
+    <button class="m-btn" id="mReset">重置会话</button>
+    <button class="m-btn" id="mSpace">空间发说说</button>
+    <button class="m-btn" id="mPair">设备配对</button>
+  </div>
+  <div class="m-card" id="mSend">
+    <div class="meta">发消息（可选会话；留空 = 主人私聊）</div>
+    <select id="mSendKey" style="width:100%;margin:6px 0"><option value="">（主人私聊）</option></select>
+    <textarea id="mSendText" rows="3" placeholder="说点什么…" style="width:100%"></textarea>
+    <button class="m-btn" id="mSendGo" style="margin-top:8px">发送</button>
+  </div>
+  <div class="m-card" id="mOut" style="white-space:pre-wrap;font-size:12.5px"></div>
+</section>
+
+<section id="section-mode" data-page="overview" class="card span-all">
       <h2>运行模式</h2>
       <div class="mode-row" id="modeRow">
         <button data-mode="chat" aria-pressed="false"><span class="mode-indicator" aria-hidden="true"></span><strong>聊天模式</strong><small>白名单内，随时对话</small></button>
@@ -3540,6 +3578,107 @@ function bindRoleMap() {
 }
 
 // ── 环境感知（0.4.103）──────────────────────────────────────────
+// ── 手机版（0.4.108）────────────────────────────────────────────
+function mOut(text) {
+  const el = document.getElementById('mOut');
+  if (el) el.textContent = String(text || '');
+}
+
+async function mobileRefresh() {
+  const box = document.getElementById('mStatus');
+  try {
+    const h = await api('/health/detail');
+    const line = [
+      `版本 ${h.version || '?'} · ${h.ready ? '就绪' : '未就绪'}`,
+      `网关 ${h.services?.snowluma === 'connected' ? '✅' : '❌'} · DSH ${h.services?.dsh === 'connected' ? '✅' : '❌'}`,
+      `运行 ${Math.round((h.uptimeSec || 0) / 60)} 分钟 · 内存 ${h.rssMb || '?'} MB`
+    ].join('\n');
+    if (box) box.textContent = line;
+  } catch (e) {
+    if (box) box.textContent = '读取失败：' + e.message;
+  }
+}
+
+async function mobileLogs() {
+  try {
+    const r = await api('/api/report?format=md');
+    const text = typeof r === 'string' ? r : (r.markdown || JSON.stringify(r).slice(0, 800));
+    mOut(text.slice(0, 1500));
+  } catch (e) {
+    mOut('读取失败：' + e.message);
+  }
+}
+
+async function mobileSessions() {
+  try {
+    const r = await api('/api/socialV2/states');
+    const keys = (r.conversations || []).map((x) => x.key);
+    const sel = document.getElementById('mSendKey');
+    if (sel) {
+      sel.innerHTML = '<option value="">（主人私聊）</option>' + keys.map((k) => `<option value="${k}">${k}</option>`).join('');
+    }
+    mOut('会话 ' + keys.length + ' 个：\n' + keys.join('\n'));
+  } catch (e) {
+    mOut('读取失败：' + e.message);
+  }
+}
+
+async function mobileReset() {
+  const sel = document.getElementById('mSendKey');
+  const key = sel ? sel.value : '';
+  if (!key) { mOut('先在上面选一个会话（点「会话列表」拉取）'); return; }
+  if (!confirm('重置 ' + key + ' 的会话？（会先备份）')) return;
+  try {
+    const r = await api('/api/sessions/reset', 'POST', { key, backup: true });
+    mOut(r && r.ok ? r.note : ('失败：' + ((r && r.error) || '未知')));
+  } catch (e) {
+    mOut('失败：' + e.message);
+  }
+}
+
+async function mobileSend() {
+  const sel = document.getElementById('mSendKey');
+  const key = sel ? sel.value : '';
+  const text = (document.getElementById('mSendText')?.value || '').trim();
+  if (!text) { mOut('先写点什么'); return; }
+  try {
+    let r;
+    if (!key) {
+      r = await api('/api/send/private', 'POST', { message: text });
+    } else if (key.startsWith('group:')) {
+      r = await api('/api/send/group', 'POST', { groupId: key.split(':')[1], message: text });
+    } else {
+      r = await api('/api/send/private', 'POST', { userId: key.split(':')[1], message: text });
+    }
+    mOut(r && r.ok !== false ? '已发送' : ('失败：' + ((r && r.error) || '未知')));
+  } catch (e) {
+    mOut('失败：' + e.message);
+  }
+}
+
+function mobileSpace() {
+  setConsolePage('space');
+  mOut('已切到「空间动态」页');
+}
+
+function mobilePair() {
+  setConsolePage('operations');
+  mOut('已切到「调试与运维」，往下找「手机设备」生成配对码');
+}
+
+function bindMobile() {
+  const map = {
+    mRefresh: mobileRefresh, mLogs: mobileLogs, mSession: mobileSessions,
+    mReset: mobileReset, mSendGo: mobileSend, mSpace: mobileSpace, mPair: mobilePair
+  };
+  for (const [id, fn] of Object.entries(map)) {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.bound) { el.dataset.bound = '1'; el.addEventListener('click', fn); }
+  }
+  mobileRefresh();
+  mobileSessions();
+}
+
 // ── 手机设备（0.4.107）──────────────────────────────────────────
 async function loadDevices() {
   const meta = document.getElementById('deviceAuthMeta');
@@ -5369,6 +5508,7 @@ const consolePages = {
   song: ['点歌 / 唱歌', '把喜欢的，唱给对方听。', '下载并截取音频，以语音条发到指定会话（真实发送）。'],
   space: ['空间动态', '让关心的人看到。', '发说说、看好友动态、点赞与评论（写操作需确认）。'],
   'memory-graph': ['记忆星图', '记忆星图', '把长期记忆画成星点：权重、新鲜度、关联一目了然'],
+  mobile: ['手机版', '一屏点完。', '手机上用的简版：状态、日志、会话、发消息、空间、配对。'],
   overview: ['运行总览', '让每一次连接，都自然发生。', '掌握桥接状态，轻松管理你的 QQ 智能伙伴。'],
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看 QQ 与 DSH 的会话映射，以及等待你回复的审批和提问。'],
   'role-map': ['角色分配', '每个群，用谁。', '看每个群/私聊接入的是哪张角色卡、现在是潜水还是活跃；可就地单独指定角色。'],
@@ -7119,6 +7259,7 @@ async function spaceDeletePost(tid, btn) {
     'social-v2': ['loadVoiceLibrary'],
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
     'role-map': ['bindRoleMap'],
+    mobile: ['bindMobile'],
     operations: ['bindGatewayAccountsPanel', 'bindDevicePanel'],
     persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage', 'bindEnvironment']
   };
@@ -8281,5 +8422,15 @@ async function setAtomWeight(node, weight) {
   const aToggle = document.getElementById('mgShowAtoms');
   if (aToggle) aToggle.addEventListener('change', function (e) { MG.showAtoms = e.target.checked; MG.alpha = 0.3; });
 })();
-</script></body>
+</script>
+
+<script>
+// PWA：注册 service worker（只在 https 或 localhost 生效；局域网 http 会静默跳过）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* 安装不了也不影响用 */ });
+  });
+}
+</script>
+</body>
 </html>

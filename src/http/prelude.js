@@ -90,6 +90,11 @@ export function runPrelude(ctx) {
   } = ctx;
   const pathname = url.pathname;
 
+  // 1.5) PWA 资源：浏览器安装/预取时不带令牌，必须放行（只有三个固定文件）
+  if (req.method === 'GET' && (pathname === '/manifest.webmanifest' || pathname === '/sw.js' || /^\/icons\/[A-Za-z0-9._-]+\.png$/.test(pathname))) {
+    return null;
+  }
+
   // 1) 浏览器自动请求：直接 204，别让它落到鉴权分支
   if (req.method === 'GET' && (pathname === '/favicon.ico' || pathname === '/apple-touch-icon.png')) {
     return { status: 204, empty: true };
