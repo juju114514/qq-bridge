@@ -20,8 +20,15 @@
  */
 
 /** Host 头允许值：控制台只监听回环，所以合法 Host 只有这三种 + 实际绑定端口。 */
-export function allowedHosts(boundPort) {
-  return [`127.0.0.1:${boundPort}`, `localhost:${boundPort}`, `[::1]:${boundPort}`];
+export function allowedHosts(boundPort, extraHosts = []) {
+  const base = [`127.0.0.1:${boundPort}`, `localhost:${boundPort}`, `[::1]:${boundPort}`];
+  // 手机/模拟器走局域网 IP 时 Host 头是 `192.168.x.x:端口`；
+  // 这些值由 bridge 通过 extraHosts 传入（只放行本机私有 IP + 用户配置）。
+  for (const h of Array.isArray(extraHosts) ? extraHosts : []) {
+    const v = String(h || '').trim().toLowerCase();
+    if (v && !base.includes(v)) base.push(v);
+  }
+  return base;
 }
 
 /**
@@ -102,7 +109,7 @@ export function runPrelude(ctx) {
 
   // 2) Host 头（DNS rebinding 硬化）
   const hostHeader = String(req.headers.host ?? '');
-  const hosts = allowedHosts(boundPort);
+  const hosts = allowedHosts(boundPort, ctx.extraHosts || []);
   if (!hosts.includes(hostHeader.toLowerCase())) {
     return deny(403, `Host 头不被允许（${hostHeader || '缺失'}）：控制台只接受本机回环访问`);
   }

@@ -118,6 +118,7 @@ export function createConfigLoader(deps = {}) {
       ?? 3100,
     // 控制台监听地址：默认只绑回环。**容器里必须改成 0.0.0.0**，否则宿主机端口映射进不来。
     consoleHost: file.consoleHost ?? process.env.QQB_CONSOLE_HOST ?? '127.0.0.1',
+  consoleHosts: Array.isArray(file.consoleHosts) ? file.consoleHosts.map(String) : [],
     // 外部触发（webhook/cron）：独立令牌，只能注入消息，不能改配置
     inject: {
       enabled: true,

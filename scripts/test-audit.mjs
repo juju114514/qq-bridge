@@ -154,6 +154,7 @@ const tests = [
   'test-area-tree.mjs',
   'test-gateway-accounts.mjs',
   'test-device-auth.mjs',
+  'test-lan-hosts.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

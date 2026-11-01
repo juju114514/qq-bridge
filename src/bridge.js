@@ -78,6 +78,7 @@ import {
 import { SECURITY_HEADERS, writeJson, writeHtml, writeEmpty, applyDenial } from './http/response.js';
 import { readJsonBody } from './http/body.js';
 import { runPrelude, allowedHosts } from './http/prelude.js';
+import { hostAllowList } from './lan-hosts.js';
 import { createRouter } from './http/router.js';
 import { fileURLToPath } from 'node:url';
 import { OneBotWsClient, text } from './onebot-ws.js';
@@ -4255,10 +4256,14 @@ async function main() {
       // ── 前导关（重构阶段 2：整段搬到 src/http/prelude.js）──────────────────
       // favicon → Host 头 → 控制台令牌 → 智能体声明 → CSRF → 暂停/关停/模式/管理端/白名单
       // → 只读降级。判定逻辑与文案逐条保留；这里只负责落响应。
+      // 局域网访问（0.4.109）：本机私有 IP + config.consoleHosts 进 Host 白名单
+      let extraHosts = [];
+      try { extraHosts = hostAllowList({ port: server.address()?.port ?? port, interfaces: os.networkInterfaces(), extra: (cfg.consoleHosts || []) }); } catch { extraHosts = []; }
       const denial = runPrelude({
         req,
         url,
         boundPort: server.address()?.port ?? port,
+        extraHosts,
         consoleToken,
         crypto,
         isLiveAgentToken,
