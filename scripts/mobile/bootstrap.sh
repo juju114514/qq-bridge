@@ -55,13 +55,25 @@ check_env() {
   say "可用空间=${free}MB（完整安装约需 2500MB）"
   [ "${free:-0}" -ge 2000 ] || say "⚠ 空间可能不够：Ubuntu+QQ+NapCat 解压后约 1.6GB"
   command -v node >/dev/null && say "node: $(node -v)" || say "node: 未安装（将装）"
-  command -v proot >/dev/null && say "proot: 已安装" || say "proot: 未安装（将装）"
+  command -v npm >/dev/null && say "npm: 已安装" || say "npm: 未安装（随 nodejs-lts 一起装）"
+  if command -v proot >/dev/null; then
+    say "proot: 已安装"
+    if [ -f "$PREFIX/libexec/proot/loader" ]; then
+      say "proot loader: $PREFIX/libexec/proot/loader ✓"
+    else
+      say "⚠ proot loader 缺失：guest 里的程序会报 execve: No such file or directory"
+      say "  修：pkg reinstall proot"
+    fi
+  else
+    say "proot: 未安装（将装）"
+  fi
 }
 
 install_pkgs() {
   say "安装 Termux 包（nodejs-lts / proot / unzip / curl / xz-utils）"
   pkg update -y >/dev/null 2>&1 || true
   pkg install -y nodejs-lts proot unzip curl xz-utils tar || die "pkg install 失败"
+  command -v npm >/dev/null || pkg install -y npm || say "⚠ npm 装不上，后面要手动 npm install"
 }
 
 fetch() {
@@ -93,8 +105,9 @@ proot_exec() {
   # 在 guest 里执行一段脚本：$1 是命令字符串
   mkdir -p "$BASE/tmp"
   printf '%s\n' "$1" > "$BASE/tmp/cmd.sh"
+  local loader="$PREFIX/libexec/proot/loader"
   PROOT_TMP_DIR="$BASE/tmp" PROOT_NO_SECCOMP=1 \
-  PROOT_LOADER="$(command -v proot >/dev/null && echo "${PREFIX}/libexec/proot/loader" || echo '')" \
+  PROOT_LOADER="${loader}" \
     proot --link2symlink -0 -r "$UBUNTU" \
       -b /dev -b /proc -b /sys -b "$BASE/shm:/dev/shm" -b "$BASE/tmp:/tmp" \
       -w /root \
