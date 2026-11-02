@@ -191,6 +191,12 @@ button.planned {
   .sidebar::-webkit-scrollbar-track { background: transparent; }
   .sidebar::-webkit-scrollbar-thumb { background: rgba(140,160,190,.32); border-radius: 3px; }
   .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(140,160,190,.55); }
+  /* 深色主题下的当前项：不依赖变量解析，明确给一个"半透明蓝"，
+     避免某些环境把 --accent-soft-bg 解析成浅色（会看起来像一条白带） */
+  [data-theme="dark"] .nav-item.active {
+    background: rgba(107,134,255,.18) !important;
+    color: #cfd9ff !important;
+  }
 .sidebar {
   position:fixed;
   inset:0 auto 0 0;
