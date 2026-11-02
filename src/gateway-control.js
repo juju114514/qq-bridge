@@ -153,3 +153,55 @@ export async function startGateway(opts = {}) {
   const final = await getGatewayStatus({ ports, probe, task: before.task, taskExistsImpl: async () => true });
   return { ok: false, started: true, waited: now() - t0, status: final, error: `已触发计划任务，但 ${Math.round(waitMs / 1000)} 秒内端口没起来（看 D:\\QQBot\\snowluma\\logs）` };
 }
+
+/**
+ * 网关"活着吗"（0.4.132）：端口通 + 桥接的 WS 状态，两条一起看。
+ *
+ * 为什么不像官方通道那样用"多久没数据"判死：网关在没人说话的夜里可以几小时没有事件，
+ * 那是正常安静，不是假连接。所以判据是 **端口在听 + WS connected**，事件时间只作展示。
+ *
+ * @param {{probe?:Function, ports?:number[], bridgeState?:string, lastEventAt?:number, now?:()=>number}} opts
+ */
+export async function getGatewayHealth(opts = {}) {
+  const {
+    probe = probePort,
+    ports = DEFAULT_PORTS,
+    bridgeState = 'unknown',
+    lastEventAt = 0,
+    now = () => Date.now()
+  } = opts;
+
+  const listening = {};
+  for (const p of ports) listening[p] = await probe(p);
+  const anyPort = Object.values(listening).some(Boolean);
+  const ageMs = lastEventAt ? now() - lastEventAt : null;
+
+  let level = 'ok';
+  let text = '网关正常';
+  if (!anyPort) { level = 'error'; text = '网关未运行（端口不通）'; }
+  else if (bridgeState !== 'connected') { level = 'warn'; text = '网关在听，但桥接还没连上（重连中）'; }
+
+  return {
+    level,
+    text,
+    liveness: {
+      connected: bridgeState === 'connected',
+      bridgeState,
+      listening,
+      portUp: anyPort,
+      lastEventAt: lastEventAt || null,
+      ageMs
+    }
+  };
+}
+
+/** GET /api/gateway/health 的处理逻辑（纯函数便于测） */
+export async function gatewayHealthPayload(deps = {}) {
+  const state = typeof deps.getGatewayState === 'function' ? deps.getGatewayState() : 'unknown';
+  let lastEventAt = 0;
+  try {
+    const snap = typeof deps.getSelfCheck === 'function' ? deps.getSelfCheck() : null;
+    lastEventAt = Number(snap?.snowluma?.lastEventAt || 0);
+  } catch { lastEventAt = 0; }
+  return getGatewayHealth({ bridgeState: String(state || 'unknown'), lastEventAt });
+}

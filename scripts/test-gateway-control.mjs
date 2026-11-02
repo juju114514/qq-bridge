@@ -79,6 +79,37 @@ await check('startGateway：没任务 → 走 detached spawn 而不是 schtasks'
   assert.equal(r.ok, false);
 });
 
+
+await check('getGatewayHealth：端口通 + 已连接 → ok', async () => {
+  const h = await m.getGatewayHealth({ probe: async (p) => p === 3000, bridgeState: 'connected', lastEventAt: Date.now() - 5000 });
+  assert.equal(h.level, 'ok');
+  assert.match(h.text, /正常/);
+  assert.equal(h.liveness.portUp, true);
+  assert.equal(h.liveness.connected, true);
+});
+
+await check('getGatewayHealth：端口不通 → error（网关未运行）', async () => {
+  const h = await m.getGatewayHealth({ probe: async () => false, bridgeState: 'disconnected' });
+  assert.equal(h.level, 'error');
+  assert.match(h.text, /未运行/);
+});
+
+await check('getGatewayHealth：端口在听但桥接没连上 → warn（重连中）', async () => {
+  const h = await m.getGatewayHealth({ probe: async (p) => p === 3001, bridgeState: 'disconnected' });
+  assert.equal(h.level, 'warn');
+  assert.match(h.text, /重连/);
+});
+
+await check('gatewayHealthPayload：从 deps 读状态与最后事件时间', async () => {
+  const p = await m.gatewayHealthPayload({
+    getGatewayState: () => 'connected',
+    getSelfCheck: () => ({ snowluma: { lastEventAt: 111 } }),
+    probe: async () => true
+  });
+  assert.equal(p.liveness.bridgeState, 'connected');
+  assert.equal(p.liveness.lastEventAt, 111);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

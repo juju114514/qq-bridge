@@ -1,11 +1,18 @@
 // 网关状态 / 手动启动路由（0.4.131）
-import { getGatewayStatus, startGateway } from '../gateway-control.js';
+import { getGatewayStatus, startGateway, gatewayHealthPayload } from '../gateway-control.js';
 
 export async function handleGatewayControlRoute(ctx = {}) {
   const { req, url, sendJson } = ctx;
   if (!url || !url.pathname.startsWith('/api/gateway/control')) return false;
 
   const d = typeof ctx.deps === 'function' ? (ctx.deps() || {}) : (ctx.deps || {});
+
+  // GET /api/gateway/health → 顶栏胶囊用（0.4.132）
+  if (req.method === 'GET' && url.pathname === '/api/gateway/health') {
+    const payload = await gatewayHealthPayload(d);
+    sendJson({ ok: true, at: Date.now(), ...payload });
+    return true;
+  }
 
   // GET /api/gateway/control → 状态
   if (req.method === 'GET') {
