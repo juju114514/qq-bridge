@@ -107,3 +107,52 @@ Android SDK     D:\QQBot\tools\android-sdk（platform 34 / build-tools 34）
 ```
 
 体检 APK 的构建脚本就是模板，一体化包沿用它（确定可行，不依赖网络下载 Gradle）。
+
+
+---
+
+## 八、工程骨架进度（2026-11-03 05:35，可接续）
+
+### 已存在
+
+`
+mobile/apk/
+├─ AndroidManifest.xml          targetSdk 28｜前台服务｜明文 HTTP
+├─ src/com/qqbridge/app/
+│  ├─ MainActivity.java          WebView + 每秒探 3100，通了切界面
+│  └─ BridgeService.java         前台服务：铺 assets → chmod → exec node
+└─ build-apk.ps1                 javac→d8→aapt2→注入dex→zipalign→签名
+`
+
+### 已验证
+
+| 项 | 结果 |
+| --- | --- |
+| javac 编译 | 通过（7 个 class） |
+| 空壳构建 | 通过，产出 14.4 MB APK |
+| 模拟器安装 + 启动 | 通过 |
+| 前台服务 | isForeground=true，通知生效 |
+| 当前卡点 | FileNotFoundException: app/src/bridge.js —— 空壳模式不带 payload，预期内 |
+
+### 两个已修的坑
+
+1. Theme.DeviceDefault.DarkActionBar 在 aapt2 里解析不到 → 改 Theme.Holo.Light.DarkActionBar
+2. uild-apk.ps1 必须存成 **UTF-8 with BOM**，否则 PowerShell 5.1 按 GBK 读，中文乱码且 {0} 格式化报语法错
+
+### 下一步（照顺序做，别跳）
+
+`powershell
+# 1) 打出带 payload 的完整包（node 45MB + 源码 + node_modules）
+powershell -File D:\QQBot-open\mobile\apk\build-apk.ps1 -WithPayload -Out D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
+
+# 2) 真机装一次，看首启解压是否成功
+adb install -r D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
+adb logcat -s qqb:V            # 看 [bridge] 日志
+
+# 3) 通了之后，再叠 QQ/NapCat（第 2 步）
+`
+
+**若第 1 步报 assets 太大**：apt2 -A 对单文件有 2GB 上限，80MB 没问题；
+但 ssets/payload.tar 里的 
+ode_modules 建议先 
+pm prune --omit=dev 再打。
