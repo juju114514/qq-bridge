@@ -168,6 +168,7 @@ const tests = [
   'test-gateway-control.mjs',
   'test-music-auth.mjs',
   'test-context-usage.mjs',
+  'test-memory-guard.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

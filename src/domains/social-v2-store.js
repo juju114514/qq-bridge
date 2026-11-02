@@ -8,6 +8,8 @@
 // "读"那半边（loadSocialV2State，120 行、要注入 10 个钩子）留到下一轮，
 // 因为它牵扯 ensureWakeable / scheduleProactiveCheck 这些有副作用的步骤。
 
+import { restoreDroppedMemory, isMemoryClearAllowed } from '../memory-guard.js';
+
 /** 每个会话字段的裁剪上限。改这里等于改状态文件的大小上限，别随手调大。 */
 export const SOCIAL_V2_TRIM = Object.freeze({
   recentMessages: 200,
@@ -57,8 +59,24 @@ export function buildSocialV2Snapshot({ conversations, seenForwardIds, paused = 
  * 落盘。**永不抛**：调用点在消息处理路径上，抛错会打断消息。
  * @returns {{ ok: boolean, error?: string }}
  */
-export function saveSocialV2StateTo({ file, conversations, seenForwardIds, paused = false, atomicWriteJson, log = () => {} }) {
+export function saveSocialV2StateTo({
+  file, conversations, seenForwardIds, paused = false, atomicWriteJson, log = () => {}, readJsonSafe = null
+}) {
   try {
+    // 护栏（0.4.141）：真实事故 —— 10-29 写成功的人物印象，到 11-02 变成空，
+    // 日志里没有任何 clear 记录，说明是被一次旧快照的整体落盘覆盖掉的。
+    // 落盘前比一次磁盘：内存里空、磁盘上有 → 保留磁盘版本并记日志。
+    if (readJsonSafe) {
+      try {
+        const disk = readJsonSafe(file)?.conversations || {};
+        const memory = {};
+        for (const [key, st] of conversations) memory[key] = st;
+        const { restored } = restoreDroppedMemory({ memory, disk, isAllowed: isMemoryClearAllowed });
+        for (const r of restored) {
+          log(`[memory] 阻止覆盖：${r.key} 的 ${r.field} 磁盘上有 ${r.count} 条，内存里是空的，已保留磁盘版本`);
+        }
+      } catch { /* 护栏自己出错不能影响正常落盘 */ }
+    }
     atomicWriteJson(file, buildSocialV2Snapshot({ conversations, seenForwardIds, paused }));
     return { ok: true };
   } catch (error) {

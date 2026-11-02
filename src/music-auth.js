@@ -167,7 +167,12 @@ export function createMusicAuth(opts = {}) {
 
     if (state === 'ok') {
       QR_SESSIONS.delete(String(key));
-      const cookie = typeof body.cookie === 'string' ? body.cookie : cookieObjToString(body.cookie);
+      const setCookie = typeof res.headers?.getSetCookie === 'function'
+        ? res.headers.getSetCookie().join('; ')
+        : String(res.headers?.get?.('set-cookie') || '');
+      const fromBody = typeof body.cookie === 'string' ? body.cookie : cookieObjToString(body.cookie);
+      // 实测 803 响应有时只在 Set-Cookie 头里给凭据，body.cookie 是空的
+      const cookie = fromBody || setCookie;
       const s = readState();
       s.netease = { cookie, at: now(), nickname: '', userId: '' };
       // 顺手取一次昵称（失败不影响登录）
@@ -195,9 +200,13 @@ export function createMusicAuth(opts = {}) {
       if (!profile || (!profile.nickname && !profile.userId)) {
         return { provider: 'netease', loggedIn: false, nickname: '', userId: '', reason: 'cookie 已失效', vip: null };
       }
-      // vipType: 0 普通 / 10 音乐包 / 11 黑胶 VIP；vipRights 里带具体权益
-      const vipType = Number(profile.vipType ?? body?.account?.vipType ?? 0);
-      const vipLabel = vipType === 11 ? '黑胶VIP' : (vipType === 10 ? '音乐包' : (vipType > 0 ? `VIP(${vipType})` : '普通'));
+      // 实测：profile.vipType 是"权益位"（如 110），account.vipType 才是枚举（10 音乐包 / 11 黑胶）。
+      // 所以优先用 account.vipType；只有它缺失时才退回到 profile 的位运算解释。
+      const acctType = Number(body?.account?.vipType ?? 0);
+      const profType = Number(profile.vipType ?? 0);
+      let vipType = acctType;
+      if (!vipType && profType) vipType = (profType & 100) ? 11 : ((profType & 10) ? 10 : 0);
+      const vipLabel = vipType === 11 ? '黑胶VIP' : (vipType === 10 ? '音乐包' : (vipType > 0 ? 'VIP' : '普通'));
       return {
         provider: 'netease',
         loggedIn: true,
@@ -365,7 +374,45 @@ export function createMusicAuth(opts = {}) {
     throw new Error(`不支持的平台：${provider}`);
   }
 
+  /**
+   * 手机号 + 密码登录（0.4.141）
+   *
+   * 为什么加这条：实测这台机器的出口是**日本数据中心 IP**（系统代理开着），
+   * 网易云的短信接口直接回「您当前的网络环境存在安全风险」—— 发验证码这条走不通。
+   * 但 `/api/login/cellphone` 用密码时不受影响（实测返回的是「验证码错误」而不是风控），
+   * 所以密码登录是能绕开"发不出短信"的那条路。
+   * 密码只在内存里做一次 md5，**不落盘**。
+   */
+  async function neteaseLoginByPassword(phone, password) {
+    const p = String(phone || '').trim();
+    const pw = String(password || '');
+    if (!/^\d{6,15}$/.test(p)) throw new Error('手机号格式不对');
+    if (pw.length < 6) throw new Error('密码太短');
+    const { createHash } = await import('node:crypto');
+    const md5 = createHash('md5').update(pw, 'utf8').digest('hex');
+    const url = `https://music.163.com/api/login/cellphone?phone=${p}&password=${md5}&countrycode=86&rememberLogin=true&_t=${now()}`;
+    const res = await fetchImpl(url, { headers: neteaseHeaders(), signal: AbortSignal.timeout(15000), cache: 'no-store' });
+    const body = await res.json().catch(() => ({}));
+    const code = Number(body?.code);
+    if (code !== 200) {
+      const msg = body?.message || body?.msg || `登录失败（code=${code}）`;
+      return { ok: false, code, error: msg };
+    }
+    const setCookie = typeof res.headers?.getSetCookie === 'function'
+      ? res.headers.getSetCookie().join('; ')
+      : String(res.headers?.get?.('set-cookie') || '');
+    const s = readState();
+    s.netease = {
+      cookie: setCookie, at: now(),
+      nickname: String(body?.profile?.nickname || ''),
+      userId: String(body?.account?.id || '')
+    };
+    writeState(s);
+    return { ok: true, nickname: s.netease.nickname, userId: s.netease.userId };
+  }
+
   return {
+    loginByPassword: neteaseLoginByPassword,
     importCookie,
     sendCaptcha: neteaseSendCaptcha,
     loginByCaptcha: neteaseLoginByCaptcha,

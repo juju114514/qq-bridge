@@ -111,6 +111,7 @@ import { createUpdateChecker } from './update-check.js';
 import { createOfficialTestSend } from './official-test-send.js';
 import { makeTextImageSegment } from './t2i-send.js';
 import { createContextUsageStore } from './context-usage.js';
+import { markMemoryClear } from './memory-guard.js';
 import { splitForPrompt } from './role-dialogues.js';
 import { warmUpT2i } from './t2i.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
@@ -6475,7 +6476,7 @@ async function main() {
   function saveSocialV2State() {
     return saveSocialV2StateTo({
       file: SOCIAL_V2_FILE, conversations: socialV2.conversations, seenForwardIds,
-      paused: socialV2.paused, atomicWriteJson, log
+      paused: socialV2.paused, atomicWriteJson, log, readJsonSafe
     });
   }
 

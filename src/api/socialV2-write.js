@@ -485,6 +485,8 @@ export function createSocialV2WriteHandler(deps) {
       if (agentToken && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return true; }
       if (agentToken && !v2ToolEnabled('memory')) { sendJson({ ok: false, error: '工具未启用：qq_memory_clear' }, 403); return true; }
       const st = getSocialV2State(key);
+      // 显式清空要"报备"给护栏，否则下一次落盘会被当成误覆盖救回来（0.4.141）
+      try { if (typeof markMemoryClear === 'function') markMemoryClear(key); } catch { /* ignore */ }
       if (!category || category === 'activeTopic') st.activeTopics = [];
       if (!category || category === 'pendingThought') st.pendingThoughts = [];
       if (!category || category === 'memberImpression') st.memberImpressions = {};

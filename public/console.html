@@ -3107,6 +3107,7 @@ button:active:not(:disabled) {
       <strong style="font-size:13px">音乐账号</strong>
       <span style="font-size:11px;opacity:.6">登录后能拿 VIP/高音质；不登录也能点，只是音质普通</span>
     </div>
+    <div id="musicNetHint" style="margin-top:10px;font-size:12px;padding:8px 10px;border-radius:8px;background:rgba(20,30,48,.6);border:1px solid #24344f;display:none"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px">
       <div style="border:1px solid #24344f;border-radius:10px;padding:12px">
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -3136,6 +3137,11 @@ button:active:not(:disabled) {
             <input id="nesCode" placeholder="6 位验证码" style="flex:1;min-width:120px;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px;font-size:12px">
             <button id="nesSmsLogin" class="primary" style="font-size:12px">登录</button>
           </div>
+          <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">
+            <input id="nesPassword" type="password" placeholder="或用密码登录（不发短信）" style="flex:1;min-width:120px;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px;font-size:12px">
+            <button id="nesPwLogin" class="ghost" style="font-size:12px">密码登录</button>
+          </div>
+          <div style="margin-top:6px;font-size:11px;opacity:.6">密码只做一次 md5 换 cookie，不保存</div>
         </details>
       </div>
       <div style="border:1px solid #24344f;border-radius:10px;padding:12px">
@@ -3238,6 +3244,7 @@ button:active:not(:disabled) {
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div>
             <h2 data-note="点越大越重要；可调权重、可看遗忘">记忆星图</h2>
+    <div id="mgSummary" style="margin-top:6px;font-size:12px;opacity:.7"></div>
             <small style="opacity:.7;margin-left:8px">点越大 = 权重越高（30 天半衰期）；连线 = 共享标签；亮度 = 新鲜度</small>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -7801,6 +7808,18 @@ async function spaceDeletePost(tid, btn) {
     el.textContent = text;
     el.className = 'status-badge ' + (level === 'ok' ? 'online' : (level === 'warn' ? '' : 'offline'));
   }
+  async function musicRefreshNetwork() {
+    const box = document.getElementById('musicNetHint');
+    if (!box) return;
+    try {
+      const d = await api('/api/music/network');
+      if (!d.ok || !d.hint) return;
+      box.style.display = 'block';
+      box.textContent = (d.hint.level === 'ok' ? '✓ ' : '⚠ ') + d.hint.text;
+      box.style.borderColor = d.hint.level === 'ok' ? '#2a5c43' : '#7a3b3b';
+      box.style.color = d.hint.level === 'ok' ? '#9fe3c0' : '#ffb3b3';
+    } catch { /* 探测失败就不显示 */ }
+  }
   async function musicRefreshStatus() {
     try {
       const d = await api('/api/music/status');
@@ -7868,12 +7887,14 @@ async function spaceDeletePost(tid, btn) {
           if (pollBox) pollBox.textContent = `第 ${pollCount} 次检查失败：${(e && e.message) || e}`;
         }
       };
+      const handle = { stopped: false, stop() { this.stopped = true; } };
+      musicTimers[provider] = handle;
       const loop = async () => {
-        if (!musicTimers[provider]) return;      // 已被 clearInterval 停掉
+        if (handle.stopped) return;              // 登录成功/过期后立刻停，别继续问
         await tick();
+        if (handle.stopped) return;
         setTimeout(loop, pollMs);
       };
-      musicTimers[provider] = { stop() { this.stopped = true; } };
       loop();
     } catch (e) { musicSetStatus(badgeId, 'err', (e && e.message) || '登录失败'); }
   }
@@ -7908,7 +7929,18 @@ async function spaceDeletePost(tid, btn) {
     try {
       const r = await api('/api/music/netease/login', 'POST', { phone, captcha });
       if (box) box.textContent = r.ok ? ('登录成功：' + (r.nickname || r.userId)) : ('登录失败：' + (r.error || r.message || ''));
-      if (r.ok) musicRefreshStatus();
+      if (r.ok) musicRefreshStatus(); else musicRefreshNetwork();
+    } catch (e) { if (box) box.textContent = '登录失败：' + ((e && e.message) || e); }
+  }
+  async function nesPwLogin() {
+    const phone = (document.getElementById('nesPhone')?.value || '').trim();
+    const password = (document.getElementById('nesPassword')?.value || '');
+    const box = document.getElementById('nesPoll');
+    if (box) box.textContent = '登录中…';
+    try {
+      const r = await api('/api/music/netease/password-login', 'POST', { phone, password });
+      if (box) box.textContent = r.ok ? ('登录成功：' + (r.nickname || r.userId)) : ('登录失败：' + (r.error || ''));
+      if (r.ok) { const el = document.getElementById('nesPassword'); if (el) el.value = ''; musicRefreshStatus(); }
     } catch (e) { if (box) box.textContent = '登录失败：' + ((e && e.message) || e); }
   }
   async function musicLogout(provider) {
@@ -7953,12 +7985,13 @@ async function spaceDeletePost(tid, btn) {
     if (id === 'qqCookieSave') saveCookie('qq');
     if (id === 'nesSendCode') nesSendCode();
     if (id === 'nesSmsLogin') nesSmsLogin();
+    if (id === 'nesPwLogin') nesPwLogin();
     if (id === 'qqLogin') musicLogin('qq', 'qqStatus', 'qqBox');
     if (id === 'nesLogout') musicLogout('netease');
     if (id === 'qqLogout') musicLogout('qq');
   });
-  if (document.readyState !== 'loading') setTimeout(musicRefreshStatus, 1200);
-  else document.addEventListener('DOMContentLoaded', () => setTimeout(musicRefreshStatus, 1200));
+  if (document.readyState !== 'loading') setTimeout(() => { musicRefreshStatus(); musicRefreshNetwork(); }, 1200);
+  else document.addEventListener('DOMContentLoaded', () => setTimeout(() => { musicRefreshStatus(); musicRefreshNetwork(); }, 1200));
 
   // ── 上下文用量（0.4.141）─────────────────────────────────────────
   const CTX_COLORS = { system: '#6b8cff', tools: '#9a7bff', messages: '#43c59e', other: '#5a6b86' };
@@ -8759,8 +8792,13 @@ async function loadMemoryGraph() {
       const atoms = (mem && Array.isArray(mem.longTerm)) ? mem.longTerm : [];
       const people = (mem && mem.raw && mem.raw.memberImpressions && typeof mem.raw.memberImpressions === 'object') ? mem.raw.memberImpressions : {};
       const names = Object.keys(people);
-      if (!atoms.length && !names.length) continue;
-      nodes.push({ id: 'hub:' + key, kind: 'hub', key: key, label: key, weight: 0, ts: now, eff: 0, tags: [] });
+      // 0.4.141：没记忆的会话也要出现。以前这里直接 continue，用户看到的是
+      // 「这个群在星图里完全不存在」，无法区分「没聊过」和「聊过但记忆丢了」。
+      const isEmpty = !atoms.length && !names.length;
+      nodes.push({
+        id: 'hub:' + key, kind: 'hub', key: key, label: key, weight: 0, ts: now, eff: 0, tags: [],
+        empty: isEmpty
+      });
       names.forEach(function (name) {
         nodes.push({
           id: 'p:' + key + ':' + name, kind: 'person', key: key, label: name,
@@ -8803,6 +8841,16 @@ async function loadMemoryGraph() {
       }
     }
     MG.nodes = nodes; MG.edges = edges; MG.loaded = true; MG.selected = null;
+    {
+      const hubs = nodes.filter(function (n) { return n.kind === 'hub'; });
+      const withMem = hubs.filter(function (h) { return !h.empty; }).length;
+      const emptyOnes = hubs.filter(function (h) { return h.empty; }).map(function (h) { return h.key; });
+      const sum = document.getElementById('mgSummary');
+      if (sum) {
+        sum.textContent = hubs.length + ' 个会话 · ' + withMem + ' 个有记忆'
+          + (emptyOnes.length ? ' · ' + emptyOnes.length + ' 个还没有记忆：' + emptyOnes.join('、') : '');
+      }
+    }
     const detail = document.getElementById('mgDetail');
     if (detail) detail.textContent = '（点一个星点或人物看详情）';
     renderMemoryChips();

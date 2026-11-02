@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createMusicAuth } from '../music-auth.js';
+import { probeEgress, describeEgress } from '../music-net.js';
 
 /**
  * 找 resolver 认的 cookie 文件：`<盘>:\QQBot\config\netmusic-cookie.txt`
@@ -44,6 +45,14 @@ export async function handleMusicAuthRoute(ctx = {}) {
     return true;
   }
 
+  // GET /api/music/network → 出口 IP 与风控提示（0.4.141）
+  if (req.method === 'GET' && url.pathname === '/api/music/network') {
+    const e = await probeEgress();
+    const hint = describeEgress(e);
+    sendJson({ ok: true, at: Date.now(), egress: e, hint });
+    return true;
+  }
+
   // POST /api/music/login/start  { provider }
   if (req.method === 'POST' && url.pathname === '/api/music/login/start') {
     const body = typeof ctx.readBody === 'function' ? await ctx.readBody() : {};
@@ -71,7 +80,7 @@ export async function handleMusicAuthRoute(ctx = {}) {
       log(`[music] poll ${provider} code=${r.code ?? '?'} state=${r.state}`);
       if (r.state === 'ok') {
         const exported = await auth.exportCookies(provider === 'netease' ? cookieFile : '');
-        log(`[music] ${provider} 登录成功${exported.netease && provider === 'netease' ? `，cookie 已写入 ${cookieFile}` : ''}`);
+        log(`[music] ${provider} 登录成功（cookie 长度 ${String(exported?.[provider] ?? '').length}）${exported?.netease && provider === 'netease' ? `，cookie 已写入 ${cookieFile}` : ''}`);
       }
       sendJson({ ok: true, at: Date.now(), ...r });
     } catch (error) {
@@ -103,6 +112,24 @@ export async function handleMusicAuthRoute(ctx = {}) {
         log(`[music] netease 短信登录成功：${r.nickname || r.userId}，cookie 已写入 ${cookieFile}`);
       } else {
         log(`[music] netease 短信登录失败：${r.error}`);
+      }
+      sendJson({ ok: r.ok, at: Date.now(), ...r }, r.ok ? 200 : 400);
+    } catch (error) {
+      sendJson({ ok: false, error: String(error?.message ?? error) }, 400);
+    }
+    return true;
+  }
+
+  // POST /api/music/netease/password-login  { phone, password }
+  if (req.method === 'POST' && url.pathname === '/api/music/netease/password-login') {
+    const body = typeof ctx.readBody === 'function' ? await ctx.readBody() : {};
+    try {
+      const r = await auth.loginByPassword(String(body?.phone || ''), String(body?.password || ''));
+      if (r.ok) {
+        await auth.exportCookies(cookieFile);
+        log(`[music] netease 密码登录成功：${r.nickname || r.userId}，cookie 已写入 ${cookieFile}`);
+      } else {
+        log(`[music] netease 密码登录失败：${r.error}`);
       }
       sendJson({ ok: r.ok, at: Date.now(), ...r }, r.ok ? 200 : 400);
     } catch (error) {
