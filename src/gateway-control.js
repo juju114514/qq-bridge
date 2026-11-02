@@ -67,6 +67,15 @@ export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, pr
   const entry = path.join(dir, 'index.mjs');
   if (!fs.existsSync(nodeExe)) return { ok: false, started: false, error: '缺少 node.exe：' + dir };
   const t0 = now();
+  // 关键（0.4.142）：端口没通时先清理残留 —— SnowLuma 不做单例，
+  // 不清就会一套套往上堆（实测堆到 8 套 / 16 个进程 / 1 GB）。
+  try {
+    const stale = await listGatewayPids(opts);
+    if (stale.length) {
+      log(`[gateway] 发现 ${stale.length} 个残留 SnowLuma 进程，先清理（${stale.join(',')}）`);
+      await stopGateway({ ...opts, listImpl: async () => stale });
+    }
+  } catch { /* 清理失败不阻塞启动 */ }
   // 关键（0.4.134）：**不能**用 stdio:'ignore' —— 实测 SnowLuma 起来几秒后会静默退出，
   // 因为它需要一个真实的 stdout 句柄。这里把输出重定向到 logs/gateway.log（追加），
   // 既保住句柄，也留下它自己的日志。
@@ -270,4 +279,49 @@ export async function probeQqOnline(opts = {}) {
   } catch (error) {
     return { checked: false, online: null, error: String(error?.message ?? error).slice(0, 120) };
   }
+}
+
+/**
+ * 列出 SnowLuma 相关进程（0.4.142）
+ *
+ * 为什么必须有：SnowLuma **不会**自我单例 —— 每点一次「启动网关」就多一套进程，
+ * 而且旧的不退出（2026-11-02 实测堆到 8 套、16 个 node.exe、约 1 GB 内存）。
+ * 这里用任务计划之外的独立查询：按命令行里的 snowluma + index.mjs 认，
+ * 排除桥接自己的路径，避免把 MCP/桥接一起杀掉。
+ *
+ * @param {{execImpl?:Function, nodeExe?:string, snowlumaDir?:string, timeoutMs?:number}} [opts]
+ * @returns {Promise<number[]>}
+ */
+export async function listGatewayPids(opts = {}) {
+  const { execImpl = execFile, nodeExe = process.execPath, timeoutMs = 8000 } = opts;
+  // 两个条件都要试：有的实例 CommandLine 取不到（不同完整性级别），但 ExecutablePath 有值。
+  // 只用 CommandLine 会漏掉它们 → 又堆起来。
+  const script = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -EA SilentlyContinue | "
+    + "Where-Object { ($_.CommandLine -like '*snowluma*index.mjs*') -or ($_.ExecutablePath -like '*\\snowluma\\*') } | "
+    + "Select-Object -ExpandProperty ProcessId";
+  return new Promise((resolve) => {
+    try {
+      execImpl('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+        if (err && !stdout) { resolve([]); return; }
+        const pids = String(stdout || '').split(/\s+/).map((x) => Number(x)).filter((n) => Number.isInteger(n) && n > 0 && n !== process.pid && n !== Number(nodeExe));
+        resolve(pids);
+      });
+    } catch { resolve([]); }
+  });
+}
+
+/**
+ * 停掉所有 SnowLuma 进程（先礼后兵：先正常 kill，再强制）。
+ * @returns {Promise<{stopped:number[], remaining:number[]}>}
+ */
+export async function stopGateway(opts = {}) {
+  const { killImpl = (pid) => process.kill(pid), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), listImpl = listGatewayPids } = opts;
+  const pids = await listImpl(opts);
+  const stopped = [];
+  for (const pid of pids) {
+    try { killImpl(pid); stopped.push(pid); } catch { /* 已经没了 */ }
+  }
+  await sleep(1200);
+  const remaining = (await listImpl(opts)).filter((p) => !stopped.includes(p));
+  return { stopped, remaining };
 }

@@ -2847,6 +2847,7 @@ button:active:not(:disabled) {
           <div class="row" style="margin-top:12px;align-items:center;gap:10px">
             <span id="gwState" class="status-badge">检查中…</span>
             <button id="gwStart" class="primary">启动网关</button>
+    <button id="gwStop" class="ghost" title="清掉重复/僵尸的 SnowLuma 进程">停止（清理重复进程）</button>
             <button id="gwRefresh" class="ghost">刷新状态</button>
           </div>
           <div id="gwDetail" class="meta" style="margin-top:10px"></div>
@@ -7771,6 +7772,22 @@ async function spaceDeletePost(tid, btn) {
       if (detail) detail.textContent = '读取失败：' + (e && e.message ? e.message : e);
     }
   }
+  async function gwStopClick() {
+    const badge = document.getElementById('gwState');
+    const detail = document.getElementById('gwDetail');
+    if (badge) badge.textContent = '停止中…';
+    try {
+      const r = await api('/api/gateway/control/stop', 'POST', {});
+      if (badge) badge.textContent = r.ok ? '网关已停止' : '部分进程没退出';
+      if (detail) {
+        detail.textContent = r.ok
+          ? ('已停止 ' + r.stopped.length + ' 个进程')
+          : ('停止了 ' + r.stopped.length + ' 个，还有 ' + r.remaining.length + ' 个没退出：' + (r.remaining || []).join(','));
+      }
+    } catch (e) {
+      if (badge) badge.textContent = '停止失败：' + ((e && e.message) || e);
+    }
+  }
   async function gwStartClick() {
     const badge = document.getElementById('gwState');
     const btn = document.getElementById('gwStart');
@@ -7795,6 +7812,7 @@ async function spaceDeletePost(tid, btn) {
   }
   document.addEventListener('click', (ev) => {
     if (ev.target && ev.target.id === 'gwStart') gwStartClick();
+    if (ev.target && ev.target.id === 'gwStop') gwStopClick();
     if (ev.target && ev.target.id === 'gwRefresh') gwRefresh();
   });
   if (document.readyState !== 'loading') setTimeout(gwRefresh, 800);

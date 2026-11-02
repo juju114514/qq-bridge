@@ -1,5 +1,5 @@
 // 网关状态 / 手动启动路由（0.4.131）
-import { getGatewayStatus, startGateway, gatewayHealthPayload } from '../gateway-control.js';
+import { getGatewayStatus, startGateway, stopGateway, gatewayHealthPayload } from '../gateway-control.js';
 
 export async function handleGatewayControlRoute(ctx = {}) {
   const { req, url, sendJson } = ctx;
@@ -18,6 +18,14 @@ export async function handleGatewayControlRoute(ctx = {}) {
   if (req.method === 'GET') {
     const status = await getGatewayStatus(d.gatewayPorts ? { ports: d.gatewayPorts } : {});
     sendJson({ ok: true, at: Date.now(), ...status });
+    return true;
+  }
+
+  // POST /api/gateway/control/stop → 停掉所有 SnowLuma 进程（0.4.142）
+  if (req.method === 'POST' && url.pathname === '/api/gateway/control/stop') {
+    const r = await stopGateway();
+    (d.log || (() => {}))(`[gateway] 用户手动停止：清理 ${r.stopped.length} 个进程${r.remaining.length ? `，仍有 ${r.remaining.length} 个没退出` : ''}`);
+    sendJson({ ok: r.remaining.length === 0, stopped: r.stopped, remaining: r.remaining, at: Date.now() });
     return true;
   }
 

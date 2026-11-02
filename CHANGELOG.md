@@ -14,6 +14,42 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-02 — 0.4.142：SnowLuma 会一套套堆起来（node.exe 越攒越多）
+
+### 现象
+
+任务管理器里 node.exe 越攒越多：实测 **8 套 SnowLuma、16 个 node.exe、约 1 GB 内存**，
+启动时间分布在 12:56 / 13:03 / 13:17 / 13:36 / 13:39 / 13:44 / 14:10 / 14:12 —— 每次「启动网关」或重启都多一套。
+
+### 根因
+
+SnowLuma **不做单例**：端口被占时它不是拒绝启动，而是照样起来（只是不再监听 OneBot 端口）。
+我们的 `startGateway` 只在**端口探测通过**时跳过启动，于是
+
+```
+端口刚好在上一套初始化期间没起来 → 判定"没在跑" → 又 spawn 一套
+旧的那套并不会退出 → 累积
+```
+
+### 修法
+
+- `listGatewayPids()`：按 `CommandLine` **或** `ExecutablePath` 含 `snowluma` 找进程
+  （有的实例 `CommandLine` 取不到，只看命令行会漏）
+- `stopGateway()`：全部 kill，1.2 秒后复查，返回 `{stopped, remaining}`
+- `startGateway()`：端口不通时**先清理残留再 spawn**，保证只有一套
+- 新接口 `POST /api/gateway/control/stop`
+- 控制台网关卡片加「**停止（清理重复进程）**」按钮
+
+### 实测
+
+```
+停: stopped=2 remaining=0   → 3000/3001/5099 全部 down
+起: ok=True started=True
+再点启动: started=False（识别到已在跑，不再堆）
+```
+
+**审计 181/181。**
+
 ## 2026-11-02 — 0.4.141：记忆护栏（写成功 ≠ 存住了）+ 星图不再藏会话
 
 ### 事故
