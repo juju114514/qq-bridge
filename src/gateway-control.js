@@ -39,6 +39,11 @@ function run(cmd, args, { timeoutMs = 8000 } = {}) {
   });
 }
 
+/** 网关日志落点（0.4.134）：<dir>/logs/gateway.log */
+export function gatewayLogPath(dir = snowlumaDir()) {
+  return path.join(dir || '.', 'logs', 'gateway.log');
+}
+
 /** SnowLuma 安装目录：环境变量 > 常见位置 */
 export function snowlumaDir(env = process.env) {
   const explicit = String(env.QQB_SNOWLUMA_DIR || '').trim();
@@ -62,13 +67,25 @@ export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, pr
   const entry = path.join(dir, 'index.mjs');
   if (!fs.existsSync(nodeExe)) return { ok: false, started: false, error: '缺少 node.exe：' + dir };
   const t0 = now();
+  // 关键（0.4.134）：**不能**用 stdio:'ignore' —— 实测 SnowLuma 起来几秒后会静默退出，
+  // 因为它需要一个真实的 stdout 句柄。这里把输出重定向到 logs/gateway.log（追加），
+  // 既保住句柄，也留下它自己的日志。
+  const logFile = gatewayLogPath(dir);
+  let outFd = null;
+  try {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    outFd = fs.openSync(logFile, 'a');
+  } catch { outFd = null; }
+
   const child = spawnImpl(nodeExe, ['index.mjs'], {
     cwd: dir,
     detached: true,
-    stdio: 'ignore',
+    stdio: outFd === null ? 'ignore' : ['ignore', outFd, outFd],
     windowsHide: true
   });
   child.unref();
+  // 父进程这侧的句柄可以关了：子进程已持有自己的副本
+  if (outFd !== null) { try { fs.closeSync(outFd); } catch { /* ignore */ } }
   let waited = 0;
   while (waited < timeoutMs) {
     for (const p of ports) {

@@ -2,6 +2,43 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.134：修「网关被拉起来几秒后自杀」
+
+### 现场
+
+```
+12:26:54  SnowLuma 启动，3000/3001/5099 全部 listening
+12:26:55  最后一条日志
+（进程消失，端口全关，日志里没有报错）
+```
+
+但用 `Start-Process` + 输出重定向启动的同一条命令，**连续 30 秒稳定**、端口全程在听。
+
+### 根因
+
+`startViaSpawn` 用的是 `stdio: 'ignore'` —— 相当于把子进程的标准输出接到 NUL。
+SnowLuma 起来后要往 stdout 写日志，拿到的是一个**不可用的句柄**，于是初始化完就静默退出。
+（这类行为在带 hook 的 Electron/QQ 协议端上很常见：stdout 关闭被当成父进程已死。）
+
+### 修法
+
+改成**把输出重定向到文件**（追加），句柄真实存在，日志也留下来了：
+
+```js
+const outFd = fs.openSync('<dir>/logs/gateway.log', 'a');
+spawn(nodeExe, ['index.mjs'], { cwd: dir, detached: true, stdio: ['ignore', outFd, outFd], windowsHide: true });
+child.unref();
+fs.closeSync(outFd);   // 父进程这侧关掉，子进程已持有副本
+```
+
+### 测试
+
+`test-gateway-control.mjs` 补 2 条（共 19 条）：
+
+- `gatewayLogPath()` 落在 `<dir>/logs/gateway.log`
+- **`startViaSpawn` 的 stdio 不能再是 `'ignore'`**（断言 `Array.isArray(stdio)` + `detached` + `windowsHide`）
+
+**审计 178/178。**
 ## 2026-11-02 — 0.4.133：「进程活着但 QQ 没登录」也能看出来
 
 比「进程死了」更常见、也更难发现的一种故障：SnowLuma 在跑、WS 连着、端口全绿，

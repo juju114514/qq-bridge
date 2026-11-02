@@ -160,6 +160,34 @@ await check('probeQqOnline：抛异常（端口关着）也返回结构化结果
   assert.match(r.error, /ECONNREFUSED/);
 });
 
+
+await check('gatewayLogPath：落在 <dir>/logs/gateway.log', async () => {
+  const pathMod = await import('node:path');
+  assert.equal(m.gatewayLogPath(pathMod.join('x', 'snowluma')), pathMod.join('x', 'snowluma', 'logs', 'gateway.log'));
+});
+
+await check('startViaSpawn：spawn 时 stdout/stderr 指向日志文件，不是 ignore', async () => {
+  const os = await import('node:os');
+  const fsp = await import('node:fs');
+  const nodePath = await import('node:path');
+  const dir = fsp.mkdtempSync(nodePath.join(os.tmpdir(), 'qqb-gw-'));
+  fsp.writeFileSync(nodePath.join(dir, 'node.exe'), '');
+  fsp.writeFileSync(nodePath.join(dir, 'index.mjs'), '');
+  let seen = null;
+  const r = await m.startViaSpawn({
+    dir,
+    probe: async () => true,
+    spawnImpl: (exe, args, opts) => { seen = opts; return { pid: 1234, unref() {} }; }
+  });
+  fsp.rmSync(dir, { recursive: true, force: true });
+  assert.equal(r.ok, true);
+  assert.ok(seen, '没调到 spawn');
+  assert.notEqual(seen.stdio, 'ignore', 'stdio 不能再是 ignore（会让 SnowLuma 起来后自杀）');
+  assert.ok(Array.isArray(seen.stdio), 'stdio 应该是数组');
+  assert.equal(seen.detached, true, '必须 detached（不随桥接退出）');
+  assert.equal(seen.windowsHide, true);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
