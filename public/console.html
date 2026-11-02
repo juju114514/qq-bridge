@@ -1833,6 +1833,8 @@ button:active:not(:disabled) {
 
         <div class="nav-label">运维</div>
         <button data-view="diagnostics" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>诊断与健康</button>
+        <!-- 新手向导：入口是「运行总览」里的卡片；这里保留路由按钮（视图/页面契约要求一一对应），但不显示 -->
+        <button data-view="setup" class="nav-item" style="display:none" aria-hidden="true" tabindex="-1">新手向导</button>
         <button data-view="scheduler" class="nav-item"><span class="nav-icon" aria-hidden="true">◷</span>定时任务</button>
         <button data-view="usage" class="nav-item"><span class="nav-icon" aria-hidden="true">◧</span>令牌与花费</button>
         <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
