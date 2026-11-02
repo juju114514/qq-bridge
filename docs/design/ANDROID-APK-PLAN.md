@@ -109,50 +109,70 @@ Android SDK     D:\QQBot\tools\android-sdk（platform 34 / build-tools 34）
 体检 APK 的构建脚本就是模板，一体化包沿用它（确定可行，不依赖网络下载 Gradle）。
 
 
----
-
-## 八、工程骨架进度（2026-11-03 05:35，可接续）
+## 八、工程骨架进度（2026-11-03 06:40，可接续）
 
 ### 已存在
 
-`
+```
 mobile/apk/
 ├─ AndroidManifest.xml          targetSdk 28｜前台服务｜明文 HTTP
 ├─ src/com/qqbridge/app/
 │  ├─ MainActivity.java          WebView + 每秒探 3100，通了切界面
-│  └─ BridgeService.java         前台服务：铺 assets → chmod → exec node
-└─ build-apk.ps1                 javac→d8→aapt2→注入dex→zipalign→签名
-`
+│  └─ BridgeService.java         前台服务：铺 assets → 解 tar → chmod → exec node
+├─ build-apk.ps1                 javac→d8→aapt2→注入dex→zipalign→签名→校验assets名（7 步）
+└─ tools/fetch-node-libs.py     抓 Termux 的 node 运行库（9 个 .so，45 MB，按 NEEDED 裁剪）
+```
 
-### 已验证
+APK 里的 assets（**全部平铺**，见坑 3）：
+
+| asset | 大小 | 落盘位置 |
+| --- | --- | --- |
+| `node` | 44 MB | `files/bin/node`（chmod 755） |
+| `payload.tar` | 243 MB | 解到 `files/app`（src / public / node_modules，35569 个文件） |
+| `libs.tar` | 45 MB | 解到 `files/lib`（node 的 .so，靠 `LD_LIBRARY_PATH`） |
+| `bridge.js` `package.json` `config.example.json` | 小 | `files/app` 下的对应位置 |
+
+### 已验证（2026-11-03 06:40）
 
 | 项 | 结果 |
 | --- | --- |
-| javac 编译 | 通过（7 个 class） |
-| 空壳构建 | 通过，产出 14.4 MB APK |
-| 模拟器安装 + 启动 | 通过 |
-| 前台服务 | isForeground=true，通知生效 |
-| 当前卡点 | FileNotFoundException: app/src/bridge.js —— 空壳模式不带 payload，预期内 |
+| javac / d8 / aapt2 / 签名 | 通过 |
+| 完整包构建 | 通过，**77.0 MB**（payload 243 MB + libs 45 MB，压缩后） |
+| 首启解压（模拟器 Android 15） | 通过：`files/app` 326 MB、35569 个文件、0 个软链、`payload.tar` 解完自动删 |
+| 幂等 | 通过：`.payload-ok` / `lib/.ok` 存在就跳过 |
+| node 运行库 | 通过：`node -p process.version` → `v24.22.2`（`LD_LIBRARY_PATH` 生效） |
+| **当前卡点** | node 读 `package.json` 报 `ERR_INVALID_PACKAGE_CONFIG`，模拟器疑为 ARM 转译假阳性，**待真机复验** |
 
-### 两个已修的坑
+### 五个已修的坑
 
 1. Theme.DeviceDefault.DarkActionBar 在 aapt2 里解析不到 → 改 Theme.Holo.Light.DarkActionBar
-2. uild-apk.ps1 必须存成 **UTF-8 with BOM**，否则 PowerShell 5.1 按 GBK 读，中文乱码且 {0} 格式化报语法错
+2. build-apk.ps1 必须存成 **UTF-8 with BOM**，否则 PowerShell 5.1 按 GBK 读，中文乱码且 {0} 格式化报语法错
+3. **aapt2 在 Windows 上把子目录 asset 存成反斜杠**（`assets/app\src\bridge.js`），
+   AssetManager 只认 `/` → 真机 `FileNotFoundException`。解法：asset 全平铺，脚本第 7 步自检
+4. **toybox 的 tar 解不了长链接**：>100 字节的软链目标会变成 `././@LongSymLink` 死链，
+   也不认 pax `linkpath`；Windows 自带 bsdtar 只写得出 ustar/pax，写不出 GNU longlink。
+   解法：payload 里把 pnpm 链接实体化（26 MB → 243 MB），换「解出来就是对的」
+5. node 是 Termux 构建的 bionic 二进制，NEEDED 里有 libz/libcares/libsqlite3/libcrypto/libssl/libicu*，
+   Android 系统里没有 → 自带 `libs.tar` + `LD_LIBRARY_PATH`（targetSdk 28 才不被链接器忽略）
 
 ### 下一步（照顺序做，别跳）
 
-`powershell
-# 1) 打出带 payload 的完整包（node 45MB + 源码 + node_modules）
-powershell -File D:\QQBot-open\mobile\apk\build-apk.ps1 -WithPayload -Out D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
+```powershell
+# 1) 打完整包
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\QQBot-open\mobile\apk\build-apk.ps1 -WithPayload `
+  -Out D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
 
-# 2) 真机装一次，看首启解压是否成功
+# 2) 真机装 + 看日志
 adb install -r D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
-adb logcat -s qqb:V            # 看 [bridge] 日志
+adb logcat -s qqb:V            # 看 node 的 stdout
 
 # 3) 通了之后，再叠 QQ/NapCat（第 2 步）
-`
+```
 
-**若第 1 步报 assets 太大**：apt2 -A 对单文件有 2GB 上限，80MB 没问题；
-但 ssets/payload.tar 里的 
-ode_modules 建议先 
-pm prune --omit=dev 再打。
+**如果真机也报 `ERR_INVALID_PACKAGE_CONFIG`**：那是 Node 24 的 C++ package.json 读取（simdjson）
+在 Android 上的问题，不是我们的打包问题。排查入口：`node:internal/modules/package_json_reader:126`；
+已确认 `JSON.parse(fs.readFileSync(...))` 对同一份文件永远成功。可能的方向：换 node 版本（22 LTS 的
+package.json 读取还是 JS 实现）、或者给 node 加 `--no-experimental-...`。**先别动 payload**。
+
+**如果要瘦 payload**：只有在 Linux/macOS 上打包（那边的 tar 能保留软链）才能把 243 MB 降回 ~30 MB；
+Windows 上别绕，见坑 4。
