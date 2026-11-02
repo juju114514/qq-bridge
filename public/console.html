@@ -1822,6 +1822,7 @@ button:active:not(:disabled) {
         <div class="nav-label">总览</div>
         <button data-view="overview" class="nav-item active" aria-current="page"><span class="nav-icon" aria-hidden="true">◫</span>运行总览</button>
         <button data-view="mobile" class="nav-item"><span class="nav-icon" aria-hidden="true">◫</span>手机版</button>
+          <button data-view="hub" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>数字中枢<span class="nav-note">NEW</span></button>
 
         <div class="nav-label">群聊</div>
         <button data-view="sessions" class="nav-item"><span class="nav-icon" aria-hidden="true">☷</span>会话与审批<span class="nav-count" id="pendingCount">—</span></button>
@@ -3241,6 +3242,59 @@ button:active:not(:disabled) {
   <div id="reportSummary" style="margin-top:10px;font-size:13px;color:#c8d4ea">（点「生成报告」）</div>
   <pre id="reportBody" style="margin-top:10px;max-height:520px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.55;background:rgba(12,20,34,.75);border:1px solid #24344f;border-radius:8px;padding:10px;color:#dbe6ff"></pre>
 </section>
+<section data-page="hub" class="card span-all" hidden>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <h2 style="margin:0 0 4px">数字中枢</h2>
+        <div style="font-size:13px;color:#9fb0cc">大脑、索引、记忆、密钥 —— 这四样是它「记得住、找得到、跑得动」的底座。</div>
+      </div>
+      <button class="btn" id="hubRefresh" type="button">刷新</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+      <div class="card" style="padding:12px">
+        <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">本地大脑</div>
+        <div id="hubAgent" style="font-size:13px;line-height:1.7">（加载中…）</div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" data-hub-mode="dsh" type="button">用 DSH</button>
+          <button class="btn" data-hub-mode="local" type="button">用手机本地</button>
+        </div>
+        <div id="hubAgentMsg" style="margin-top:8px;font-size:12px;color:#8fa3c4"></div>
+      </div>
+
+      <div class="card" style="padding:12px">
+        <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">文件索引</div>
+        <div id="hubIndex" style="font-size:13px;line-height:1.7">（加载中…）</div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" id="hubIndexStart" type="button">开始扫描</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input id="hubSearchInput" placeholder="搜文件名，如 CHANGELOG" style="flex:1;min-width:0;background:#0e1726;border:1px solid #26364f;border-radius:6px;color:#dbe6ff;padding:6px 8px;font-size:12px">
+          <button class="btn" id="hubSearchGo" type="button">搜</button>
+        </div>
+        <div id="hubSearchOut" style="margin-top:8px;font-size:12px;line-height:1.6;max-height:180px;overflow:auto"></div>
+      </div>
+
+      <div class="card" style="padding:12px">
+        <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">长期记忆</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="hubMemKey" placeholder="会话 key，如 private:123" style="flex:1;min-width:0;background:#0e1726;border:1px solid #26364f;border-radius:6px;color:#dbe6ff;padding:6px 8px;font-size:12px">
+          <button class="btn" id="hubMemLoad" type="button">读取</button>
+        </div>
+        <div id="hubMemList" style="font-size:12px;line-height:1.6;max-height:180px;overflow:auto">（先填 key 再点读取）</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="hubMemNew" placeholder="记一条，如：主人喜欢被叫老板" style="flex:1;min-width:0;background:#0e1726;border:1px solid #26364f;border-radius:6px;color:#dbe6ff;padding:6px 8px;font-size:12px">
+          <button class="btn" id="hubMemAdd" type="button">记住</button>
+        </div>
+      </div>
+
+      <div class="card" style="padding:12px">
+        <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">密钥状态</div>
+        <div id="hubSecret" style="font-size:13px;line-height:1.7">（加载中…）</div>
+        <div style="margin-top:8px;font-size:12px;color:#8fa3c4">控制台只显示状态，不提供「看明文」——那等于把防线拆了。</div>
+      </div>
+    </div>
+  </section>
 <section data-page="memory-graph" class="card span-all" hidden>
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div>
@@ -5893,7 +5947,8 @@ document.getElementById('consoleTokenRandom').addEventListener('click', () => ch
 
 // Presentation layer: keep every existing control mounted so drafts and API contracts survive navigation.
 const consolePages = {
-  report: ['运行报告', '它现在好不好，一段话。', '只读：连续运行/重启/通道/资源/配置摘要，已脱敏，可直接贴给别人。'],
+  hub: ['数字中枢', '大脑、索引、记忆、密钥。', '一个页面看四件事：切大脑模式、扫文件索引并搜索、读写长期记忆、看密钥是否加密。'],
+    report: ['运行报告', '它现在好不好，一段话。', '只读：连续运行/重启/通道/资源/配置摘要，已脱敏，可直接贴给别人。'],
   official: ['官方通道', '官方机器人，预留接入。', '官方通道路由与接入清单：条件齐全后改一个开关即可接入。'],
   supervisor: ['守护进程', '它一直在，才叫可靠。', '进程存活、重启历史与看门狗事件；存活以进程为准，日志只作补充。'],
   song: ['点歌 / 唱歌', '把喜欢的，唱给对方听。', '下载并截取音频，以语音条发到指定会话（真实发送）。'],
@@ -7636,6 +7691,7 @@ async function spaceDeletePost(tid, btn) {
   // 每条钩子独立 try：一个钩子炸了不影响其它钩子（这曾经让整个控制台卡在"加载中"）。
   const PAGE_HOOKS = {
     overview: ['loadOverview', 'loadSetupEntry', 'loadContextUsage'],
+      hub: ['loadHub'],
     sessions: ['loadHeatmap'],
     people: ['loadPeople'],
     scheduler: ['loadScheduler'],
@@ -8067,6 +8123,119 @@ async function spaceDeletePost(tid, btn) {
   if (document.readyState !== 'loading') setTimeout(loadContextUsage, 1500);
   else document.addEventListener('DOMContentLoaded', () => setTimeout(loadContextUsage, 1500));
 
+  // ── 数字中枢（B 方案）：一个页面看四件事 ──
+  let hubMemKey = '';
+  async function loadHub() {
+    const agentBox = document.getElementById('hubAgent');
+    if (!agentBox) return;
+    try {
+      const r = await api('/api/hub/overview');
+      if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+      const a = r.agent || {};
+      agentBox.innerHTML =
+        '模式：<b>' + (a.mode === 'local' ? '本地（不经过 DSH）' : 'DSH') + '</b><br>' +
+        '模型：' + (a.model || '—') + '<br>' +
+        '人格：' + (a.personaSource || '—') + '<br>' +
+        'Key：' + (a.keyEnc ? '已加密' : (a.hasKey ? '明文' : '未配置'));
+      const idx = document.getElementById('hubIndex');
+      if (idx) idx.innerHTML = '状态：' + (r.fileIndex.enabled ? '已启用' : '已关闭') + '<br>根目录：' + ((r.fileIndex.roots || []).join('、') || '（未配置）');
+      await loadHubIndexStatus();
+      await loadHubSecret();
+    } catch (e) {
+      agentBox.textContent = '读取失败：' + (e && e.message ? e.message : e);
+    }
+  }
+  async function loadHubIndexStatus() {
+    const box = document.getElementById('hubIndex');
+    if (!box) return;
+    try {
+      const s = await api('/api/index/status');
+      if (!s || s.ok === false) return;
+      box.innerHTML += '<br>已索引：<b>' + (s.total || 0) + '</b> 个文件' + (s.running ? '（扫描中… ' + (s.scanned || 0) + '）' : '');
+    } catch (e) { /* 静默 */ }
+  }
+  async function loadHubSecret() {
+    const box = document.getElementById('hubSecret');
+    if (!box) return;
+    try {
+      const s = await api('/api/hub/secret-status');
+      if (!s || s.ok === false) throw new Error((s && s.error) || '读取失败');
+      const label = { dpapi: 'DPAPI（当前用户）', 'aes-256-gcm': 'AES-256-GCM（本地密钥）', plaintext: '明文', none: '未配置', unknown: '未知格式' }[s.algo] || s.algo;
+      box.innerHTML = '算法：<b>' + label + '</b><br>长度：' + (s.length || 0) + '<br>' +
+        (s.plaintext ? '<span style="color:#ffb27a">⚠ 明文存储，建议加密</span>' : '<span style="color:#9fd6a0">✓ 已加密</span>') +
+        (s.hint ? '<br><span style="font-size:11px;color:#8fa3c4">' + s.hint + '</span>' : '');
+    } catch (e) { box.textContent = '读取失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubSetMode(mode) {
+    const msg = document.getElementById('hubAgentMsg');
+    try {
+      const r = await api('/api/hub/agent-mode', 'POST', { mode });
+      if (!r || r.ok === false) throw new Error((r && r.error) || '保存失败');
+      if (msg) msg.innerHTML = '<span style="color:#9fd6a0">已切换到 ' + mode + '</span> · 重启桥接后生效';
+      await loadHub();
+    } catch (e) { if (msg) msg.textContent = '保存失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubSearch() {
+    const q = (document.getElementById('hubSearchInput') || {}).value || '';
+    const out = document.getElementById('hubSearchOut');
+    if (!out) return;
+    if (!q.trim()) { out.textContent = ''; return; }
+    out.textContent = '（搜索中…）';
+    try {
+      const r = await api('/api/search?q=' + encodeURIComponent(q) + '&limit=10');
+      if (!r || r.ok === false) throw new Error((r && r.error) || '搜索失败');
+      if (!r.results.length) { out.textContent = '没有命中'; return; }
+      out.innerHTML = r.results.map((x) => '<div style="margin-bottom:4px">' + x.name + ' <span style="color:#8fa3c4">' + Math.round(x.size / 1024) + 'KB</span></div>').join('');
+    } catch (e) { out.textContent = '搜索失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubMemLoad() {
+    const keyEl = document.getElementById('hubMemKey');
+    const box = document.getElementById('hubMemList');
+    if (!keyEl || !box) return;
+    hubMemKey = keyEl.value.trim();
+    if (!hubMemKey) { box.textContent = '先填会话 key'; return; }
+    box.textContent = '（加载中…）';
+    try {
+      const r = await api('/api/hub/memory?key=' + encodeURIComponent(hubMemKey));
+      if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+      if (!r.atoms.length) { box.textContent = '（这个会话还没有长期记忆）'; return; }
+      box.innerHTML = r.atoms.map((a) => '<div style="margin-bottom:5px">• ' + a.text +
+        ' <button class="btn" style="padding:1px 6px;font-size:11px" data-hub-mem-del="' + encodeURIComponent(a.text) + '">删</button></div>').join('');
+    } catch (e) { box.textContent = '读取失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubMemAdd() {
+    const el = document.getElementById('hubMemNew');
+    if (!el || !hubMemKey) return;
+    const text = el.value.trim();
+    if (!text) return;
+    try {
+      const r = await api('/api/hub/memory', 'POST', { key: hubMemKey, text });
+      if (!r || r.ok === false) throw new Error((r && r.error) || '保存失败');
+      el.value = '';
+      await hubMemLoad();
+    } catch (e) { const box = document.getElementById('hubMemList'); if (box) box.textContent = '保存失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubMemDel(text) {
+    if (!hubMemKey) return;
+    try {
+      await api('/api/hub/memory', 'DELETE', { key: hubMemKey, text: decodeURIComponent(text) });
+      await hubMemLoad();
+    } catch (e) { /* 静默 */ }
+  }
+  document.addEventListener('click', (ev) => {
+    const modeBtn = ev.target.closest('[data-hub-mode]');
+    if (modeBtn) { hubSetMode(modeBtn.getAttribute('data-hub-mode')); return; }
+    const delBtn = ev.target.closest('[data-hub-mem-del]');
+    if (delBtn) { hubMemDel(delBtn.getAttribute('data-hub-mem-del')); return; }
+    if (ev.target.id === 'hubRefresh') { loadHub(); return; }
+    if (ev.target.id === 'hubSearchGo') { hubSearch(); return; }
+    if (ev.target.id === 'hubMemLoad') { hubMemLoad(); return; }
+    if (ev.target.id === 'hubMemAdd') { hubMemAdd(); return; }
+    if (ev.target.id === 'hubIndexStart') {
+      api('/api/index/start', 'POST', {}).then(() => setTimeout(loadHubIndexStatus, 1200)).catch(() => {});
+      return;
+    }
+  });
 function runPageHooks(page) {
     const names = PAGE_HOOKS[page];
     if (!names) return;

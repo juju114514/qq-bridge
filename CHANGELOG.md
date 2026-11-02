@@ -14,6 +14,37 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.52：控制台「数字中枢」页（B 方案）
+
+### 为什么
+
+大脑模式、文件索引、长期记忆、密钥状态这四件事，之前只能改 config 或敲 curl。
+新开一页把它们收在一起，比往概览页硬塞卡片更清爽（A/B 两案里选了 B）。
+
+### 新增页面 `hub`（导航在「总览」组下）
+
+| 卡片 | 能干什么 | 对应接口 |
+| --- | --- | --- |
+| 本地大脑 | 看模式/模型/人格来源/Key 状态；一键切 `dsh` ↔ `local` | `GET /api/hub/overview`、`POST /api/hub/agent-mode` |
+| 文件索引 | 已索引条数、根目录、开始扫描、搜索文件名 | `GET /api/index/status`、`POST /api/index/start`、`GET /api/search` |
+| 长期记忆 | 按会话 key 读、手动加一条、逐条删 | `GET/POST/DELETE /api/hub/memory` |
+| 密钥状态 | 算法（DPAPI / AES）、长度、是否明文；**不提供看明文** | `GET /api/hub/secret-status` |
+
+### 几个刻意的取舍
+
+- **切模式写盘后提示「重启生效」**，不做运行时热切换（正在跑的那一轮不该半路换脑）
+- **配置写入是原子的**：先写 `.tmp` 再 rename，避免半截文件让桥接起不来
+- **密钥只显示状态**：控制台是 HTTP 可访问的，加「看明文」等于把防线拆了
+- 新接口集中在 `src/api/hub-route.js`，没往 `console-extra-routes` 里堆（那文件贴着 +50 行棘轮）
+
+### 备份与回滚
+
+- 备份文件：`public/console.html.bak-before-hub`
+- Git 标签：`pre-hub-page`
+- 回滚 B → A：`git checkout pre-hub-page -- public/console.html`
+
+**审计 186/186。**
+
 ## 2026-11-03 — 0.5.51：长期记忆真正能存活（P2 收尾）
 
 ### 病根
