@@ -60,6 +60,8 @@ export async function handleMusicAuthRoute(ctx = {}) {
 
   // GET /api/music/login/poll?provider=&key=
   if (req.method === 'GET' && url.pathname === '/api/music/login/poll') {
+    // 关键：轮询结果绝不能被缓存，否则前端永远看到第一次的 801/66
+    try { ctx.res?.setHeader?.('cache-control', 'no-store, max-age=0'); } catch { /* ignore */ }
     const provider = String(url.searchParams.get('provider') || 'netease');
     const key = String(url.searchParams.get('key') || '');
     if (!key) { sendJson({ ok: false, error: '缺 key' }, 400); return true; }

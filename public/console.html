@@ -7750,9 +7750,12 @@ async function spaceDeletePost(tid, btn) {
     try {
       const d = await api('/api/music/status');
       const nes = d.netease || {}, qq = d.qq || {};
-      musicSetStatus('nesStatus', nes.loggedIn ? 'ok' : 'warn', nes.loggedIn ? ('已登录 ' + (nes.nickname || nes.userId)) : (nes.reason || '未登录'));
+      const nesVip = nes.vip ? ('·' + nes.vip.label) : '';
+      musicSetStatus('nesStatus', nes.loggedIn ? 'ok' : 'warn', nes.loggedIn ? ('已登录 ' + (nes.nickname || nes.userId) + ' ' + nesVip) : (nes.reason || '未登录'));
       const nesBox = document.getElementById('nesBox');
-      if (nesBox) nesBox.textContent = nes.loggedIn ? ('cookie 文件' + (d.cookieFileExists ? '已写入' : '未写入')) : '未登录时只能拿普通音质';
+      if (nesBox) nesBox.textContent = nes.loggedIn
+        ? ('账号 ' + (nes.nickname || nes.userId) + ' · ' + (nes.vip ? nes.vip.label : '权限未知') + ' · cookie ' + (d.cookieFileExists ? '已写入' : '未写入'))
+        : '未登录时只能拿普通音质';
       musicSetStatus('qqStatus', qq.loggedIn ? 'ok' : 'warn', qq.loggedIn ? ('已登录 ' + (qq.nickname || qq.userId)) : '未登录');
       const qqBox = document.getElementById('qqBox');
       if (qqBox) qqBox.textContent = qq.loggedIn ? '登录态已保存（下载链路待接）' : '登录只记录状态，暂未接入 QQ 音乐下载';
@@ -7788,7 +7791,8 @@ async function spaceDeletePost(tid, btn) {
       clearInterval(musicTimers[provider]);
       musicTimers[provider] = setInterval(async () => {
         try {
-          const r = await api('/api/music/login/poll?provider=' + encodeURIComponent(provider) + '&key=' + encodeURIComponent(d.key));
+          const r = await api('/api/music/login/poll?provider=' + encodeURIComponent(provider) + '&key=' + encodeURIComponent(d.key) + '&_t=' + Date.now());
+          if (r.state === 'waiting') musicSetStatus(badgeId, 'warn', '等待扫码');
           if (r.state === 'scanned') musicSetStatus(badgeId, 'warn', '已扫码，请在手机确认');
           if (r.state === 'expired') { clearInterval(musicTimers[provider]); musicSetStatus(badgeId, 'err', '二维码过期，重新点登录'); }
           if (r.state === 'ok') {

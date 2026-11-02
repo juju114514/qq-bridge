@@ -81,7 +81,8 @@ export function createMusicAuth(opts = {}) {
   async function neteaseStart() {
     const res = await fetchImpl('https://music.163.com/api/login/qrcode/unikey?type=1', {
       headers: { 'user-agent': ua, referer: 'https://music.163.com/' },
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store'
     });
     const body = await res.json();
     const key = body?.unikey || body?.data?.unikey;
@@ -135,9 +136,19 @@ export function createMusicAuth(opts = {}) {
       const body = await res.json();
       const profile = body?.profile || body?.account || null;
       if (!profile || (!profile.nickname && !profile.userId)) {
-        return { provider: 'netease', loggedIn: false, nickname: '', userId: '', reason: 'cookie 已失效' };
+        return { provider: 'netease', loggedIn: false, nickname: '', userId: '', reason: 'cookie 已失效', vip: null };
       }
-      return { provider: 'netease', loggedIn: true, nickname: String(profile.nickname || ''), userId: String(profile.userId || '') };
+      // vipType: 0 普通 / 10 音乐包 / 11 黑胶 VIP；vipRights 里带具体权益
+      const vipType = Number(profile.vipType ?? body?.account?.vipType ?? 0);
+      const vipLabel = vipType === 11 ? '黑胶VIP' : (vipType === 10 ? '音乐包' : (vipType > 0 ? `VIP(${vipType})` : '普通'));
+      return {
+        provider: 'netease',
+        loggedIn: true,
+        nickname: String(profile.nickname || ''),
+        userId: String(profile.userId || ''),
+        vip: { type: vipType, label: vipLabel, isVip: vipType > 0 },
+        avatar: String(profile.avatarUrl || '')
+      };
     } catch (error) {
       return { provider: 'netease', loggedIn: false, nickname: '', userId: '', reason: `检测失败：${error?.message ?? error}` };
     }
@@ -192,12 +203,36 @@ export function createMusicAuth(opts = {}) {
         : String(res.headers.get('set-cookie') || '');
       const uin = (/uin=([^;]+)/.exec(setCookie) || [])[1] || (/uin=(\d+)/.exec(parsed.url) || [])[1] || '';
       const s = readState();
-      s.qq = { cookie: `${setCookie}; qrsig=${qrsig}`.replace(/^; /, ''), uin, nickname: parsed.nickname || '', at: now() };
+      const cookie = `${setCookie}; qrsig=${qrsig}`.replace(/^; /, '');
+      const info = await qqUserInfo(cookie);
+      s.qq = { cookie, uin, nickname: info?.nickname || parsed.nickname || '', vip: info?.vip || null, at: now() };
       writeState(s);
       result.nickname = s.qq.nickname;
       result.cookieSaved = true;
     }
     return result;
+  }
+
+  /** QQ 音乐会员信息（best-effort：拿不到就返回 null，不当成失败） */
+  async function qqUserInfo(cookie) {
+    if (!cookie) return null;
+    try {
+      const comm = { ct: 11, cv: '1003006', v: '1003006', uin: '0', format: 'json', platform: 'yqq.json' };
+      const res = await fetchImpl('https://u.y.qq.com/cgi-bin/musicu.fcg', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'user-agent': ua, referer: 'https://y.qq.com/', cookie },
+        body: JSON.stringify({ comm, req_1: { module: 'music.UserInfo.userInfo', method: 'GetLoginUserInfo', param: {} } }),
+        signal: AbortSignal.timeout(10000),
+        cache: 'no-store'
+      });
+      const j = await res.json().catch(() => ({}));
+      const d = j?.req_1?.data;
+      if (!d) return null;
+      const vipType = Number(d?.vipType ?? d?.baseInfo?.vipType ?? 0);
+      const nick = String(d?.nick || d?.baseInfo?.nick || '');
+      const label = vipType === 1 ? '绿钻VIP' : (vipType > 0 ? 'VIP' : '普通');
+      return { nickname: nick, vip: { type: vipType, label, isVip: vipType > 0 } };
+    } catch { return null; }
   }
 
   return {
@@ -215,13 +250,15 @@ export function createMusicAuth(opts = {}) {
       const s = readState();
       const n = await neteaseStatus(s.netease?.cookie || '');
       const qqCookie = s.qq?.cookie || '';
+      const info = qqCookie ? await qqUserInfo(qqCookie) : null;
       return {
         netease: { ...n, at: s.netease?.at || null },
         qq: {
           provider: 'qq',
           loggedIn: Boolean(qqCookie && s.qq?.uin),
-          nickname: s.qq?.nickname || '',
+          nickname: info?.nickname || s.qq?.nickname || '',
           userId: s.qq?.uin || '',
+          vip: info?.vip || null,
           reason: qqCookie ? '' : '未登录',
           at: s.qq?.at || null
         }
