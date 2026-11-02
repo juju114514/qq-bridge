@@ -349,6 +349,18 @@ const roleCardRaw = fs.readFileSync(path.join(root, 'src/core/prompt.js'), 'utf8
     );
   }
 
+  // src/context-usage.js：bridge.js 从它 import 了 createContextUsageStore（0.4.140）。
+  // 和 role-card 一样，顶层 import 在 VM 里被剥掉，必须显式注入 —— 否则整份 harness 起不来。
+  {
+    const raw = fs.readFileSync(path.join(root, 'src/context-usage.js'), 'utf8');
+    const body = stripExports(stripImports(raw));
+    vm.runInContext(
+      `Object.assign(globalThis, (() => {\n${body}\nreturn { createContextUsageStore };\n})());`,
+      context,
+      { filename: 'src/context-usage.js' },
+    );
+  }
+
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);

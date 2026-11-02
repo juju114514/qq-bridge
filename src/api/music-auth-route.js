@@ -80,6 +80,53 @@ export async function handleMusicAuthRoute(ctx = {}) {
     return true;
   }
 
+  // POST /api/music/netease/captcha  { phone } → 发短信验证码
+  if (req.method === 'POST' && url.pathname === '/api/music/netease/captcha') {
+    const body = typeof ctx.readBody === 'function' ? await ctx.readBody() : {};
+    try {
+      const r = await auth.sendCaptcha(String(body?.phone || ''));
+      log(`[music] netease 发验证码 code=${r.code}（${r.message || '无消息'}）`);
+      sendJson({ ok: r.ok, at: Date.now(), ...r }, r.ok ? 200 : 400);
+    } catch (error) {
+      sendJson({ ok: false, error: String(error?.message ?? error) }, 400);
+    }
+    return true;
+  }
+
+  // POST /api/music/netease/login  { phone, captcha }
+  if (req.method === 'POST' && url.pathname === '/api/music/netease/login') {
+    const body = typeof ctx.readBody === 'function' ? await ctx.readBody() : {};
+    try {
+      const r = await auth.loginByCaptcha(String(body?.phone || ''), String(body?.captcha || ''));
+      if (r.ok) {
+        await auth.exportCookies(cookieFile);
+        log(`[music] netease 短信登录成功：${r.nickname || r.userId}，cookie 已写入 ${cookieFile}`);
+      } else {
+        log(`[music] netease 短信登录失败：${r.error}`);
+      }
+      sendJson({ ok: r.ok, at: Date.now(), ...r }, r.ok ? 200 : 400);
+    } catch (error) {
+      sendJson({ ok: false, error: String(error?.message ?? error) }, 400);
+    }
+    return true;
+  }
+
+  // POST /api/music/import-cookie  { provider, cookie }
+  if (req.method === 'POST' && url.pathname === '/api/music/import-cookie') {
+    const body = typeof ctx.readBody === 'function' ? await ctx.readBody() : {};
+    const provider = String(body?.provider || 'netease');
+    try {
+      const r = await auth.importCookie(provider, String(body?.cookie || ''));
+      if (provider === 'netease') await auth.exportCookies(cookieFile);
+      log(`[music] ${provider} 粘贴 cookie 登录成功：${r.nickname || r.userId}`);
+      sendJson({ ok: true, at: Date.now(), ...r });
+    } catch (error) {
+      log(`[music] ${provider} 粘贴 cookie 失败：${error?.message ?? error}`);
+      sendJson({ ok: false, error: String(error?.message ?? error) }, 400);
+    }
+    return true;
+  }
+
   // POST /api/music/logout  { provider }
   if (req.method === 'POST' && url.pathname === '/api/music/logout') {
     const body = typeof ctx.readBody === 'function' ? await ctx.readBody() : {};

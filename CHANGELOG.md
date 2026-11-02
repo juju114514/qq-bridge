@@ -14,6 +14,45 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-02 — 0.4.140：控制台加「上下文用量」（环形 + 分段条）
+
+参考 DSH 自己的上下文面板（系统提示词 / 工具定义 / 对话消息），做了一版更直观的：
+**左侧环形看剩余，右侧分段条看构成**，一眼能看出"是不是工具定义吃掉了上下文"。
+
+### 数据来源（不估算）
+
+DSH 的 `session/snapshot` 帧里本来就带 `contextPressure` 与 `contextBreakdown`
+（schema 实测：`systemTokens` / `toolsTokens` / `messageTokens`）。
+桥接一直收这个帧，只是过去只喂了 token 账本 —— 这一版顺手留下来给控制台。
+
+```
+GET /api/context/usage
+→ { pressureTokens, capacityTokens, percent, remainder,
+    parts:[{key:'system'|'tools'|'messages', label, tokens}], sessions }
+```
+
+### 三个克制的设计
+
+| 情况 | 行为 |
+| --- | --- |
+| 还没收到快照 | 显示「还没收到会话快照（等 DSH 发下一轮）」，**不填 0** |
+| 有压力但**没有容量** | 百分比显示 `--`，因为拿压力除自己没有意义 |
+| 压力 > 容量 | 封顶 100%，不出现 137% |
+
+### 图形
+
+- 环形进度：<50% 蓝 / ≥50% 橙 / ≥80% 红
+- 分段条：系统提示词（蓝）/ 工具定义（紫）/ 对话消息（绿），按占比铺满
+- 图例带具体 token 数（K/M 自动换算）
+
+### 测试
+
+`test-context-usage.mjs`（9 条）：没有快照不编数字、只认 `projections.values`、
+百分比=压力/容量、**容量未知时为 null**、只有 breakdown 也能显示构成、多会话取最新、
+超上限淘汰最旧、压力超容量封顶 100%。
+
+**审计 180/180。**
+
 ## 2026-11-02 — 0.4.139：扫码确认后卡在 8821（少了会话 cookie）
 
 ### 现场（用户真实扫码，我盯日志拿到的）

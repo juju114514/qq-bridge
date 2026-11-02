@@ -1882,6 +1882,34 @@ button:active:not(:disabled) {
     <button class="btn" id="dashboardRefresh" type="button">刷新</button>
   </div>
   <div id="appDashboard" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px">（加载中…）</div>
+
+  <section data-page="overview" class="card span-all" hidden id="section-context">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0" data-note="数据来自 DSH 的会话快照">上下文用量</h2>
+      <span id="ctxUpdated" style="font-size:11px;opacity:.55"></span>
+    </div>
+    <div id="ctxBody" style="margin-top:14px">
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <svg id="ctxRing" width="112" height="112" viewBox="0 0 112 112" style="flex:none">
+          <circle cx="56" cy="56" r="46" fill="none" stroke="#22304a" stroke-width="12"></circle>
+          <circle id="ctxRingFill" cx="56" cy="56" r="46" fill="none" stroke="#6b8cff" stroke-width="12"
+                  stroke-linecap="round" stroke-dasharray="289.03" stroke-dashoffset="289.03"
+                  transform="rotate(-90 56 56)" style="transition:stroke-dashoffset .5s ease"></circle>
+          <text id="ctxPct" x="56" y="52" text-anchor="middle" font-size="22" font-weight="600" fill="#dbe6ff">--</text>
+          <text id="ctxPctLabel" x="56" y="72" text-anchor="middle" font-size="11" fill="#8fa3c4">已用</text>
+        </svg>
+        <div style="flex:1;min-width:220px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;opacity:.8">
+            <span id="ctxNumbers">— / —</span>
+            <span id="ctxRemain"></span>
+          </div>
+          <div id="ctxBar" style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#22304a;margin-top:8px"></div>
+          <div id="ctxLegend" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px"></div>
+        </div>
+      </div>
+      <div id="ctxHint" style="margin-top:10px;font-size:11px;opacity:.55"></div>
+    </div>
+  </section>
 </section>
 <div id="overviewSummary" class="overview-summary span-all" data-page="overview">
         <div class="metric"><span>DSH 连接</span><strong id="metricDsh">连接中</strong><small id="metricDshHint">等待服务响应</small></div>
@@ -3091,6 +3119,24 @@ button:active:not(:disabled) {
           <button id="nesLogin" class="primary">扫码登录</button>
           <button id="nesLogout" class="ghost">退出</button>
         </div>
+        <details style="margin-top:10px">
+          <summary style="font-size:12px;cursor:pointer;opacity:.75">扫码一直失败？粘贴 Cookie</summary>
+          <div style="margin-top:8px">
+            <textarea id="nesCookie" rows="3" placeholder="浏览器登录 music.163.com 后，复制整段 cookie（含 MUSIC_U）" style="width:100%;box-sizing:border-box;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px;font-size:12px"></textarea>
+            <div class="row" style="margin-top:6px"><button id="nesCookieSave" class="primary" style="font-size:12px">保存并验证</button></div>
+          </div>
+        </details>
+        <details style="margin-top:10px">
+          <summary style="font-size:12px;cursor:pointer;opacity:.75">或用手机号登录</summary>
+          <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+            <input id="nesPhone" placeholder="手机号" style="flex:1;min-width:120px;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px;font-size:12px">
+            <button id="nesSendCode" class="ghost" style="font-size:12px">发验证码</button>
+          </div>
+          <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">
+            <input id="nesCode" placeholder="6 位验证码" style="flex:1;min-width:120px;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px;font-size:12px">
+            <button id="nesSmsLogin" class="primary" style="font-size:12px">登录</button>
+          </div>
+        </details>
       </div>
       <div style="border:1px solid #24344f;border-radius:10px;padding:12px">
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -3103,6 +3149,13 @@ button:active:not(:disabled) {
           <button id="qqLogin" class="primary">扫码登录</button>
           <button id="qqLogout" class="ghost">退出</button>
         </div>
+        <details style="margin-top:10px">
+          <summary style="font-size:12px;cursor:pointer;opacity:.75">扫码不行？粘贴 Cookie</summary>
+          <div style="margin-top:8px">
+            <textarea id="qqCookie" rows="3" placeholder="浏览器登录 y.qq.com 后，复制整段 cookie（含 qm_keyst / uin）" style="width:100%;box-sizing:border-box;background:rgba(12,20,34,.85);border:1px solid #24344f;border-radius:6px;color:#dbe6ff;padding:6px;font-size:12px"></textarea>
+            <div class="row" style="margin-top:6px"><button id="qqCookieSave" class="primary" style="font-size:12px">保存并验证</button></div>
+          </div>
+        </details>
       </div>
     </div>
   </div>
@@ -7824,6 +7877,40 @@ async function spaceDeletePost(tid, btn) {
       loop();
     } catch (e) { musicSetStatus(badgeId, 'err', (e && e.message) || '登录失败'); }
   }
+  async function saveCookie(provider) {
+    const box = document.getElementById('nesPoll');
+    const qq = provider === 'qq';
+    const ta = document.getElementById(qq ? 'qqCookie' : 'nesCookie');
+    const cookie = (ta && ta.value || '').trim();
+    const out = qq ? document.getElementById('qqPoll') : box;
+    if (!cookie) { if (out) out.textContent = '先粘贴 cookie'; return; }
+    if (out) out.textContent = '验证中…';
+    try {
+      const r = await api('/api/music/import-cookie', 'POST', { provider, cookie });
+      if (out) out.textContent = r.ok ? ('登录成功：' + (r.nickname || r.userId) + ' ' + (r.vip ? r.vip.label : '')) : ('失败：' + (r.error || ''));
+      if (r.ok) musicRefreshStatus();
+    } catch (e) { if (out) out.textContent = '失败：' + ((e && e.message) || e); }
+  }
+  async function nesSendCode() {
+    const phone = (document.getElementById('nesPhone')?.value || '').trim();
+    const box = document.getElementById('nesPoll');
+    if (!/^\d{6,15}$/.test(phone)) { if (box) box.textContent = '手机号格式不对'; return; }
+    try {
+      const r = await api('/api/music/netease/captcha', 'POST', { phone });
+      if (box) box.textContent = r.ok ? '验证码已发送，查收短信' : ('发送失败：' + (r.message || r.error || ''));
+    } catch (e) { if (box) box.textContent = '发送失败：' + ((e && e.message) || e); }
+  }
+  async function nesSmsLogin() {
+    const phone = (document.getElementById('nesPhone')?.value || '').trim();
+    const captcha = (document.getElementById('nesCode')?.value || '').trim();
+    const box = document.getElementById('nesPoll');
+    if (box) box.textContent = '登录中…';
+    try {
+      const r = await api('/api/music/netease/login', 'POST', { phone, captcha });
+      if (box) box.textContent = r.ok ? ('登录成功：' + (r.nickname || r.userId)) : ('登录失败：' + (r.error || r.message || ''));
+      if (r.ok) musicRefreshStatus();
+    } catch (e) { if (box) box.textContent = '登录失败：' + ((e && e.message) || e); }
+  }
   async function musicLogout(provider) {
     musicTimers[provider] && musicTimers[provider].stop && musicTimers[provider].stop();
     try { await api('/api/music/logout', 'POST', { provider }); } catch { /* ignore */ }
@@ -7862,12 +7949,68 @@ async function spaceDeletePost(tid, btn) {
     const id = ev.target && ev.target.id;
     if (id === 'songQq') songPlayViaQq();
     if (id === 'nesLogin') musicLogin('netease', 'nesStatus', 'nesBox');
+    if (id === 'nesCookieSave') saveCookie('netease');
+    if (id === 'qqCookieSave') saveCookie('qq');
+    if (id === 'nesSendCode') nesSendCode();
+    if (id === 'nesSmsLogin') nesSmsLogin();
     if (id === 'qqLogin') musicLogin('qq', 'qqStatus', 'qqBox');
     if (id === 'nesLogout') musicLogout('netease');
     if (id === 'qqLogout') musicLogout('qq');
   });
   if (document.readyState !== 'loading') setTimeout(musicRefreshStatus, 1200);
   else document.addEventListener('DOMContentLoaded', () => setTimeout(musicRefreshStatus, 1200));
+
+  // ── 上下文用量（0.4.141）─────────────────────────────────────────
+  const CTX_COLORS = { system: '#6b8cff', tools: '#9a7bff', messages: '#43c59e' };
+  function fmtTok(n) {
+    if (!Number.isFinite(n) || n <= 0) return '0';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(Math.round(n));
+  }
+  async function loadContextUsage() {
+    const ring = document.getElementById('ctxRingFill');
+    const pct = document.getElementById('ctxPct');
+    const nums = document.getElementById('ctxNumbers');
+    const bar = document.getElementById('ctxBar');
+    const legend = document.getElementById('ctxLegend');
+    const remain = document.getElementById('ctxRemain');
+    const hint = document.getElementById('ctxHint');
+    const upd = document.getElementById('ctxUpdated');
+    if (!ring) return;
+    try {
+      const d = await api('/api/context/usage');
+      if (!d.ok) { pct.textContent = '--'; nums.textContent = d.reason || '暂无数据'; bar.innerHTML = ''; legend.innerHTML = ''; return; }
+      const circumference = 2 * Math.PI * 46;
+      const p = d.percent == null ? 0 : Math.max(0, Math.min(100, d.percent));
+      ring.style.strokeDashoffset = String(circumference * (1 - p / 100));
+      ring.style.stroke = p >= 80 ? '#ff6b6b' : (p >= 50 ? '#ffb14d' : '#6b8cff');
+      pct.textContent = d.percent == null ? '--' : p.toFixed(0) + '%';
+      nums.textContent = fmtTok(d.pressureTokens) + ' / ' + (d.capacityTokens ? fmtTok(d.capacityTokens) : '容量未知');
+      remain.textContent = d.remainder != null ? ('剩余 ' + fmtTok(d.remainder)) : '';
+      const total = Math.max(d.brokenTotal || 0, d.pressureTokens || 0, 1);
+      bar.innerHTML = '';
+      for (const part of (d.parts || [])) {
+        if (!part.tokens) continue;
+        const seg = document.createElement('div');
+        seg.style.width = (part.tokens / total * 100) + '%';
+        seg.style.background = CTX_COLORS[part.key] || '#6b8cff';
+        seg.title = part.label + ' ' + fmtTok(part.tokens);
+        bar.appendChild(seg);
+      }
+      legend.innerHTML = (d.parts || []).map((part) =>
+        '<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:' +
+        (CTX_COLORS[part.key] || '#6b8cff') + '"></i>' + part.label + ' ' + fmtTok(part.tokens) + '</span>'
+      ).join('');
+      hint.textContent = '分段构成来自 DSH 的 breakdown（下一条请求的预估）；百分比用上一次实际读数 / 路线容量。共 ' + (d.sessions || 1) + ' 个会话在跟踪。';
+      if (upd && d.at) upd.textContent = '更新于 ' + new Date(d.at).toLocaleTimeString('zh-CN');
+    } catch (e) {
+      if (pct) pct.textContent = '--';
+      if (nums) nums.textContent = '读取失败：' + ((e && e.message) || e);
+    }
+  }
+  if (document.readyState !== 'loading') setTimeout(loadContextUsage, 1500);
+  else document.addEventListener('DOMContentLoaded', () => setTimeout(loadContextUsage, 1500));
 
 function runPageHooks(page) {
     const names = PAGE_HOOKS[page];

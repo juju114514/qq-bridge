@@ -167,6 +167,7 @@ const tests = [
   'test-official-health.mjs',
   'test-gateway-control.mjs',
   'test-music-auth.mjs',
+  'test-context-usage.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

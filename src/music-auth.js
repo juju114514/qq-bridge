@@ -38,6 +38,22 @@ function sessionCookie(key) {
 }
 
 const NETEASE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+
+/**
+ * 网易云把「不像浏览器」的请求判成需要行为验证（8821）。
+ * 这里补齐 Origin / Referer / os=pc cookie，尽量贴近真实 web 登录页的请求。
+ */
+function neteaseHeaders(extra = {}) {
+  return {
+    'user-agent': NETEASE_UA,
+    origin: 'https://music.163.com',
+    referer: 'https://music.163.com/',
+    accept: '*/*',
+    'accept-language': 'zh-CN,zh;q=0.9',
+    cookie: 'os=pc; appver=8.9.70',
+    ...extra
+  };
+}
 // 不写死盘符：由调用方（路由层）扫描盘符后传进来；这里只给一个安全的兜底
 const DEFAULT_NETEASE_COOKIE = path.join(os.tmpdir(), 'qqb-netmusic-cookie.txt');
 
@@ -104,7 +120,7 @@ export function createMusicAuth(opts = {}) {
   // ── 网易云 ──────────────────────────────────────────────────────────
   async function neteaseStart() {
     const res = await fetchImpl('https://music.163.com/api/login/qrcode/unikey?type=1', {
-      headers: { 'user-agent': ua, referer: 'https://music.163.com/' },
+      headers: neteaseHeaders(),
       signal: AbortSignal.timeout(10000),
       cache: 'no-store'
     });
@@ -129,11 +145,7 @@ export function createMusicAuth(opts = {}) {
     const res = await fetchImpl(
       `https://music.163.com/api/login/qrcode/client/login?key=${encodeURIComponent(key)}&type=1`,
       {
-        headers: {
-          'user-agent': ua,
-          referer: 'https://music.163.com/',
-          ...(sessionCookie(key) ? { cookie: sessionCookie(key) } : {})
-        },
+        headers: neteaseHeaders(sessionCookie(key) ? { cookie: `os=pc; appver=8.9.70; ${sessionCookie(key)}` } : {}),
         signal: AbortSignal.timeout(10000),
         cache: 'no-store'
       }
@@ -175,7 +187,7 @@ export function createMusicAuth(opts = {}) {
     if (!c) return { provider: 'netease', loggedIn: false, nickname: '', userId: '', reason: '未登录' };
     try {
       const res = await fetchImpl('https://music.163.com/api/nuser/account/get', {
-        headers: { 'user-agent': ua, referer: 'https://music.163.com/', cookie: c },
+        headers: neteaseHeaders({ cookie: `os=pc; appver=8.9.70; ${c}` }),
         signal: AbortSignal.timeout(10000)
       });
       const body = await res.json();
@@ -280,7 +292,84 @@ export function createMusicAuth(opts = {}) {
     } catch { return null; }
   }
 
+  /**
+   * 手机号 + 验证码登录（0.4.140）
+   *
+   * 为什么要这条路：扫码在风控下会返回 8821（行为验证），而短信登录是最稳的兜底。
+   * 两步：发验证码 → 用验证码换 cookie。
+   */
+  async function neteaseSendCaptcha(phone) {
+    const p = String(phone || '').trim();
+    if (!/^\d{6,15}$/.test(p)) throw new Error('手机号格式不对');
+    const res = await fetchImpl(`https://music.163.com/api/sms/captcha/sent?cellphone=${p}&ctcode=86&_t=${now()}`, {
+      headers: neteaseHeaders(), signal: AbortSignal.timeout(10000), cache: 'no-store'
+    });
+    const body = await res.json().catch(() => ({}));
+    return { ok: Number(body?.code) === 200, code: body?.code ?? null, message: body?.message || body?.msg || '' };
+  }
+
+  async function neteaseLoginByCaptcha(phone, captcha) {
+    const p = String(phone || '').trim();
+    const c = String(captcha || '').trim();
+    if (!/^\d{6,15}$/.test(p)) throw new Error('手机号格式不对');
+    if (!/^\d{4,8}$/.test(c)) throw new Error('验证码格式不对');
+    const url = `https://music.163.com/api/login/cellphone?phone=${p}&captcha=${c}&countrycode=86&_t=${now()}`;
+    const res = await fetchImpl(url, { headers: neteaseHeaders(), signal: AbortSignal.timeout(15000), cache: 'no-store' });
+    const body = await res.json().catch(() => ({}));
+    const code = Number(body?.code);
+    if (code !== 200) {
+      return { ok: false, code, error: body?.message || body?.msg || `登录失败（code=${code}）` };
+    }
+    const setCookie = typeof res.headers?.getSetCookie === 'function'
+      ? res.headers.getSetCookie().join('; ')
+      : String(res.headers?.get?.('set-cookie') || '');
+    const s = readState();
+    s.netease = {
+      cookie: setCookie,
+      at: now(),
+      nickname: String(body?.profile?.nickname || ''),
+      userId: String(body?.account?.id || body?.profile?.userId || '')
+    };
+    writeState(s);
+    return { ok: true, nickname: s.netease.nickname, userId: s.netease.userId };
+  }
+
+  /**
+   * 直接粘贴 cookie 登录（0.4.140）
+   *
+   * 为什么要这条：扫码会被风控（8821），短信要等；而"在浏览器登录后复制 cookie"永远可用。
+   * 存进去之后会**立刻验证一次**，验证不过就报错，不留下坏状态。
+   */
+  async function importCookie(provider, rawCookie) {
+    const cookie = String(rawCookie || '').trim();
+    if (!cookie || cookie.length < 10) throw new Error('cookie 太短，看起来不对');
+    const s = readState();
+
+    if (provider === 'netease') {
+      const info = await neteaseStatus(cookie);
+      if (!info.loggedIn) throw new Error(info.reason || 'cookie 无效或已过期');
+      s.netease = { cookie, at: now(), nickname: info.nickname, userId: info.userId, vip: info.vip };
+      writeState(s);
+      return { ok: true, provider, nickname: info.nickname, userId: info.userId, vip: info.vip };
+    }
+
+    if (provider === 'qq') {
+      const uin = (/\buin=o?([0-9]+)/.exec(cookie) || [])[1] || '';
+      const info = await qqUserInfo(cookie);
+      if (!info) throw new Error('cookie 无效（拿不到 QQ 音乐账号信息）');
+      s.qq = { cookie, uin, nickname: info.nickname || '', vip: info.vip, at: now() };
+      writeState(s);
+      return { ok: true, provider, nickname: info.nickname || '', userId: uin, vip: info.vip };
+    }
+
+    throw new Error(`不支持的平台：${provider}`);
+  }
+
   return {
+    importCookie,
+    sendCaptcha: neteaseSendCaptcha,
+    loginByCaptcha: neteaseLoginByCaptcha,
+
     async start(provider) {
       if (provider === 'netease') return neteaseStart();
       if (provider === 'qq') return qqStart();

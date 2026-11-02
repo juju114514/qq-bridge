@@ -110,6 +110,7 @@ import { createBindSession } from './official-bind.js';
 import { createUpdateChecker } from './update-check.js';
 import { createOfficialTestSend } from './official-test-send.js';
 import { makeTextImageSegment } from './t2i-send.js';
+import { createContextUsageStore } from './context-usage.js';
 import { splitForPrompt } from './role-dialogues.js';
 import { warmUpT2i } from './t2i.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
@@ -1137,7 +1138,6 @@ const _loadConfig = createConfigLoader({
 });
 // 保持原调用形态 loadConfig()（不带参数）：路径仍由这里决定，行为零变化。
 const loadConfig = (p = path.join(ROOT, 'config.json')) => _loadConfig(p);
-
 
 // ── 状态持久化（QQ 会话 ↔ DSH 会话映射） ─────────────────────────────────────
 let state = { sessions: {} };
@@ -2836,6 +2836,7 @@ async function main() {
         ? 'internal:黑话学习'
         : undefined)
   });
+  const contextUsage = createContextUsageStore();
 
   /** sessionId -> 最近一次已知的实际模型。切换模型会让单价差好几倍，所以按会话记。 */
   const sessionModels = new Map();
@@ -2885,6 +2886,7 @@ async function main() {
       });
       tokenLedger.ingestSnapshotRecords({ sessionId, records: snapshot.records });
       rebuildInFlightCollector(sessionId, snapshot.records);
+      contextUsage.record(sessionId, snapshot);
     } catch (error) {
       log('token 账本：处理会话快照失败', error?.message ?? error);
     }
@@ -4544,9 +4546,7 @@ async function main() {
           })
         })) return;
 
-
     // ── 二代黑话学习（reserved2）：AI 查询/提交黑话候选 ─────────────────
-
 
     // ── 图片/表情查询端点（MCP qq_get_message_images 走这里） ────────────
         // ── 图片/表情查询端点（已迁出到 src/api/images.js） ──────────────────
@@ -4869,7 +4869,6 @@ async function main() {
     }
     return sendChain.then(() => sent);
   }
-
 
 
   // ═══════ 本地攻略：主题别名 + 模板直出 ═══════

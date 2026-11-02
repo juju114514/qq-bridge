@@ -31,6 +31,7 @@ import { handleOfficialHealthRoute } from './official-health-route.js';
 import { handleGatewayControlRoute } from './gateway-control-route.js';
 import { handleMusicAuthRoute } from './music-auth-route.js';
 import { handleMusicQqRoute } from './music-qq-route.js';
+import { handleContextUsageRoute } from './context-usage-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -119,6 +120,7 @@ export async function handleExtraRoutes(ctx = {}) {
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
+  if (await handleContextUsageRoute({ req, url, sendJson, deps: resolveDeps })) return true;   // 上下文用量 0.4.141
   // QQ 音乐点歌（0.4.136）
   if (await handleMusicQqRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;
 
