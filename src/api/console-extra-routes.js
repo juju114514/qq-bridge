@@ -26,6 +26,7 @@ import { handleOfficialBindRoute } from './official-bind-route.js';
 import { handleOfficialTestRoute } from './official-test-route.js';
 import { handleUpdateRoute } from './update-route.js';
 import { handleT2iPreviewRoute } from './t2i-route.js';
+import { handleSetupStatusRoute } from './setup-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -113,6 +114,9 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // 新手向导状态（0.4.124）
+  if (await handleSetupStatusRoute({ req, url, sendJson, deps: resolveDeps })) return true;
 
   // 长文本转图预览（0.4.118）
   if (await handleT2iPreviewRoute({ req, url, res, sendJson, deps: resolveDeps })) return true;

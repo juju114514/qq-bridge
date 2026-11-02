@@ -1827,6 +1827,7 @@ button:active:not(:disabled) {
 
         <div class="nav-label">运维</div>
         <button data-view="diagnostics" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>诊断与健康</button>
+        <button data-view="setup" class="nav-item"><span class="nav-icon" aria-hidden="true">◆</span>新手向导</button>
         <button data-view="scheduler" class="nav-item"><span class="nav-icon" aria-hidden="true">◷</span>定时任务</button>
         <button data-view="usage" class="nav-item"><span class="nav-icon" aria-hidden="true">◧</span>令牌与花费</button>
         <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
@@ -2656,6 +2657,27 @@ button:active:not(:disabled) {
         <h2 data-note="口径：最近一窗决策（缓冲上限 80 条）">唤醒漏斗</h2>
         <div class="meta">每条消息为什么没被唤醒 —— 从「收到」到「进模型」，逐段看流失点。数据来自决策链缓冲，不是全量统计。</div>
         <div id="wakeFunnel" style="margin-top:12px;font-size:13px;color:#c8d4ea">（打开诊断页后加载）</div>
+      </section>
+      <section id="section-setup" data-page="setup" class="card span-all" hidden>
+        <h2>新手向导</h2>
+        <div class="meta">只读检查：这台机器现在能不能跑，以及下一步该点哪。数据来自 <code>/api/setup/status</code>。</div>
+        <div class="row" style="margin-top:10px">
+          <button id="setupRefresh" class="primary">重新检查</button>
+          <span id="setupSummary" class="meta" style="align-self:center"></span>
+        </div>
+        <div id="setupChecks" style="margin-top:14px;font-size:13px;color:#c8d4ea">
+          <div class="meta">正在检查…</div>
+        </div>
+        <div style="margin-top:16px;border-top:1px solid #24344f;padding-top:12px">
+          <div class="meta" style="margin-bottom:8px">下一步（点这里直接去）：</div>
+          <div class="row" id="setupJumps">
+            <button data-jump="operations" class="ghost">调试与运维</button>
+            <button data-jump="persona" class="ghost">人格与角色</button>
+            <button data-jump="mobile" class="ghost">手机连接</button>
+            <button data-jump="official" class="ghost">官方通道</button>
+            <button data-jump="access" class="ghost">访问与安全</button>
+          </div>
+        </div>
       </section>
       <section id="section-diagnostics" data-page="diagnostics" class="card span-all">
         <h2>自助诊断</h2>
@@ -5760,6 +5782,7 @@ const consolePages = {
   operations: ['调试与运维', '让桥接，始终井然有序。', '测试消息、引导 AI，或维护桥接进程与会话工作区。'],
   reference: ['工具参考', '每一种能力，都清晰可见。', '查看桥接提供给 DSH 的 MCP 工具与用途。'],
   diagnostics: ['诊断与健康', '先看证据，再改代码。', '桥接健康一屏看完；每条消息为什么没回、卡在哪一步，都在这里。'],
+  setup: ['新手向导', '先看这台机器行不行。', '只读检查：Node/配置/state/DSH/网关/侧车逐条列出，不通过就告诉你下一步点哪。'],
   people: ['人物库', '它认识谁，记得什么。', '按关系档位查看群友/好友，编辑或删掉关于他的笔记。'],
   scheduler: ['定时任务', '到点就说，不用你记。', '按天/周/月定时发固定消息，或叫 AI 到点说一句。']
 };
@@ -7489,6 +7512,7 @@ async function spaceDeletePost(tid, btn) {
     'memory-graph': ['loadMemoryGraph'],
     usage: ['loadUsageStructure'],
     diagnostics: ['loadDiagnostics', 'loadWakeFunnel'],
+    setup: ['loadSetup'],
     space: ['spaceInit'],
     song: ['songInit'],
     supervisor: ['loadSupervisor'],
@@ -7503,7 +7527,46 @@ async function spaceDeletePost(tid, btn) {
     persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage', 'bindEnvironment']
   };
 
-  function runPageHooks(page) {
+    // 新手向导（0.4.124）：只读检查 + 一键跳转
+  async function loadSetup() {
+    const box = document.getElementById('setupChecks');
+    const sum = document.getElementById('setupSummary');
+    if (!box) return;
+    box.innerHTML = '<div class="meta">正在检查…</div>';
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    try {
+        const d = await api('/api/setup/status');
+      const icon = (lv) => lv === 'ok' ? '\u2713' : (lv === 'warn' ? '!' : '\u2717');
+      const color = (lv) => lv === 'ok' ? '#5ad18a' : (lv === 'warn' ? '#f0c060' : '#ff7a7a');
+      box.innerHTML = (d.checks || []).map((c) => `
+        <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #1e2b42">
+          <span style="color:${color(c.level)};font-weight:700;width:16px">${icon(c.level)}</span>
+          <div style="flex:1">
+            <div>${esc(c.title)}<span class="meta" style="margin-left:8px">${esc(c.detail)}</span></div>
+            ${c.hint ? `<div class="meta" style="margin-top:3px">\u2192 ${esc(c.hint)}</div>` : ''}
+          </div>
+        </div>`).join('');
+      if (sum) sum.textContent = d.summary || '';
+    } catch (e) {
+      box.innerHTML = '<div class="meta">检查失败：' + esc(e && e.message ? e.message : e) + '</div>';
+    }
+    const jumps = document.getElementById('setupJumps');
+    if (jumps && !jumps.dataset.bound) {
+      jumps.dataset.bound = '1';
+      jumps.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-jump]');
+        if (!btn) return;
+        if (typeof setConsolePage === 'function') setConsolePage(btn.getAttribute('data-jump'));
+      });
+    }
+    const refresh = document.getElementById('setupRefresh');
+    if (refresh && !refresh.dataset.bound) {
+      refresh.dataset.bound = '1';
+      refresh.addEventListener('click', () => loadSetup());
+    }
+  }
+
+function runPageHooks(page) {
     const names = PAGE_HOOKS[page];
     if (!names) return;
     for (const name of names) {
@@ -8670,24 +8733,26 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => { /* 安装不了也不影响用 */ });
   });
 }
+
+  // ↓ 0.4.124：这段原来被放在 body 结束标签之后，浏览器当正文渲染、一行都没执行
+    document.getElementById('navMore')?.addEventListener('click', (e) => {
+      const n = document.getElementById('mainNav');
+      const open = n?.classList.toggle('open');
+      e.currentTarget.textContent = open ? '收起 ▴' : '全部功能 ▾';
+    });
+    document.getElementById('updateBarClose')?.addEventListener('click', () => {
+      const bar = document.getElementById('updateBar');
+      const txt = document.getElementById('updateBarText')?.textContent || '';
+      const ver = txt.split('→').pop().trim();
+      if (ver) localStorage.setItem('qqb_update_dismissed', ver);
+      if (bar) bar.hidden = true;
+    });
+    setTimeout(() => checkForUpdate(false), 1500);
+    document.getElementById('offMdSend')?.addEventListener('click', offMdSend);
+    document.getElementById('offBindStart')?.addEventListener('click', () => { offMdInit(); });
+    offMdInit();
+    document.getElementById('offBindStart')?.addEventListener('click', offBindStart);
+    document.getElementById('mgHelpBtn')?.addEventListener('click', () => document.querySelector('.mg-side')?.classList.toggle('open'));
 </script>
 </body>
-  document.getElementById('navMore')?.addEventListener('click', (e) => {
-    const n = document.getElementById('mainNav');
-    const open = n?.classList.toggle('open');
-    e.currentTarget.textContent = open ? '收起 ▴' : '全部功能 ▾';
-  });
-  document.getElementById('updateBarClose')?.addEventListener('click', () => {
-    const bar = document.getElementById('updateBar');
-    const txt = document.getElementById('updateBarText')?.textContent || '';
-    const ver = txt.split('→').pop().trim();
-    if (ver) localStorage.setItem('qqb_update_dismissed', ver);
-    if (bar) bar.hidden = true;
-  });
-  setTimeout(() => checkForUpdate(false), 1500);
-  document.getElementById('offMdSend')?.addEventListener('click', offMdSend);
-  document.getElementById('offBindStart')?.addEventListener('click', () => { offMdInit(); });
-  offMdInit();
-  document.getElementById('offBindStart')?.addEventListener('click', offBindStart);
-  document.getElementById('mgHelpBtn')?.addEventListener('click', () => document.querySelector('.mg-side')?.classList.toggle('open'));
 </html>
