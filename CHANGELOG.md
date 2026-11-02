@@ -14,6 +14,49 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.44：手机连上远程 DSH 了（P0-a 完成）
+
+### 实测（模拟器 + 真 DSH）
+
+```
+手机（Android 15 / x86_64）跑桥接
+  └─ adb reverse tcp:3080 tcp:58783   ← 把 PC 的 DSH 端口映射成手机的回环端口
+  └─ 把对端 ~/.dsh/.credentials.yaml 里的 browser-session 密钥复制到手机同路径
+  └─ config.json: dsh.baseUrl = http://127.0.0.1:3080
+
+[bridge] DSH 已就绪（模式: reserved2）
+health/detail: dsh=connected  console=connected
+```
+
+**手机上的桥接，接到了 PC 上的 DSH 并完成事件流握手。**
+
+### 关键发现：DSH 只监听 127.0.0.1
+
+所以"手机连远程 DSH"真实可行的形态只有一种：**把它映射成本机回环端口**
+（`adb reverse` / `ssh -L` / frp），而不是直接填对端局域网 IP。
+直接填远程 IP 会撞上桥接的安全闸：launch token 是进程启动凭据，桥接拒绝发往非回环地址
+（除非显式 `dsh.allowRemote: true`）。
+
+### 新增：`GET /api/dsh/probe`
+
+把"连不上"拆成四步，并给出下一步动作：
+
+| 步骤 | 判定 |
+| --- | --- |
+| tcp | 端口通不通（远程不通 → 提示建隧道；本机不通 → 提示 DSH 没开/端口变了） |
+| http | 返回 200 还是 401/403（要不要鉴权） |
+| auth | 有没有 launch token / 浏览器会话密钥 |
+| allowRemote | 远程 + 有 token + 没开 allowRemote → 拦住并提示 |
+
+返回 `{ ok, loopback, steps, hints }`，hints 是给用户看的人话。
+
+### 测试
+
+`test-dsh-probe.mjs`（10 条）：回环判定、无地址、端口不通两种提示、匿名可访问、
+缺凭据、远程未开 allowRemote 被拦、远程开了放行、本机只有密钥、HTTP 异常。
+
+**审计 183/183。**
+
 ## 2026-11-03 — 0.5.43：在 Android 上真的把桥接跑起来了（P1 验证完成）
 
 ### 怎么验证的（不是推演，是实机）

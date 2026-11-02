@@ -23,7 +23,33 @@ MuMu 模拟器 Android 15 / x86_64（adb 127.0.0.1:16384）
 | 能力"点了才报错"（ffmpeg/PowerShell/Edge 都没有） | `src/platform-capabilities.js` + `GET /api/platform`，手机上一眼看到 6 项不可用 |
 | DSH 连不上（要读 `~/.dsh/.credentials.yaml`） | 待办：远程 DSH 需要显式子命令里带 `dsh.authToken` |
 
-下一步（未做）：P0 网关抽象 + NapCat 上手机（见第 4 节）。
+### P0-a 也做完了（2026-11-03）
+
+手机连远程 DSH 的真实形态：**把对端端口映射成手机的回环端口**，不是直接填局域网 IP。
+
+```
+adb reverse tcp:3080 tcp:58783          # 或 ssh -L / frp
+复制对端 ~/.dsh/.credentials.yaml 里的 browser-session 密钥到手机同路径
+config.json: dsh.baseUrl = http://127.0.0.1:3080
+
+[bridge] DSH 已就绪（模式: reserved2）
+health/detail: dsh=connected  console=connected   ✅
+```
+
+为什么必须走隧道：**DSH 只监听 127.0.0.1**；而桥接有一道安全闸 ——
+launch token 是进程启动凭据，拒绝发往非回环地址（需显式 `dsh.allowRemote: true`）。
+
+新增 `GET /api/dsh/probe`，把"连不上"拆成 tcp / http / auth / allowRemote 四步并给出人话提示。
+手机侧实测返回：
+
+```json
+{ "ok": true, "loopback": true, "baseUrl": "http://127.0.0.1:3080",
+  "steps": [{"name":"tcp","ok":true,"detail":"端口可达 127.0.0.1:3080"},
+            {"name":"http","ok":true,"detail":"HTTP 401（需要鉴权）"},
+            {"name":"auth","ok":true,"detail":"有浏览器会话密钥"}] }
+```
+
+下一步（未做）：P0-b 网关抽象 + P2 NapCat 上手机（见第 4 节）。
 
 ## 1. 先说结论
 
