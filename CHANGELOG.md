@@ -14,6 +14,89 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.50：Key 加密落盘（P1）+ 长期记忆注入本地 agent（P2）
+
+### P1：模型 Key 不再明文
+
+`src/secret-box.js`（0.5.49 打的地基）正式接线：
+
+| 平台 | 算法 |
+| --- | --- |
+| Windows | DPAPI `ProtectedData.Protect(..., CurrentUser)` —— 换用户/换机器解不开 |
+| 其它 | AES-256-GCM + 权限 600 的本地密钥文件 |
+
+配置里只留密文：
+
+```json
+"agent": { "apiKey": "", "apiKeyEnc": "dpapi:AQAAAN…" }
+```
+
+迁移用一条命令（幂等，自检解不回来就不写盘）：
+
+```bash
+node scripts/encrypt-agent-key.mjs --config <部署目录>/config.json
+```
+
+`resolveApiKey` 的优先级：**密文 → 明文 → 环境变量**，所以旧配置不改也能跑，
+加密后把 `apiKey` 清空即可。
+
+### P2：长期记忆接进本地 agent
+
+关键发现：仓库里**已经有**长期记忆结构（`src/memory-store.js`：权重、衰减、命中强化、
+`rankAtoms` / `formatLongTerm`，已被 `bridge.js` 与 socialV2 使用），
+但**本地 agent 一直没读它** —— 这就是"一关对话就失忆"的直接原因之一。
+
+现在 `dispatch.js` 每轮开始会：
+
+1. 读 `state/social-v2.json` 里该会话的 `longTermMemories`
+2. 用 `formatLongTerm` 按**当前消息的相关度**挑最多 8 条、800 字
+3. 塞进 system prompt（在人格之后、行为约束之前）
+
+没有记忆时返回空串，不会塞一堆"暂无"浪费 token。
+
+### 测试
+
+`test-agent.mjs` 补 4 条（共 23 条）：AES 往返、坏密文不抛、旧明文兼容、
+`resolveApiKey` 三级优先级。
+
+**审计 186/186。**
+
+## 2026-11-03 — 0.5.49：本机文件索引 + `/api/search`（P3）+ 密钥保护底座
+
+### 借鉴点
+
+`arcdream-hub`（弧梦数字中枢）的做法：**索引只存元数据、搜索走一个端点**。
+它不索引文件内容，只记 `path/name/dir/ext/size/mtime/root/project`，跳过 `node_modules`
+之类噪声目录。这样索引小、扫得快、隐私面小。我们照这个思路实现了一版。
+
+### 新增
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/file-index.js` | `node:sqlite` 建索引（22.5+ 内置，无 npm 依赖）；扫描/搜索/统计/清空 |
+| `src/api/file-index-route.js` | `GET /api/index/status`、`POST /api/index/start`、`GET /api/search`、`POST /api/index/clear` |
+| `src/secret-box.js` | 密钥保护底座：Windows 走 DPAPI（`ProtectedData` + CurrentUser），其它平台 AES-256-GCM + 权限 600 的密钥文件 |
+
+配置：
+
+```json
+"fileIndex": { "enabled": true, "roots": ["D:/deepseek工作区"], "skipDirs": [] }
+```
+
+### 设计取舍
+
+- **只存元数据**：不读文件内容，隐私面最小
+- **扫到上限就停**：默认 20 万文件，避免第一次扫盘扫到天荒地老
+- **扫描是异步的**：`/api/index/start` 立刻回 202，状态从 `/api/index/status` 查
+- **`%` / `_` 当字面量**：LIKE 前做转义，避免用户搜 `100%` 变成通配
+
+### 测试
+
+`test-file-index.mjs`（8 条）：跳过 node_modules/.log、中文名命中、只回元数据、
+limit 上限、通配符转义、重复扫描不重复、目录不存在明确失败、clear 后搜不到。
+
+**审计 186/186。**
+
 ## 2026-11-03 — 0.5.48：本地模式接上人格（不再是一句默认提示词）
 
 ### 问题

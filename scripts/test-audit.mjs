@@ -173,6 +173,7 @@ const tests = [
   'test-dsh-probe.mjs',
   'test-gateway-config.mjs',
   'test-agent.mjs',
+  'test-file-index.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

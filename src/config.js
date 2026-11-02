@@ -32,7 +32,7 @@ export function createConfigLoader(deps = {}) {
     'dsh', 'snowluma', 'sessionCwd', 'agentPreset', 'workspaceTitle', 'ownerQQ',
     'allow', 'deny', 'allowAllWhenEmpty', 'official', 'ackMessage', 'sendDelayMs',
     'questionTimeoutMs', 'consolePort', 'consoleHost', 'inject', 'consoleToken',
-    'pricing', 'security', 'slang', 'social', 'socialV2', 'paths', 'role', 'gateway', 'agent'
+    'pricing', 'security', 'slang', 'social', 'socialV2', 'paths', 'role', 'gateway', 'agent', 'fileIndex'
   ]);
 
   // 端口校验：接受 1-65535 的整数（数字或纯数字字符串）；其它一律抛错。
@@ -80,6 +80,7 @@ export function createConfigLoader(deps = {}) {
       // mode 必须在逐字段装配里登记，否则 config 写了也读不到（同一坑踩过三次）
       mode: String(file.agent?.mode ?? 'dsh'),
       apiKey: String(file.agent?.apiKey ?? ''),
+      apiKeyEnc: String(file.agent?.apiKeyEnc ?? ''),
       baseUrl: String(file.agent?.baseUrl ?? 'https://api.deepseek.com'),
       model: String(file.agent?.model ?? 'deepseek-chat'),
       persona: String(file.agent?.persona ?? ''),
@@ -88,6 +89,12 @@ export function createConfigLoader(deps = {}) {
       systemPrompt: String(file.agent?.systemPrompt ?? ''),
       maxSteps: Number(file.agent?.maxSteps) || 2,
       temperature: Number.isFinite(Number(file.agent?.temperature)) ? Number(file.agent.temperature) : 0.8
+    },
+    // 本机文件索引（P3）：只存元数据，不读内容
+    fileIndex: {
+      enabled: (file.fileIndex?.enabled ?? true) !== false,
+      roots: Array.isArray(file.fileIndex?.roots) ? file.fileIndex.roots.map(String) : [],
+      skipDirs: Array.isArray(file.fileIndex?.skipDirs) ? file.fileIndex.skipDirs.map(String) : []
     },
     gateway: normalizeGateway(file),
     snowluma: toLegacySnowlumaShape(normalizeGateway(file)),

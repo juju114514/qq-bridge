@@ -34,7 +34,7 @@ import { handleMusicQqRoute } from './music-qq-route.js';
 import { handleContextUsageRoute } from './context-usage-route.js';
 import { handlePlatformRoute } from './platform-route.js';
 import { handleDshProbeRoute } from './dsh-probe-route.js';
-import { handleAgentRoute } from './agent-route.js';
+import { handleAgentRoute } from './agent-route.js'; import { handleFileIndexRoute } from './file-index-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -120,8 +120,8 @@ export async function handleExtraRoutes(ctx = {}) {
   if (await handlePlatformRoute({ req, url, sendJson })) return true;
   if (await handleDshProbeRoute({ req, url, sendJson, deps: resolveDeps })) return true;
   if (await handleAgentRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;
+  if (await handleFileIndexRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;
   if (await handleContextUsageRoute({ req, url, sendJson, deps: resolveDeps })) return true;   // 上下文用量 0.4.141
-  // QQ 音乐点歌（0.4.136）
   if (await handleMusicQqRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;
 
   // 音乐账号登录（0.4.135）

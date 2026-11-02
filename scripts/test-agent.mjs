@@ -230,6 +230,43 @@ await check('composeSystemPrompt：人格在前、key 居中、约束在后', ()
   assert.equal(s, 'P\n\nK\n\nB');
 });
 
+
+const secretMod = await import(new URL('../src/secret-box.js', import.meta.url).href);
+
+await check('secret-box：protect/unprotect 往返（非 Windows 走本地 AES）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-sec-'));
+  const box = secretMod.createSecretBox({ platform: 'linux', keyFile: path.join(dir, 'secret.key') });
+  const enc = box.protect('sk-test-123456');
+  assert.match(enc, /^local:/);
+  assert.equal(box.unprotect(enc), 'sk-test-123456');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await check('secret-box：解不开返回空串，不抛', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-sec-'));
+  const box = secretMod.createSecretBox({ platform: 'linux', keyFile: path.join(dir, 'secret.key') });
+  assert.equal(box.unprotect('local:bm90LWEtcmVhbC1ibG9i'), '');
+  assert.equal(box.unprotect(''), '');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await check('secret-box：没前缀的旧明文照常返回（平滑迁移）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-sec-'));
+  const box = secretMod.createSecretBox({ platform: 'linux', keyFile: path.join(dir, 'secret.key') });
+  assert.equal(box.unprotect('sk-plain'), 'sk-plain');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await check('resolveApiKey：密文优先于明文，明文优先于环境变量', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-sec-'));
+  const box = secretMod.createSecretBox({ platform: 'linux', keyFile: path.join(dir, 'secret.key') });
+  const enc = box.protect('sk-from-cipher');
+  assert.equal(secretMod.resolveApiKey({ apiKeyEnc: enc, apiKey: 'sk-plain' }, { box }), 'sk-from-cipher');
+  assert.equal(secretMod.resolveApiKey({ apiKey: 'sk-plain' }, { box, env: { DEEPSEEK_API_KEY: 'sk-env' } }), 'sk-plain');
+  assert.equal(secretMod.resolveApiKey({}, { box, env: { DEEPSEEK_API_KEY: 'sk-env' } }), 'sk-env');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

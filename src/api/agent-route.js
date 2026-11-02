@@ -3,13 +3,14 @@
 // 这是 C1 的**验证入口**：不经过 DSH，直接让桥接用自带的 provider 回答一句话。
 // 等 C2/C3 把工具和人格接上之后，正式的消息处理路径会改走同一套 loop。
 import { createProvider } from '../agent/provider.js';
+import { resolveApiKey } from '../secret-box.js';
 import { createAgentLoop } from '../agent/loop.js';
 import { createSocialTools } from '../agent/tools.js';
 
 /** 从 config 里读 agent 段；缺 key 时返回 null（调用方给可读错误） */
 function resolveAgentConfig(cfg = {}, env = process.env) {
   const a = cfg.agent || {};
-  const apiKey = String(a.apiKey || env.DEEPSEEK_API_KEY || '');
+  const apiKey = resolveApiKey(a, { env });
   return {
     enabled: a.enabled !== false,
     apiKey,

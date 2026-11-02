@@ -6,10 +6,14 @@
 // 为什么不直接改 deliverPromptNow：那条路径和 DSH 的会话/流式/工具高度耦合，
 // 硬插分支会把两者都弄脏。这里只做一件事——**把 prompt 当用户消息，跑一轮本地 agent**，
 // 工具负责把回复真的发出去（或由这里兜底发送）。
+import fs from 'node:fs';
+import path from 'node:path';
 import { createProvider } from './provider.js';
 import { createAgentLoop } from './loop.js';
 import { createSocialTools } from './tools.js';
 import { resolvePersona, composeSystemPrompt } from './persona.js';
+import { resolveApiKey } from '../secret-box.js';
+import { formatLongTerm } from '../memory-store.js';
 
 const DEFAULT_SYSTEM = '你是一个在 QQ 群里聊天的中文助手。根据给定的上下文和当前消息，写一条自然、简短、像本人的回复（不超过 80 字）。'
   + '需要看更多上下文就调用工具；要开口说话就用 qq_send_message 工具发出去，不要只把回复写在正文里。';
@@ -24,7 +28,8 @@ const DEFAULT_SYSTEM = '你是一个在 QQ 群里聊天的中文助手。根据�
 export async function runLocalAgentTurn(input = {}) {
   const { cfg = {}, key = '', promptText = '', sendToQQ = null, stateDir = 'state', log = () => {} } = input;
   const a = cfg.agent || {};
-  const apiKey = String(a.apiKey || process.env.DEEPSEEK_API_KEY || '');
+  // P1：优先解密密文（apiKeyEnc），其次明文，最后环境变量
+  const apiKey = resolveApiKey(a);
   if (!apiKey) return { ok: false, sent: false, steps: 0, reply: '', usage: {}, error: '没有 apiKey' };
   if (!key || !promptText) return { ok: false, sent: false, steps: 0, reply: '', usage: {}, error: '缺 key 或 promptText' };
 
@@ -49,13 +54,15 @@ export async function runLocalAgentTurn(input = {}) {
   // 把「当前会话 key」写进系统提示的最前面：模型常常忽略后面那句，导致反问"发到哪个会话"
   const keyLine = `当前会话 key = ${key}。调用 qq_send_message 时用这个 key（省略也默认发给它），不要再问用户在哪个会话。`;
   const persona = resolvePersona(cfg, { cwd: process.cwd(), maxChars: Number(a.personaMaxChars) || 3000 });
+  // P2：长期记忆（跨重启存活的那一层）按相关度挑几条塞进提示——这是"不失忆"的关键
+  const memoryBlock = readLongTermBlock(stateDir, key, promptText);
   const loop = createAgentLoop({
     provider,
     tools: wrapped,
     systemPrompt: composeSystemPrompt({
       persona: persona.text,
       keyLine,
-      base: String(a.systemPrompt || DEFAULT_SYSTEM)
+      base: [memoryBlock, String(a.systemPrompt || DEFAULT_SYSTEM)].filter(Boolean).join('\n\n')
     }),
     // 有工具时至少给两轮：一轮看上下文，一轮发消息
     maxSteps: Number(a.maxSteps) || 4,
@@ -81,4 +88,15 @@ export async function runLocalAgentTurn(input = {}) {
 
   log(`[agent] 本地回合完成 key=${key} steps=${r.steps} sent=${sent} 人格=${persona.source} 用时=${Date.now() - started}ms`);
   return { ok: true, sent, steps: r.steps, reply: r.reply, usage: r.usage, error: r.error };
+}
+
+/** 从 state/social-v2.json 里取该会话的长期记忆，按相关度挑几条 */
+function readLongTermBlock(stateDir, key, query) {
+  try {
+    const raw = fs.readFileSync(path.join(stateDir, 'social-v2.json'), 'utf8').replace(/^\uFEFF/, '');
+    const st = JSON.parse(raw)?.conversations?.[key];
+    const atoms = Array.isArray(st?.longTermMemories) ? st.longTermMemories : [];
+    if (!atoms.length) return '';
+    return formatLongTerm(atoms, { query: String(query || ''), limit: 8, maxChars: 800 });
+  } catch { return ''; }
 }
