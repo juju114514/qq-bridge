@@ -12,7 +12,7 @@
 // 只有三个字段参与：memberImpressions / activeTopics / pendingThoughts。
 // 其余字段（水位、唤醒时间、消息缓存）随时可能合法地变空，不能拦。
 
-export const GUARDED_FIELDS = ['memberImpressions', 'activeTopics', 'pendingThoughts'];
+export const GUARDED_FIELDS = ['memberImpressions', 'activeTopics', 'pendingThoughts', 'longTermMemories'];
 
 /** 这次清空被显式允许的会话 key（由 /api/socialV2/memory/clear 与 qq_memory_clear 标记） */
 const allowClear = new Set();

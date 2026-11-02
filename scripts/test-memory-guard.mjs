@@ -80,6 +80,37 @@ await check('pendingThoughts 过期的空数组不算内容', () => {
   assert.ok(restored.some((r) => r.field === 'pendingThoughts'));
 });
 
+
+await check('快照：longTermMemories 会随会话落盘（不然重启就失忆）', async () => {
+  const { buildSocialV2Snapshot } = await import(new URL('../src/domains/social-v2-store.js', import.meta.url).href);
+  const convs = new Map([['private:1', {
+    longTermMemories: [{ text: '主人喜欢被叫老板', weight: 3, createdAt: 1 }],
+    recentMessages: [], unread: []
+  }]]);
+  const snap = buildSocialV2Snapshot({ conversations: convs, seenForwardIds: new Map() });
+  const atoms = snap.conversations['private:1'].longTermMemories;
+  assert.equal(Array.isArray(atoms), true);
+  assert.equal(atoms.length, 1);
+  assert.equal(atoms[0].text, '主人喜欢被叫老板');
+});
+
+await check('快照：longTermMemories 超过 200 条会裁剪（文件不会无限长）', async () => {
+  const { buildSocialV2Snapshot } = await import(new URL('../src/domains/social-v2-store.js', import.meta.url).href);
+  const many = Array.from({ length: 250 }, (_, i) => ({ text: `记忆${i}`, weight: 1, createdAt: i }));
+  const snap = buildSocialV2Snapshot({ conversations: new Map([['group:2', { longTermMemories: many }]]), seenForwardIds: new Map() });
+  assert.equal(snap.conversations['group:2'].longTermMemories.length, 200);
+  assert.equal(snap.conversations['group:2'].longTermMemories[0].text, '记忆50');
+});
+
+await check('护栏：内存里丢了 longTermMemories，磁盘版本会被保留', async () => {
+  const { restoreDroppedMemory } = await import(new URL('../src/memory-guard.js', import.meta.url).href);
+  const disk = { 'private:3': { longTermMemories: [{ text: '旧记忆', weight: 2 }] } };
+  const memory = { 'private:3': { longTermMemories: [] } };
+  const { restored } = restoreDroppedMemory({ memory, disk, isAllowed: () => false });
+  assert.equal(memory['private:3'].longTermMemories.length, 1);
+  assert.ok(restored.some((r) => r.field === 'longTermMemories'));
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

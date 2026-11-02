@@ -19,6 +19,7 @@ export const SOCIAL_V2_TRIM = Object.freeze({
   stickerCollectTimes: 500,
   activeTopics: 50,
   pendingThoughts: 50,
+  longTermMemories: 200,
   seenForwardIds: 1000
 });
 
@@ -49,6 +50,9 @@ export function buildSocialV2Snapshot({ conversations, seenForwardIds, paused = 
       activeTopics: sliceTail(st.activeTopics, SOCIAL_V2_TRIM.activeTopics),
       pendingThoughts: sliceTail(st.pendingThoughts, SOCIAL_V2_TRIM.pendingThoughts),
       memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {},
+      // 长期记忆（0.5.51）：之前不在白名单里，写进去也活不过一次落盘 ——
+      // 这是"一关对话就失忆"的真正病根。
+      longTermMemories: sliceTail(st.longTermMemories, SOCIAL_V2_TRIM.longTermMemories),
       seenForwardIds: Array.from(seenForwardIds?.get(key) || []).slice(-SOCIAL_V2_TRIM.seenForwardIds)
     };
   }

@@ -14,6 +14,38 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.51：长期记忆真正能存活（P2 收尾）
+
+### 病根
+
+0.5.50 把长期记忆注入了本地 agent，但**一条也存不住**。原因不在 agent，在落盘：
+
+`buildSocialV2Snapshot` 是**按字段白名单**组装会话状态的，`longTermMemories` 不在名单里。
+所以哪怕 socialV2 的写端点把它写进内存，下一次落盘就没了 —— 重启即失忆。
+
+这与 2026-10-29 那次"人物印象凭空消失"是**同一个病根**（当时补了 `memory-guard`，
+但只保护了 `memberImpressions / activeTopics / pendingThoughts` 三个字段）。
+
+### 改动
+
+| 位置 | 改动 |
+| --- | --- |
+| `src/domains/social-v2-store.js` | 白名单加入 `longTermMemories`；`SOCIAL_V2_TRIM` 加上限 200 |
+| `src/memory-guard.js` | `GUARDED_FIELDS` 加入 `longTermMemories`（内存丢了、磁盘还有 → 保留磁盘版） |
+
+### 测试（test-memory-guard 补 3 条）
+
+- 快照里 `longTermMemories` 会随会话落盘
+- 超过 200 条按尾部裁剪（文件不会无限长）
+- 内存里丢了、磁盘还有时，护栏保留磁盘版本并记录
+
+### 影响
+
+本地 agent 每轮读 `state/social-v2.json` 的 `longTermMemories` → `formatLongTerm` 按相关度挑
+最多 8 条塞进系统提示。现在这些原子**跨重启存活**，"一关对话就失忆"这一条才真正修掉。
+
+**审计 186/186。**
+
 ## 2026-11-03 — 0.5.50：Key 加密落盘（P1）+ 长期记忆注入本地 agent（P2）
 
 ### P1：模型 Key 不再明文
