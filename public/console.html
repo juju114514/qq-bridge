@@ -185,6 +185,12 @@ button.planned {
   border-style:dashed;
   color:var(--muted)
 }
+  /* 侧栏滚动条：默认的又宽又白，深色主题里像一条白带。收细 + 半透明 */
+  .sidebar { scrollbar-width: thin; scrollbar-color: rgba(140,160,190,.35) transparent; }
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: rgba(140,160,190,.32); border-radius: 3px; }
+  .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(140,160,190,.55); }
 .sidebar {
   position:fixed;
   inset:0 auto 0 0;
@@ -1827,7 +1833,6 @@ button:active:not(:disabled) {
 
         <div class="nav-label">运维</div>
         <button data-view="diagnostics" class="nav-item"><span class="nav-icon" aria-hidden="true">◎</span>诊断与健康</button>
-        <button data-view="setup" class="nav-item"><span class="nav-icon" aria-hidden="true">◆</span>新手向导</button>
         <button data-view="scheduler" class="nav-item"><span class="nav-icon" aria-hidden="true">◷</span>定时任务</button>
         <button data-view="usage" class="nav-item"><span class="nav-icon" aria-hidden="true">◧</span>令牌与花费</button>
         <button data-view="reference" class="nav-item"><span class="nav-icon" aria-hidden="true">ⓘ</span>工具参考</button>
@@ -2677,6 +2682,14 @@ button:active:not(:disabled) {
             <button data-jump="official" class="ghost">官方通道</button>
             <button data-jump="access" class="ghost">访问与安全</button>
           </div>
+        </div>
+      </section>
+      <section data-page="overview" class="card span-all" id="section-setup-entry">
+        <h2>新手向导</h2>
+        <div class="meta">先看这台机器行不行：Node / 配置 / state / DSH / 网关 / 侧车，逐条列出来，不通过就告诉你下一步点哪。</div>
+        <div class="row" style="margin-top:12px">
+          <button id="setupEntryOpen" class="primary">打开新手向导</button>
+          <span id="setupEntrySummary" class="meta" style="align-self:center"></span>
         </div>
       </section>
       <section id="section-diagnostics" data-page="diagnostics" class="card span-all">
@@ -7505,7 +7518,7 @@ async function spaceDeletePost(tid, btn) {
   //
   // 每条钩子独立 try：一个钩子炸了不影响其它钩子（这曾经让整个控制台卡在"加载中"）。
   const PAGE_HOOKS = {
-    overview: ['loadOverview'],
+    overview: ['loadOverview', 'loadSetupEntry'],
     sessions: ['loadHeatmap'],
     people: ['loadPeople'],
     scheduler: ['loadScheduler'],
@@ -7563,6 +7576,25 @@ async function spaceDeletePost(tid, btn) {
     if (refresh && !refresh.dataset.bound) {
       refresh.dataset.bound = '1';
       refresh.addEventListener('click', () => loadSetup());
+    }
+  }
+
+  // 总览页的「新手向导」格子（0.4.125）：只取一句汇总
+  async function loadSetupEntry() {
+    const el = document.getElementById('setupEntrySummary');
+    const btn = document.getElementById('setupEntryOpen');
+    if (btn && !btn.dataset.bound) {
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => { if (typeof setConsolePage === 'function') setConsolePage('setup'); });
+    }
+    if (!el) return;
+    try {
+      const d = await api('/api/setup/status');
+      const n = (d && d.checks || []).length;
+      el.textContent = (d && d.summary) ? d.summary : (n ? n + ' 项检查' : '点开看看');
+      el.style.color = d && d.ok ? '#3fa86a' : '#c9862a';
+    } catch {
+      el.textContent = '点开看看';   // 没令牌/接口没起来也给个入口，别留空
     }
   }
 

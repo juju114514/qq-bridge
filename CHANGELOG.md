@@ -2,6 +2,32 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.125：「新手向导」改成独立格子 + 侧栏滚动条收细
+
+### 1) 向导不再占导航项
+
+上一版把「新手向导」塞进「诊断与健康 / 定时任务」之间 —— 那两行本来就挨着的，
+插进去反而让导航变长。改成：
+
+- 导航恢复原样（诊断与健康 → 定时任务 相邻）
+- 总览页新增一张**独立格子**「新手向导」，带「打开新手向导」按钮 + 一句汇总
+- 原 `setup` 页面保留（从格子的按钮进去）
+
+### 2) 侧栏那条白带 = 默认滚动条
+
+深色主题下侧栏滚动条是浏览器默认样式：宽、浅色，看起来就是一条白带。
+改成细滚动条：
+
+```css
+.sidebar { scrollbar-width: thin; scrollbar-color: rgba(140,160,190,.35) transparent; }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(140,160,190,.32); border-radius: 3px; }
+```
+
+实测（CDP）：`侧栏有「新手向导」导航项吗: false` / `总览有格子吗: true` / `滚动条宽度: thin`。
+
+**审计 175/175。**
 ## 2026-11-02 — 0.4.124：「新手向导」页面（导航在诊断与健康 / 定时任务之间）
 
 ### 1) 新增页面 + `/api/setup/status`
