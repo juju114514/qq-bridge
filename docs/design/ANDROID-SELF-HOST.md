@@ -71,6 +71,32 @@ onebot: { http, ws, token }                               ← 历史写法，也
 
 下一步（未做）：P2 NapCat 上手机（见第 4 节）。
 
+## 0.5 普通手机没有 root —— 这条约束改变了安装方式（2026-11-03）
+
+前面所有验证都在**模拟器 + adb** 上做：`adb shell` 用 `shell` 用户，往 `/data/local/tmp`
+推二进制直接执行。**普通用户的手机没有这个能力**（哪怕做了 root，也多是调试 shell）。
+
+普通 App 只能在**自己的私有目录**里执行二进制：
+
+```
+/data/data/<包名>/files/...      ← Termux 的 $PREFIX / $HOME 就在这类路径下
+```
+
+所以产品化的安装路径必须是 **Termux**（F-Droid 装，不需要 root）：
+
+| 环节 | 模拟器做法（不可分发） | 普通手机做法（可分发） |
+| --- | --- | --- |
+| 执行 node | `adb push` 到 `/data/local/tmp` | `pkg install nodejs-lts`（装在 `$PREFIX`） |
+| 跑 Linux | 同理 push proot | `pkg install proot` + rootfs 解到 `$HOME/qqb/ubuntu` |
+| 传文件 | `adb push` | 脚本内 `curl` 下载 |
+| 启动 | `adb shell setsid ...` | `termux-wake-lock` + `setsid` 脚本 |
+
+已按这个约束写了 `scripts/mobile/bootstrap.sh`（214 行，纯 Termux、无 root、幂等）：
+装包 → 解 rootfs → 装 QQ/NapCat → 编 launcher → 写 OneBot 配置 → 生成启动脚本。
+
+**proot 为什么不需要 root**：它靠 ptrace 做用户态路径重写，不是真的 chroot；
+AstrBot 那条线（proot + Ubuntu 容器）也是这么在普通手机上跑的。
+
 ## 1. 先说结论
 
 **个人 QQ 号在手机上跑得起来** —— 这一条我之前判断错了。

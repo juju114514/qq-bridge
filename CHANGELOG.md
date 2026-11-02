@@ -14,6 +14,50 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.47：面向普通手机的安装路径（Termux，无 root）
+
+### 为什么必须换
+
+前面所有验证都建立在 **adb + /data/local/tmp** 上：`adb shell` 是 `shell` 用户，
+可以往那儿推二进制直接执行。**普通用户的手机没有这个能力**（哪怕刷了 root，也多是调试 shell）。
+
+普通 App 只能在**自己的私有目录**里执行二进制 —— 也就是 Termux 的 `$PREFIX`。
+所以可分发的安装路径只能是 Termux（F-Droid 安装，不需要 root）。
+
+### 新增 `scripts/mobile/bootstrap.sh`
+
+214 行，纯 Termux、无 root、幂等：
+
+```
+pkg install nodejs-lts proot unzip curl xz-utils tar
+  → 下 Ubuntu 24.04 base rootfs 解到 ~/qqb/ubuntu
+  → apt 装 coreutils/xvfb/QQ 运行库
+  → 下 QQ Linux deb 并 apt install
+  → 下 NapCat.Shell.zip，解到 /root/napcat，编 libnapcat_launcher.so
+  → 写 OneBot 配置（ws 127.0.0.1:6199）
+  → 生成 start-napcat.sh / start-bridge.sh
+```
+
+支持 `--check`（只体检）与 `--start`（只生成启动脚本）。
+
+### 脚本里三个"不写就踩"的细节
+
+| 细节 | 为什么 |
+| --- | --- |
+| `-b $BASE/shm:/dev/shm` | Android 没有 `/dev/shm`，Electron 直接 FATAL |
+| `NODE_EXTRA_CA_CERTS` 指向 guest 的 CA 包 | Android 的 node 没有系统 CA，所有 HTTPS 报 `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` |
+| `/usr/bin/env -i PATH=...` | 不隔离 PATH 的话，Android 的 PATH 会漏进 guest，`ls`/`apt` 全找不到 |
+
+### 为什么 proot 不需要 root
+
+proot 靠 ptrace 做用户态路径重写，不是真的 chroot；AstrBot 那条线也是这么在普通手机上跑的。
+
+### 文档
+
+`docs/design/ANDROID-SELF-HOST.md` 新增 0.5 节：模拟器做法 vs 普通手机做法的对照表。
+
+**审计 185/185。**
+
 ## 2026-11-03 — 0.5.46：桥接自己的大脑（C1→C3）：手机不再需要 DSH
 
 ### 背景
