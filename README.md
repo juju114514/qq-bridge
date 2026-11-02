@@ -45,10 +45,11 @@
 
 | 方式 | 适合谁 | 怎么装 |
 | --- | --- | --- |
-| **绿色整合包** `qq-bridge-portable-*.zip`（约 43 MB） | 绝大多数人 | 解压 → 双击 `启动.cmd` → 浏览器开 `http://127.0.0.1:3100`。**不用装 Node、不用开命令行** |
-| **手机 APK** `QQ桥接-*.apk`（约 4 MB） | 只想用手机管 | 装 APK → 电脑控制台「调试与运维 → 手机设备 → 显示连接二维码」→ 手机扫一下 |
+| **绿色整合包** [qq-bridge-portable-0.5.42.zip](https://github.com/juju114514/qq-bridge/releases/download/v0.5.42/qq-bridge-portable-0.5.42.zip)（约 43 MB） | 绝大多数人 | 解压 → 双击 `启动.cmd` → 浏览器开 `http://127.0.0.1:3100`。**不用装 Node、不用开命令行** |
+| **手机 APK** [qq-bridge-android-0.5.42.apk](https://github.com/juju114514/qq-bridge/releases/download/v0.5.42/qq-bridge-android-0.5.42.apk)（约 4 MB） | 只想用手机管 | 装 APK → 电脑控制台「调试与运维 → 手机设备 → 显示连接二维码」→ 手机扫一下 |
 | **源码** | 想改代码 / 部署到服务器 | `git clone` → `npm i` → `node src/bridge.js` |
 
+> 全部发布物在 [Releases](https://github.com/juju114514/qq-bridge/releases/latest)（含 SHA256 与历史版本）。
 > 绿色包自带 `node.exe` 与全部依赖（已扁平化，无符号链接），解压即用；
 > 里含 `排错程序.exe`（GUI 入口）与 `说明.txt`（三步上手 + 手机怎么连 + 常见问题）。
 
