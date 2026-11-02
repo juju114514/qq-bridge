@@ -6,7 +6,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#182030">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="color-scheme" content="light dark">
 <title>QQ 桥接控制台</title>
@@ -186,7 +186,7 @@ button.planned {
   color:var(--muted)
 }
   /* 侧栏滚动条：默认的又宽又白，深色主题里像一条白带。收细 + 半透明 */
-  .sidebar { scrollbar-width: thin; scrollbar-color: rgba(140,160,190,.35) transparent; }
+  .sidebar { scrollbar-width: thin; user-select: none; -webkit-user-select: none; scrollbar-color: rgba(140,160,190,.35) transparent; }
   .sidebar::-webkit-scrollbar { width: 6px; }
   .sidebar::-webkit-scrollbar-track { background: transparent; }
   .sidebar::-webkit-scrollbar-thumb { background: rgba(140,160,190,.32); border-radius: 3px; }
@@ -201,7 +201,8 @@ button.planned {
   display:flex;
   flex-direction:column;
   z-index:20;
-  overflow-y:auto
+  overflow-y:auto;
+  overflow-x:hidden
 }
 .brand {
   display:flex;
