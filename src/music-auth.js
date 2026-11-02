@@ -13,6 +13,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+
+/**
+ * 扫码会话缓存（0.4.139）
+ *
+ * 实测：网易云 `unikey` 会下发 `NMTID` 会话 cookie；扫码确认后如果**不带这个 cookie** 去轮询，
+ * 服务端认不出是同一个会话，会返回 `8821`（我们之前一直卡在这）。
+ * 所以按 key 存起来，轮询时带上。
+ */
+const QR_SESSIONS = new Map();   // key -> { cookie, at }
+
+function rememberSession(key, cookie) {
+  if (!key) return;
+  QR_SESSIONS.set(String(key), { cookie: String(cookie || ''), at: Date.now() });
+  // 只留最近 50 条，避免无限增长
+  if (QR_SESSIONS.size > 50) {
+    const oldest = [...QR_SESSIONS.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    if (oldest) QR_SESSIONS.delete(oldest[0]);
+  }
+}
+
+function sessionCookie(key) {
+  return QR_SESSIONS.get(String(key))?.cookie || '';
+}
+
 const NETEASE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 // 不写死盘符：由调用方（路由层）扫描盘符后传进来；这里只给一个安全的兜底
 const DEFAULT_NETEASE_COOKIE = path.join(os.tmpdir(), 'qqb-netmusic-cookie.txt');
@@ -87,6 +111,11 @@ export function createMusicAuth(opts = {}) {
     const body = await res.json();
     const key = body?.unikey || body?.data?.unikey;
     if (!key) throw new Error('网易云没返回 unikey');
+    // 把这次会话的 cookie 记下来，轮询时必须带（否则确认阶段会 8821）
+    const setCookie = typeof res.headers?.getSetCookie === 'function'
+      ? res.headers.getSetCookie().join('; ')
+      : String(res.headers?.get?.('set-cookie') || '');
+    rememberSession(key, setCookie);
     return {
       provider: 'netease',
       key,
@@ -99,17 +128,33 @@ export function createMusicAuth(opts = {}) {
   async function neteasePoll(key) {
     const res = await fetchImpl(
       `https://music.163.com/api/login/qrcode/client/login?key=${encodeURIComponent(key)}&type=1`,
-      { headers: { 'user-agent': ua, referer: 'https://music.163.com/' }, signal: AbortSignal.timeout(10000) }
+      {
+        headers: {
+          'user-agent': ua,
+          referer: 'https://music.163.com/',
+          ...(sessionCookie(key) ? { cookie: sessionCookie(key) } : {})
+        },
+        signal: AbortSignal.timeout(10000),
+        cache: 'no-store'
+      }
     );
     const body = await res.json();
     const code = Number(body?.code);
+    // 800 过期 / 801 等待 / 802 已扫待确认 / 803 成功
+    // 8821：轮询过快或"确认中"，**必须当等待处理**（当成错误会让 803 永远等不到）
     const state = code === 803 ? 'ok'
       : code === 802 ? 'scanned'
         : code === 801 ? 'waiting'
-          : code === 800 ? 'expired' : 'unknown';
-    const result = { provider: 'netease', code, state, message: body?.message || '' };
+          : code === 800 ? 'expired'
+            : code === 8821 ? 'waiting' : 'unknown';
+    const result = {
+      provider: 'netease', code, state,
+      message: body?.message || (code === 8821 ? '确认中（轮询略快，已自动放慢）' : ''),
+      slowDown: code === 8821
+    };
 
     if (state === 'ok') {
+      QR_SESSIONS.delete(String(key));
       const cookie = typeof body.cookie === 'string' ? body.cookie : cookieObjToString(body.cookie);
       const s = readState();
       s.netease = { cookie, at: now(), nickname: '', userId: '' };

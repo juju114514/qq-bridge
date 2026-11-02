@@ -14,6 +14,38 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-02 — 0.4.139：扫码确认后卡在 8821（少了会话 cookie）
+
+### 现场（用户真实扫码，我盯日志拿到的）
+
+```
+13:15:27  poll netease code=802 state=scanned   ← 扫码成功、手机已确认
+13:15:30  poll netease code=8821 state=waiting  ← 之后一直 8821，803 永远等不到
+13:15:36  poll netease code=8821 state=waiting
+...
+```
+
+即使把轮询放慢到 6 秒，还是 8821 —— 说明**不是频率问题**。
+
+### 根因
+
+网易云 `unikey` 会下发一个会话 cookie（`NMTID`）。扫码确认是绑定在**这个会话**上的；
+我们轮询时没带这个 cookie，服务端认不出是同一个会话，于是返回 `8821`。
+
+### 修法
+
+- `neteaseStart()` 把响应里的 `set-cookie` 按 key 存进模块级 `QR_SESSIONS`（最多 50 条）
+- `neteasePoll(key)` 带上这个 cookie 去轮询
+- 登录成功后清掉该会话
+
+配套：`8821` 归入 `waiting` 并标记 `slowDown`，前端自动从 3 秒放慢到 6 秒。
+
+### 测试
+
+`test-music-auth.mjs` 补 2 条（共 13 条）：
+**轮询必须带 `NMTID`**（不带就断言失败）、`8821 → waiting + slowDown`。
+
+**审计 179/179。**
 ## 2026-11-02 — 0.4.138：扫码卡住时，界面上直接显示轮询返回码
 
 用户反馈「扫码确认了但控制台没反应」，我这边单独验证了链路：接口、二维码渲染、前端轮询都正常

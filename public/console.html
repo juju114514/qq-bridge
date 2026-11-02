@@ -7792,19 +7792,21 @@ async function spaceDeletePost(tid, btn) {
       const pb = document.getElementById(boxId === 'nesBox' ? 'nesPoll' : 'qqPoll');
       if (pb) pb.textContent = '已开始轮询（每 2 秒一次）';
       musicRenderQr(boxId, d);
-      clearInterval(musicTimers[provider]);
+      musicTimers[provider] && musicTimers[provider].stop && musicTimers[provider].stop();
       let pollCount = 0;
+      let pollMs = 3000;   // 网易云轮询过快会返回 8821（确认中），3 秒起步更稳
       const pollBox = document.getElementById(provider === 'netease' ? 'nesPoll' : 'qqPoll');
-      musicTimers[provider] = setInterval(async () => {
+      const tick = async () => {
         try {
           pollCount += 1;
           const r = await api('/api/music/login/poll?provider=' + encodeURIComponent(provider) + '&key=' + encodeURIComponent(d.key) + '&_t=' + Date.now());
           if (pollBox) pollBox.textContent = `第 ${pollCount} 次检查：code=${r.code ?? '?'} state=${r.state} ${r.message || ''}`;
+          if (r.slowDown) pollMs = 6000; else if (r.state === 'waiting') pollMs = 3000;
           if (r.state === 'waiting') musicSetStatus(badgeId, 'warn', '等待扫码');
           if (r.state === 'scanned') musicSetStatus(badgeId, 'warn', '已扫码，请在手机确认');
-          if (r.state === 'expired') { clearInterval(musicTimers[provider]); musicSetStatus(badgeId, 'err', '二维码过期，重新点登录'); }
+          if (r.state === 'expired') { musicTimers[provider] && musicTimers[provider].stop && musicTimers[provider].stop(); musicSetStatus(badgeId, 'err', '二维码过期，重新点登录'); }
           if (r.state === 'ok') {
-            clearInterval(musicTimers[provider]);
+            musicTimers[provider] && musicTimers[provider].stop && musicTimers[provider].stop();
             musicSetStatus(badgeId, 'ok', '已登录 ' + (r.nickname || ''));
             const b = document.getElementById(boxId); if (b) b.textContent = '登录成功';
             musicRefreshStatus();
@@ -7812,11 +7814,18 @@ async function spaceDeletePost(tid, btn) {
         } catch (e) {
           if (pollBox) pollBox.textContent = `第 ${pollCount} 次检查失败：${(e && e.message) || e}`;
         }
-      }, 2000);
+      };
+      const loop = async () => {
+        if (!musicTimers[provider]) return;      // 已被 clearInterval 停掉
+        await tick();
+        setTimeout(loop, pollMs);
+      };
+      musicTimers[provider] = { stop() { this.stopped = true; } };
+      loop();
     } catch (e) { musicSetStatus(badgeId, 'err', (e && e.message) || '登录失败'); }
   }
   async function musicLogout(provider) {
-    clearInterval(musicTimers[provider]);
+    musicTimers[provider] && musicTimers[provider].stop && musicTimers[provider].stop();
     try { await api('/api/music/logout', 'POST', { provider }); } catch { /* ignore */ }
     const b = document.getElementById(provider === 'netease' ? 'nesBox' : 'qqBox');
     if (b) b.textContent = '';

@@ -125,6 +125,38 @@ await check('logout：清掉指定平台', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+
+await check('netease：轮询必须带上 unikey 会话 cookie（否则确认阶段 8821）', async () => {
+  const calls = [];
+  const auth = m.createMusicAuth({
+    stateFile: path.join(os.tmpdir(), 'qqb-music-sess.json'),
+    fetchImpl: async (url, opts = {}) => {
+      calls.push({ url, cookie: opts.headers?.cookie || '' });
+      if (String(url).includes('unikey')) {
+        return {
+          json: async () => ({ code: 200, unikey: 'K1' }),
+          headers: { getSetCookie: () => ['NMTID=abc; Path=/'] }
+        };
+      }
+      return { json: async () => ({ code: 801, message: '等待扫码' }) };
+    }
+  });
+  await auth.start('netease');
+  await auth.poll('netease', 'K1');
+  assert.equal(calls.length, 2);
+  assert.match(calls[1].cookie, /NMTID=abc/, '轮询没带上会话 cookie');
+});
+
+await check('netease：8821 视为 waiting 并给 slowDown 标记', async () => {
+  const auth = m.createMusicAuth({
+    stateFile: path.join(os.tmpdir(), 'qqb-music-8821.json'),
+    fetchImpl: async () => ({ json: async () => ({ code: 8821, message: '' }) })
+  });
+  const r = await auth.poll('netease', 'K');
+  assert.equal(r.state, 'waiting');
+  assert.equal(r.slowDown, true);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
