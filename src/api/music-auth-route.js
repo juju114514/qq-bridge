@@ -67,6 +67,8 @@ export async function handleMusicAuthRoute(ctx = {}) {
     if (!key) { sendJson({ ok: false, error: '缺 key' }, 400); return true; }
     try {
       const r = await auth.poll(provider, key);
+      // 诊断用：把每次轮询的原始结果写进日志，扫码到底卡在哪一步一看便知
+      log(`[music] poll ${provider} code=${r.code ?? '?'} state=${r.state}`);
       if (r.state === 'ok') {
         const exported = await auth.exportCookies(provider === 'netease' ? cookieFile : '');
         log(`[music] ${provider} 登录成功${exported.netease && provider === 'netease' ? `，cookie 已写入 ${cookieFile}` : ''}`);

@@ -3086,6 +3086,7 @@ button:active:not(:disabled) {
           <span id="nesStatus" class="status-badge">检测中…</span>
         </div>
         <div id="nesBox" style="margin-top:10px;font-size:12px;color:#c8d4ea"></div>
+        <div id="nesPoll" style="margin-top:6px;font-size:11px;opacity:.6"></div>
         <div class="row" style="margin-top:10px;gap:8px">
           <button id="nesLogin" class="primary">扫码登录</button>
           <button id="nesLogout" class="ghost">退出</button>
@@ -3097,6 +3098,7 @@ button:active:not(:disabled) {
           <span id="qqStatus" class="status-badge">检测中…</span>
         </div>
         <div id="qqBox" style="margin-top:10px;font-size:12px;color:#c8d4ea"></div>
+        <div id="qqPoll" style="margin-top:6px;font-size:11px;opacity:.6"></div>
         <div class="row" style="margin-top:10px;gap:8px">
           <button id="qqLogin" class="primary">扫码登录</button>
           <button id="qqLogout" class="ghost">退出</button>
@@ -7787,11 +7789,17 @@ async function spaceDeletePost(tid, btn) {
       const d = await api('/api/music/login/start', 'POST', { provider });
       if (!d.ok) { musicSetStatus(badgeId, 'err', d.error || '获取二维码失败'); return; }
       musicSetStatus(badgeId, 'warn', '等待扫码');
+      const pb = document.getElementById(boxId === 'nesBox' ? 'nesPoll' : 'qqPoll');
+      if (pb) pb.textContent = '已开始轮询（每 2 秒一次）';
       musicRenderQr(boxId, d);
       clearInterval(musicTimers[provider]);
+      let pollCount = 0;
+      const pollBox = document.getElementById(provider === 'netease' ? 'nesPoll' : 'qqPoll');
       musicTimers[provider] = setInterval(async () => {
         try {
+          pollCount += 1;
           const r = await api('/api/music/login/poll?provider=' + encodeURIComponent(provider) + '&key=' + encodeURIComponent(d.key) + '&_t=' + Date.now());
+          if (pollBox) pollBox.textContent = `第 ${pollCount} 次检查：code=${r.code ?? '?'} state=${r.state} ${r.message || ''}`;
           if (r.state === 'waiting') musicSetStatus(badgeId, 'warn', '等待扫码');
           if (r.state === 'scanned') musicSetStatus(badgeId, 'warn', '已扫码，请在手机确认');
           if (r.state === 'expired') { clearInterval(musicTimers[provider]); musicSetStatus(badgeId, 'err', '二维码过期，重新点登录'); }
@@ -7801,7 +7809,9 @@ async function spaceDeletePost(tid, btn) {
             const b = document.getElementById(boxId); if (b) b.textContent = '登录成功';
             musicRefreshStatus();
           }
-        } catch { /* 下一轮再试 */ }
+        } catch (e) {
+          if (pollBox) pollBox.textContent = `第 ${pollCount} 次检查失败：${(e && e.message) || e}`;
+        }
       }, 2000);
     } catch (e) { musicSetStatus(badgeId, 'err', (e && e.message) || '登录失败'); }
   }
