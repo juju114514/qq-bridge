@@ -2,6 +2,44 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.135：网易云 / QQ音乐 扫码登录 + 登录态检测
+
+点歌页新增「音乐账号」区块，两个平台各自显示状态、可扫码登录/退出。
+
+| 平台 | 协议 | 实际效果 |
+| --- | --- | --- |
+| 网易云 | `unikey` → 二维码内容 `music.163.com/login?codekey=` → 轮询 `800/801/802/803` | ✅ **真实生效**：cookie 写进 `netmusic-cookie.txt`，现有 resolver 直接用它拿 VIP/高音质 |
+| QQ 音乐 | `ptqrshow` 直接给 PNG + `qrsig` → `ptqrtoken=hash33(qrsig)` → 轮询 `ptuiCB` 的 `66/65/67/0` | 登录态存 `state/music-auth.json`（下载链路见 0.4.136） |
+
+新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
+状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
+
+## 2026-11-02 — 0.4.136：QQ 音乐点歌链路（搜索 → 取源 → 下载 → 截取 → 发语音）
+
+```
+soso 搜索  GET c.y.qq.com/soso/fcgi-bin/client_search_cp?w=歌名
+取播放地址 POST u.y.qq.com/cgi-bin/musicu.fcg   module=music.vkey.GetVkey（需登录态）
+下载       GET ws.stream.qqmusic.qq.com/<purl>
+截取       ffmpeg（淡入淡出，与网易云链路一致）
+发送       POST /api/voice/send（复用现有语音通道）
+```
+
+新文件 `src/music-qq.js`、新路由 `POST /api/music/qq/play`、控制台多一个**「用 QQ 音乐」**按钮。
+
+### 实测
+
+| 步骤 | 结果 |
+| --- | --- |
+| soso 搜索 | ✅ `孤勇者 → 陈奕迅 mid=003UkWuI0E8U0l` |
+| 新版 musicu 搜索 | ❌ `code=2001` 被拦 → 搜索固定走 soso |
+| 取源不带 `comm` | ❌ `code=104009` → 必须带 `comm{ct,cv,v,uin,format,platform}` |
+| 取源未登录 | ❌ `result=101404` → 明确回 `reason=needsLogin` |
+
+### 诚实声明
+
+**登录后的取源没有验证过**（没有你的扫码）。错误分支验证过了：未登录时会明确提示
+「需要先扫码登录 QQ 音乐」，不是笼统失败。扫码后若仍 `101404`，我再补签名参数。
+
 ## 2026-11-02 — 0.4.134：修「网关被拉起来几秒后自杀」
 
 ### 现场

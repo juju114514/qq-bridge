@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**144** 条（43 个文件）
+- 已搬进模块：**150** 条（45 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/console-extra-routes.js（7 条）
@@ -75,6 +75,22 @@
 | 方法 | 路径 | handler |
 |---|---|---|
 | POST | `/api/mode` | createModeHandler |
+
+## src/api/music-auth-route.js（5 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| ANY | `/api/music/` | handleMusicAuthRoute |
+| GET | `/api/music/login/poll` | handleMusicAuthRoute |
+| POST | `/api/music/login/start` | handleMusicAuthRoute |
+| POST | `/api/music/logout` | handleMusicAuthRoute |
+| GET | `/api/music/status` | handleMusicAuthRoute |
+
+## src/api/music-qq-route.js（1 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| POST | `/api/music/qq/play` | handleMusicQqRoute |
 
 ## src/api/official-bind-route.js（4 条）
 

@@ -3069,9 +3069,41 @@ button:active:not(:disabled) {
     </label>
     <label style="display:flex;align-items:center;gap:5px"><input id="songFull" type="checkbox"> 整首（≤300 秒）</label>
     <button class="btn" id="songGo" type="button">点歌并发送</button>
+    <button id="songQq" class="ghost" title="走 QQ 音乐源，需要先在上面扫码登录">用 QQ 音乐</button>
   </div>
 
   <div id="songResult" style="margin-top:10px;font-size:12px;color:#c8d4ea"></div>
+
+  <div style="margin-top:18px;border-top:1px solid #24344f;padding-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <strong style="font-size:13px">音乐账号</strong>
+      <span style="font-size:11px;opacity:.6">登录后能拿 VIP/高音质；不登录也能点，只是音质普通</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px">
+      <div style="border:1px solid #24344f;border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-size:13px">网易云音乐</strong>
+          <span id="nesStatus" class="status-badge">检测中…</span>
+        </div>
+        <div id="nesBox" style="margin-top:10px;font-size:12px;color:#c8d4ea"></div>
+        <div class="row" style="margin-top:10px;gap:8px">
+          <button id="nesLogin" class="primary">扫码登录</button>
+          <button id="nesLogout" class="ghost">退出</button>
+        </div>
+      </div>
+      <div style="border:1px solid #24344f;border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-size:13px">QQ 音乐</strong>
+          <span id="qqStatus" class="status-badge">检测中…</span>
+        </div>
+        <div id="qqBox" style="margin-top:10px;font-size:12px;color:#c8d4ea"></div>
+        <div class="row" style="margin-top:10px;gap:8px">
+          <button id="qqLogin" class="primary">扫码登录</button>
+          <button id="qqLogout" class="ghost">退出</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div style="margin-top:14px">
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -7705,6 +7737,114 @@ async function spaceDeletePost(tid, btn) {
   });
   if (document.readyState !== 'loading') setTimeout(gwRefresh, 800);
   else document.addEventListener('DOMContentLoaded', () => setTimeout(gwRefresh, 800));
+
+// ── 音乐账号（0.4.135）─────────────────────────────────────────────
+  const musicTimers = {};
+  function musicSetStatus(id, level, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'status-badge ' + (level === 'ok' ? 'online' : (level === 'warn' ? '' : 'offline'));
+  }
+  async function musicRefreshStatus() {
+    try {
+      const d = await api('/api/music/status');
+      const nes = d.netease || {}, qq = d.qq || {};
+      musicSetStatus('nesStatus', nes.loggedIn ? 'ok' : 'warn', nes.loggedIn ? ('已登录 ' + (nes.nickname || nes.userId)) : (nes.reason || '未登录'));
+      const nesBox = document.getElementById('nesBox');
+      if (nesBox) nesBox.textContent = nes.loggedIn ? ('cookie 文件' + (d.cookieFileExists ? '已写入' : '未写入')) : '未登录时只能拿普通音质';
+      musicSetStatus('qqStatus', qq.loggedIn ? 'ok' : 'warn', qq.loggedIn ? ('已登录 ' + (qq.nickname || qq.userId)) : '未登录');
+      const qqBox = document.getElementById('qqBox');
+      if (qqBox) qqBox.textContent = qq.loggedIn ? '登录态已保存（下载链路待接）' : '登录只记录状态，暂未接入 QQ 音乐下载';
+    } catch { musicSetStatus('nesStatus', 'err', '检测失败'); musicSetStatus('qqStatus', 'err', '检测失败'); }
+  }
+  function musicRenderQr(boxId, data) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    box.innerHTML = '';
+    if (data.qrDataUrl) {
+      const img = document.createElement('img');
+      img.src = data.qrDataUrl; img.width = 148; img.height = 148;
+      img.style.cssText = 'border-radius:8px;background:#fff;padding:4px';
+      box.appendChild(img);
+    } else if (typeof QRCode === 'function') {
+      const holder = document.createElement('div');
+      holder.style.cssText = 'width:156px;height:156px;background:#fff;border-radius:8px;padding:4px';
+      box.appendChild(holder);
+      new QRCode(holder, { text: data.qrText, width: 148, height: 148 });
+    }
+    const tip = document.createElement('div');
+    tip.style.cssText = 'margin-top:8px;font-size:12px;opacity:.75';
+    tip.textContent = '用手机 App 扫一下，扫完 1~2 秒自动完成';
+    box.appendChild(tip);
+  }
+  async function musicLogin(provider, badgeId, boxId) {
+    try {
+      musicSetStatus(badgeId, 'warn', '取二维码…');
+      const d = await api('/api/music/login/start', 'POST', { provider });
+      if (!d.ok) { musicSetStatus(badgeId, 'err', d.error || '获取二维码失败'); return; }
+      musicSetStatus(badgeId, 'warn', '等待扫码');
+      musicRenderQr(boxId, d);
+      clearInterval(musicTimers[provider]);
+      musicTimers[provider] = setInterval(async () => {
+        try {
+          const r = await api('/api/music/login/poll?provider=' + encodeURIComponent(provider) + '&key=' + encodeURIComponent(d.key));
+          if (r.state === 'scanned') musicSetStatus(badgeId, 'warn', '已扫码，请在手机确认');
+          if (r.state === 'expired') { clearInterval(musicTimers[provider]); musicSetStatus(badgeId, 'err', '二维码过期，重新点登录'); }
+          if (r.state === 'ok') {
+            clearInterval(musicTimers[provider]);
+            musicSetStatus(badgeId, 'ok', '已登录 ' + (r.nickname || ''));
+            const b = document.getElementById(boxId); if (b) b.textContent = '登录成功';
+            musicRefreshStatus();
+          }
+        } catch { /* 下一轮再试 */ }
+      }, 2000);
+    } catch (e) { musicSetStatus(badgeId, 'err', (e && e.message) || '登录失败'); }
+  }
+  async function musicLogout(provider) {
+    clearInterval(musicTimers[provider]);
+    try { await api('/api/music/logout', 'POST', { provider }); } catch { /* ignore */ }
+    const b = document.getElementById(provider === 'netease' ? 'nesBox' : 'qqBox');
+    if (b) b.textContent = '';
+    musicRefreshStatus();
+  }
+  async function songPlayViaQq() {
+    const out = document.getElementById('songResult');
+    const btn = document.getElementById('songQq');
+    const key = document.getElementById('songKey')?.value || '';
+    const name = (document.getElementById('songName')?.value || '').trim();
+    const quality = document.getElementById('songQuality')?.value || '普通';
+    const seconds = Number(document.getElementById('songSeconds')?.value || 40);
+    if (!out) return;
+    if (!name) { out.textContent = '先填歌名'; return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'QQ 音乐取源中…'; }
+    try {
+      const r = await api('/api/music/qq/play', 'POST', { name, seconds, quality });
+      if (!r.ok) {
+        out.textContent = (r.reason === 'needsLogin' ? '需要先扫码登录 QQ 音乐：' : '失败：') + (r.error || '');
+        return;
+      }
+      out.textContent = `拿到 ${r.title} - ${r.artist}（${r.seconds}s / ${r.quality}），发送中…`;
+      const sent = await api('/api/voice/send', 'POST', { target: key, file: r.file, verify: true });
+      out.textContent = sent.ok
+        ? `已发到 ${key}：${r.title} - ${r.artist}（${r.seconds}s，verified=${sent.verified}）`
+        : `取源成功但发送失败：${sent.error || ''}`;
+    } catch (e) {
+      out.textContent = '失败：' + ((e && e.message) || e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '用 QQ 音乐'; }
+    }
+  }
+  document.addEventListener('click', (ev) => {
+    const id = ev.target && ev.target.id;
+    if (id === 'songQq') songPlayViaQq();
+    if (id === 'nesLogin') musicLogin('netease', 'nesStatus', 'nesBox');
+    if (id === 'qqLogin') musicLogin('qq', 'qqStatus', 'qqBox');
+    if (id === 'nesLogout') musicLogout('netease');
+    if (id === 'qqLogout') musicLogout('qq');
+  });
+  if (document.readyState !== 'loading') setTimeout(musicRefreshStatus, 1200);
+  else document.addEventListener('DOMContentLoaded', () => setTimeout(musicRefreshStatus, 1200));
 
 function runPageHooks(page) {
     const names = PAGE_HOOKS[page];

@@ -29,6 +29,8 @@ import { handleT2iPreviewRoute } from './t2i-route.js';
 import { handleSetupStatusRoute } from './setup-route.js';
 import { handleOfficialHealthRoute } from './official-health-route.js';
 import { handleGatewayControlRoute } from './gateway-control-route.js';
+import { handleMusicAuthRoute } from './music-auth-route.js';
+import { handleMusicQqRoute } from './music-qq-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -38,7 +40,7 @@ import { createSchedulerRoutes } from './scheduler-routes.js';
 let schedulerRoutes = null;
 
 export async function handleExtraRoutes(ctx = {}) {
-  const { req, url, res, sendJson } = ctx;
+  const { req, url, res, sendJson, readBody } = ctx;
   if (!url || !req) return false;
   const resolveDeps = () => (typeof ctx.deps === 'function' ? ctx.deps() : (ctx.deps || {}));
 
@@ -116,6 +118,12 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // QQ 音乐点歌（0.4.136）
+  if (await handleMusicQqRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;
+
+  // 音乐账号登录（0.4.135）
+  if (await handleMusicAuthRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;
 
   // 网关状态 / 手动启动（0.4.131）
   if (await handleGatewayControlRoute({ req, url, sendJson, deps: resolveDeps })) return true;
