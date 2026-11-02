@@ -110,6 +110,56 @@ await check('gatewayHealthPayload：从 deps 读状态与最后事件时间', as
   assert.equal(p.liveness.lastEventAt, 111);
 });
 
+
+await check('getGatewayHealth：端口通 + 已连接 + QQ 在线 → ok', async () => {
+  const h = await m.getGatewayHealth({
+    probe: async () => true, bridgeState: 'connected',
+    probeLogin: async () => ({ checked: true, online: true })
+  });
+  assert.equal(h.level, 'ok');
+  assert.equal(h.liveness.qqOnline, true);
+});
+
+await check('getGatewayHealth：进程活着但 QQ 未登录 → error（重点）', async () => {
+  const h = await m.getGatewayHealth({
+    probe: async () => true, bridgeState: 'connected',
+    probeLogin: async () => ({ checked: true, online: false })
+  });
+  assert.equal(h.level, 'error');
+  assert.match(h.text, /QQ 未登录/);
+  assert.equal(h.liveness.qqOnline, false);
+});
+
+await check('getGatewayHealth：登录态查不到 → 不误报（仍是 ok）', async () => {
+  const h = await m.getGatewayHealth({
+    probe: async () => true, bridgeState: 'connected',
+    probeLogin: async () => ({ checked: false, online: null, error: 'HTTP 401' })
+  });
+  assert.equal(h.level, 'ok');
+  assert.equal(h.liveness.loginChecked, false);
+  assert.match(h.liveness.loginError || '', /401/);
+});
+
+await check('probeQqOnline：正常响应解析 online', async () => {
+  const r = await m.probeQqOnline({
+    fetchImpl: async () => ({ ok: true, json: async () => ({ data: { online: false } }) })
+  });
+  assert.equal(r.checked, true);
+  assert.equal(r.online, false);
+});
+
+await check('probeQqOnline：HTTP 失败不抛，标 checked=false', async () => {
+  const r = await m.probeQqOnline({ fetchImpl: async () => ({ ok: false, status: 500, json: async () => ({}) }) });
+  assert.equal(r.checked, false);
+  assert.match(r.error, /500/);
+});
+
+await check('probeQqOnline：抛异常（端口关着）也返回结构化结果', async () => {
+  const r = await m.probeQqOnline({ fetchImpl: async () => { throw new Error('connect ECONNREFUSED'); } });
+  assert.equal(r.checked, false);
+  assert.match(r.error, /ECONNREFUSED/);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

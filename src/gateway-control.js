@@ -168,6 +168,7 @@ export async function getGatewayHealth(opts = {}) {
     ports = DEFAULT_PORTS,
     bridgeState = 'unknown',
     lastEventAt = 0,
+    probeLogin = null,
     now = () => Date.now()
   } = opts;
 
@@ -176,10 +177,14 @@ export async function getGatewayHealth(opts = {}) {
   const anyPort = Object.values(listening).some(Boolean);
   const ageMs = lastEventAt ? now() - lastEventAt : null;
 
+  const login = probeLogin ? await probeLogin() : { checked: false, online: null };
+  const qqOnline = login && login.checked ? login.online : null;
+
   let level = 'ok';
   let text = '网关正常';
   if (!anyPort) { level = 'error'; text = '网关未运行（端口不通）'; }
   else if (bridgeState !== 'connected') { level = 'warn'; text = '网关在听，但桥接还没连上（重连中）'; }
+  else if (qqOnline === false) { level = 'error'; text = '网关在跑，但 QQ 未登录（收不到任何消息）'; }
 
   return {
     level,
@@ -189,6 +194,9 @@ export async function getGatewayHealth(opts = {}) {
       bridgeState,
       listening,
       portUp: anyPort,
+      qqOnline,
+      loginChecked: Boolean(login && login.checked),
+      loginError: login?.error || '',
       lastEventAt: lastEventAt || null,
       ageMs
     }
@@ -198,10 +206,51 @@ export async function getGatewayHealth(opts = {}) {
 /** GET /api/gateway/health 的处理逻辑（纯函数便于测） */
 export async function gatewayHealthPayload(deps = {}) {
   const state = typeof deps.getGatewayState === 'function' ? deps.getGatewayState() : 'unknown';
+  let token = '';
+  let httpUrl = 'http://127.0.0.1:3000';
+  try {
+    const cfg = typeof deps.getCfg === 'function' ? deps.getCfg() : null;
+    token = String(cfg?.snowluma?.httpToken || cfg?.snowluma?.accessToken || '');
+    if (cfg?.snowluma?.httpUrl) httpUrl = String(cfg.snowluma.httpUrl);
+  } catch { /* 取不到就不带 token 试一次 */ }
   let lastEventAt = 0;
   try {
     const snap = typeof deps.getSelfCheck === 'function' ? deps.getSelfCheck() : null;
     lastEventAt = Number(snap?.snowluma?.lastEventAt || 0);
   } catch { lastEventAt = 0; }
-  return getGatewayHealth({ bridgeState: String(state || 'unknown'), lastEventAt });
+  return getGatewayHealth({
+    bridgeState: String(state || 'unknown'),
+    lastEventAt,
+    probeLogin: () => probeQqOnline({ url: httpUrl, token })
+  });
+}
+
+/**
+ * QQ 号在线吗（0.4.133）。
+ *
+ * 为什么需要：进程活着、WS 也连着，但**QQ 登录态掉了**（异地登录/被踢/二维码过期），
+ * 这时收不到任何消息，而端口和 WS 全是绿的 —— 比"进程死了"更难发现。
+ * 判据：OneBot `/get_status` 的 `data.online`。
+ *
+ * @param {{url?:string, token?:string, timeoutMs?:number, fetchImpl?:Function}} opts
+ * @returns {Promise<{checked:boolean, online:boolean|null, error?:string}>}
+ */
+export async function probeQqOnline(opts = {}) {
+  const { url = 'http://127.0.0.1:3000', token = '', timeoutMs = 2500, fetchImpl = fetch } = opts;
+  try {
+    const headers = token ? { authorization: `Bearer ${token}` } : {};
+    const res = await fetchImpl(`${url.replace(/\/+$/, '')}/get_status`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: '{}',
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) return { checked: false, online: null, error: `HTTP ${res.status}` };
+    const body = await res.json().catch(() => ({}));
+    const online = body?.data?.online;
+    if (typeof online !== 'boolean') return { checked: false, online: null, error: '返回里没有 online 字段' };
+    return { checked: true, online };
+  } catch (error) {
+    return { checked: false, online: null, error: String(error?.message ?? error).slice(0, 120) };
+  }
 }

@@ -3,7 +3,7 @@ import { getGatewayStatus, startGateway, gatewayHealthPayload } from '../gateway
 
 export async function handleGatewayControlRoute(ctx = {}) {
   const { req, url, sendJson } = ctx;
-  if (!url || !url.pathname.startsWith('/api/gateway/control')) return false;
+  if (!url || !url.pathname.startsWith('/api/gateway/')) return false;   // control 与 health 都归这里
 
   const d = typeof ctx.deps === 'function' ? (ctx.deps() || {}) : (ctx.deps || {});
 

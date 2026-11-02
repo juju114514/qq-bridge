@@ -60,7 +60,7 @@
 
 | 方法 | 路径 | handler |
 |---|---|---|
-| ANY | `/api/gateway/control` | handleGatewayControlRoute |
+| ANY | `/api/gateway/` | handleGatewayControlRoute |
 | POST | `/api/gateway/control/start` | handleGatewayControlRoute |
 | GET | `/api/gateway/health` | handleGatewayControlRoute |
 
