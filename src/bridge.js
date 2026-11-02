@@ -1474,7 +1474,8 @@ function ensureDirSafe(dir) {
         s = m ? m[0] : '';
       }
     }
-    if (!s || s.length > 40) s = fallback ? String(fallback) : '\u7fa4\u53cb';
+    // 兜底通常是 QQ 号 —— 走隐私开关（默认脱敏，见 socialV2.privacy.exposeUserId）
+    if (!s || s.length > 40) s = senderNameForModel('', fallback, cfg.socialV2?.privacy || {});
     return s;
   }
 

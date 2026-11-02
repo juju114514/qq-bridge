@@ -2,6 +2,45 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.122：按预演报告修三处真问题（隐私回退 / 备份范围 / 端口不拦）
+
+外部拿 Docker/Linux 模拟盘做了「真装上游 → 造 state → 跑 adopt-fork.ps1」的预演，
+报告发现的问题这一版全部处理。详细实测记录见
+[docs/reports/2026-11-02-upstream-rehearsal.md](docs/reports/2026-11-02-upstream-rehearsal.md)。
+
+### 1) 修回一处**安全回退**：真实 QQ 号会喂给模型
+
+预演对比 config 键位：fork 删掉 5 个上游键，其中 `socialV2.privacy.exposeUserId`
+在 fork 源码里 **0 处引用** —— 上游「对模型隐藏真实 QQ 号」的脱敏被丢了。
+
+后果：群友没设昵称时，`cleanSenderName` 的兜底直接把 QQ 号当名字喂给模型，
+模型复述出来就是在群里公开他人 QQ 号。
+
+修法：
+
+- 新增 `src/privacy-mask.js`：`maskQqId()` / `senderNameForModel()` / `DEFAULT_PRIVACY`
+- `cleanSenderName` 兜底改走隐私开关，**默认脱敏**（`群友` + 后 4 位）
+- `config.example.json` 补回 `socialV2.privacy.exposeUserId: false`
+- `scripts/test-privacy-mask.mjs`（9 条断言，含"昵称不能被打码"）
+
+### 2) `adopt-fork.ps1`：备份范围 + 端口拦截 + 非 Windows 兜底
+
+| 预演发现 | 修法 |
+| --- | --- |
+| `roles/` 会被覆盖，却不在备份里 → 自己写的人格卡丢了 | `roles` 加进备份清单（覆盖仍是设计，但先备份） |
+| 备份里带 `node_modules`（38 MB），连跑两次两份，不去重 | 备份**跳过 `node_modules`** |
+| 3100 被占时只警告，`-Apply` 照样 exit 0 并写完 | 端口占用时 `-Apply` **直接中止**，要硬来必须 `-Force` |
+| Linux 上 `Get-NetTCPConnection` 不存在 → exit 1 | 自动退到 `netstat` / `ss` |
+
+### 3) 文档
+
+- 新增 `docs/reports/2026-11-02-upstream-rehearsal.md`：预演做了什么、52 项清单、
+  四个"文档没写、真跑才露"的问题、首次启动的真实日志、以及两处对上一轮说法的更正
+  （`httpToken` 不是必须；`npm ci` 不是启动硬前提）
+
+### 审计
+
+175/175（新增 `test-privacy-mask`）。守卫：md-links 180 篇通过 / docs-index 完整 / privacy 通过。
 ## 2026-11-02 — 0.4.121：收尾（绿色包带 GUI、README 刷新、三份指南补齐）
 
 今天最后一版，只做收尾，不加功能。

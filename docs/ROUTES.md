@@ -349,5 +349,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4426 |
-| ANY | `/api/tokens/` | L4426 |
+| ANY | `/api/tokens/summary` | L4427 |
+| ANY | `/api/tokens/` | L4427 |

@@ -34,6 +34,11 @@ $ProtectedNames = @(
   'config.json', 'config.json.bak', 'state', 'node_modules', '.git', '.github',
   'data', 'logs', 'audio', 'cookies.txt', 'cookies.json', 'package-lock.json.bak'
 )
+# 会被覆盖、但**必须备份**的用户数据（2026-11-02 预演发现：roles/ 被覆盖却没进备份）
+# 你自己写的人格卡如果和 fork 里同名（比如 README.md）就会被覆盖掉。
+$BackupAlso = @('roles')
+# 备份时**跳过**的大件（node_modules 38 MB，重装即可；进备份只是让备份变胖且不去重）
+$BackupSkip = @('node_modules')
 # 受保护的**前缀**（日志、草稿等）
 $ProtectedPrefixes = @('_backup', '_rollback', 'plugin.log', 'bridge.log', 'state-')
 
@@ -86,9 +91,22 @@ if ($targetProtected.Count -eq 0) {
 # ── 3) 预检：目标里有没有 qq-bridge 进程在跑 / 计划任务 -- ───────────────────
 Say ""
 Say "-- 预检 --" 'Cyan'
-$listener = @(Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction SilentlyContinue)
-if ($listener.Count -gt 0) {
-    Warn ("目标端口 3100 正在被监听（pid " + ($listener | Select-Object -First 1).OwningProcess + "）—— 实盘写入前请先停任务：schtasks /end /tn qq-bridge")
+# 端口探测：Windows 用 Get-NetTCPConnection；没有这个 cmdlet（Linux/macOS）就退到 netstat / ss。
+$portBusy = $false
+$portPid = ''
+try {
+    $listener = @(Get-NetTCPConnection -LocalPort 3100 -State Listen -ErrorAction Stop)
+    if ($listener.Count -gt 0) { $portBusy = $true; $portPid = ($listener | Select-Object -First 1).OwningProcess }
+} catch {
+    # 非 Windows 或旧版 PowerShell：换命令行工具
+    $ns = @()
+    if (Get-Command netstat -ErrorAction SilentlyContinue) { $ns = @(netstat -ltn 2>$null | Select-String ':3100\s') }
+    elseif (Get-Command ss -ErrorAction SilentlyContinue) { $ns = @(ss -ltn 2>$null | Select-String ':3100\s') }
+    $portBusy = ($ns.Count -gt 0)
+}
+$listener = if ($portBusy) { @(1) } else { @() }
+if ($portBusy) {
+    Warn ("目标端口 3100 正在被监听" + $(if ($portPid) { "（pid $portPid）" } else { '' }) + " —— 实盘写入前请先停任务：schtasks /end /tn qq-bridge")
 } else {
     Say "   [OK] 3100 空闲（没有实例在跑）"
 }
@@ -107,6 +125,11 @@ if (-not $Apply) {
     exit 0
 }
 
+if ($portBusy) {
+    if (-not $Force) { Fail "3100 还在监听：先停任务（schtasks /end /tn qq-bridge）再 -Apply；确定要硬来就加 -Force" }
+    Warn "3100 仍被占用，但 -Force 已指定，继续（写完后需要你自己重启）"
+}
+
 if (-not $Force) {
     $ans = Read-Host "即将覆盖 $Target 里的程序文件（config/state 不动）。输入 yes 继续"
     if ($ans -ne 'yes') { Fail "已取消（未输入 yes）" }
@@ -116,7 +139,8 @@ if (-not $Force) {
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backup = Join-Path $Target ("_backup_switch_" + $stamp)
 New-Item -ItemType Directory -Path $backup -Force | Out-Null
-foreach ($p in $ProtectedNames) {
+foreach ($p in ($ProtectedNames + $BackupAlso)) {
+    if ($BackupSkip -contains $p) { continue }   # node_modules 不进备份
     $full = Join-Path $Target $p
     if (Test-Path $full) {
         try { Copy-Item -LiteralPath $full -Destination $backup -Recurse -Force } catch { Warn ("备份失败（已跳过）：" + $p) }

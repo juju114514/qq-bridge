@@ -162,6 +162,7 @@ const tests = [
   'test-qq-markdown.mjs',
   'test-channel-hint.mjs',
   'test-role-dialogues.mjs',
+  'test-privacy-mask.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',
