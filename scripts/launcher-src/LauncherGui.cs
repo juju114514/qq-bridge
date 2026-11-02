@@ -92,10 +92,10 @@ static class LauncherGui
 
         // ── 第 4 行：首次上手（0.4.123）────────────────────────────────
         // 别人 clone/解压后最缺的是"接下来点哪个"；这一行就是给他答案的。
-        AddButton(grid, 0, 3, "⑬ 首次向导", "体检 → 依赖 → 配置 → DSH 预设 →（可选）启动", () => RunPs("scripts\\first-run.ps1"));
-        AddButton(grid, 1, 3, "⑭ 打开说明", "打不开就看我：说明.txt / QUICKSTART", OpenReadme);
-        AddButton(grid, 2, 3, "⑮ 手机连接", "显示连接二维码（手机扫一下）", () => OpenUrl("http://127.0.0.1:" + ConsolePort() + "/#devices"));
-        AddButton(grid, 3, 3, "⑯ 复制令牌", "把控制台令牌复制到剪贴板", CopyConsoleToken);
+                  AddButton(grid, 0, 3, "⑬ 首次向导", "体检 → 依赖 → 配置 → DSH 预设 →（可选）启动", () => RunPs("scripts\\first-run.ps1"));
+          AddButton(grid, 1, 3, "⑭ 打开说明", "打不开就看我：说明.txt / QUICKSTART", OpenReadme);
+          AddButton(grid, 2, 3, "⑮ 手机连接", "显示连接二维码（手机扫一下）", () => OpenUrl("http://127.0.0.1:" + ConsolePort() + "/#devices"));
+          AddButton(grid, 3, 3, "⑯ 启动网关", "拉起 SnowLuma（个人号通道用）", StartGateway);
 
         // ── 输出区 ────────────────────────────────────────────────────
         output = new TextBox();
@@ -224,6 +224,14 @@ static class LauncherGui
             if (File.Exists(p)) { Process.Start(new ProcessStartInfo(p) { UseShellExecute = true }); SetStatus("已打开：" + name); return; }
         }
         OpenUrl("https://github.com/juju114514/qq-bridge#readme");
+    }
+
+    // 启动网关：SnowLuma 不在就跑 start-all.ps1（它会先探测 3000，通了就不重复拉）
+    static void StartGateway()
+    {
+        var script = Path.Combine(root, "scripts", "start-all.ps1");
+        if (!File.Exists(script)) { Append("[X] 找不到 scripts\\start-all.ps1"); return; }
+        RunPs("scripts\\start-all.ps1");
     }
 
     // 复制控制台令牌：手机/别的浏览器要连进来时，直接粘

@@ -79,6 +79,8 @@ export function toBridgeEvent(t, d) {
 
 export { ReplySeqTracker, PASSIVE_LIMITS } from './official-limits.js';
 import { ReplySeqTracker } from './official-limits.js';
+import { createReconnector } from './official-reconnect.js';
+import { createLivenessTracker } from './official-health.js';
 
 export class OfficialQqBot {
   constructor(opts = {}) {
@@ -96,6 +98,10 @@ export class OfficialQqBot {
     this.sessionId = '';
     this.ready = false;
     this.seqTracker = new ReplySeqTracker();
+    // 断线重连（0.4.129）：服务端会主动 op 7 / 4009(Session timed out) 关连接，
+    // 之前 close 只打日志不重连 —— 表现是「界面显示 connected，其实早死了」。
+    this.reconnector = createReconnector({ log: (...a) => this.log(...a), connect: () => this.connect(this.lastHandlers) });
+    this.lastHandlers = {}; this.liveness = createLivenessTracker();
   }
 
   /** 取 access_token（提前 60 秒刷新，失败抛错而不是返回空串）。 */
@@ -137,16 +143,23 @@ export class OfficialQqBot {
    */
   async connect(handlers = {}) {
     if (typeof WebSocket !== 'function') throw new Error('当前 node 没有全局 WebSocket（需要 node ≥ 22）');
+    this.lastHandlers = handlers;
+    clearTimeout(this.reconnectTimer);
     const url = await this.gateway();
     const ws = new WebSocket(url);
     this.ws = ws;
 
-    ws.addEventListener('open', () => this.log('[official] WebSocket 已连接'));
+    ws.addEventListener('open', () => { this.liveness.onOpen(); this.log('[official] WebSocket 已连接'); });
     ws.addEventListener('error', (e) => handlers.onError?.(new Error(`WebSocket 错误：${e?.message ?? 'unknown'}`)));
     ws.addEventListener('close', (e) => {
-      this.ready = false;
+      this.ready = false; this.liveness.onClose();
       clearInterval(this.heartbeat);
       this.log(`[official] WebSocket 关闭 code=${e.code} reason=${e.reason || '-'}`);
+      // 4009 = 会话超时：session_id/seq 已失效，下次必须重新 IDENTIFY 而不是 RESUME
+      if (Number(e.code) === 4009) { this.sessionId = ''; this.seq = null; }
+      if (this.ws !== ws) return;              // 已被新连接取代
+      const delay = this.reconnector.onClose({ unexpected: true });
+      if (delay != null) this.log(`[official] ${Math.round(delay / 1000)}s 后重连（第 ${this.reconnector.attempt} 次）`);
     });
     ws.addEventListener('message', (ev) => {
       let payload;
@@ -161,7 +174,7 @@ export class OfficialQqBot {
   }
 
   async _handle({ op, t, d, s }, handlers) {
-    if (s) this.seq = s;
+    this.liveness.touch(); if (s) this.seq = s;
     if (op === 10) {
       const interval = Number(d?.heartbeat_interval) || 30000;
       // 断线续连优先：有 session_id + 上次 seq 就 RESUME，否则 IDENTIFY
@@ -181,13 +194,13 @@ export class OfficialQqBot {
     if (op !== 0) return;
 
     if (t === 'READY') {
-      this.ready = true;
+      this.ready = true; this.liveness.onReady(); this.reconnector.reset();
       this.sessionId = String(d?.session_id ?? '');
       this.log(`[official] 鉴权成功：${d?.user?.username ?? '?'}`);
       handlers.onReady?.();
       return;
     }
-    if (t === 'RESUMED') { this.ready = true; this.log('[official] 会话已恢复'); return; }
+    if (t === 'RESUMED') { this.ready = true; this.liveness.onReady(); this.log('[official] 会话已恢复'); return; }
 
     const event = toBridgeEvent(t, d);
     if (event) handlers.onEvent?.(event);
@@ -323,7 +336,10 @@ export class OfficialQqBot {
     return this.sendC2CText(event.id, content, { msgId: event.msgId, msgSeq });
   }
 
+  health() { return this.liveness.snapshot(); }
+
   close() {
+    this.reconnector.stop();
     clearInterval(this.heartbeat);
     this.ready = false;
     try { this.ws?.close(); } catch { /* ignore */ }

@@ -2811,7 +2811,17 @@ button:active:not(:disabled) {
         <span class="meta" id="consoleTokenMsg"></span>
       </div>
     </section>
-<section id="section-test-send" data-page="operations" class="card">
+<section data-page="operations" class="card span-all" id="section-gateway-ctl">
+          <h2>网关（SnowLuma）</h2>
+          <div class="meta">个人号通道靠它收发消息。它可以不在桥接里跑 —— 由 Windows 托管，桥接重启不影响它。</div>
+          <div class="row" style="margin-top:12px;align-items:center;gap:10px">
+            <span id="gwState" class="status-badge">检查中…</span>
+            <button id="gwStart" class="primary">启动网关</button>
+            <button id="gwRefresh" class="ghost">刷新状态</button>
+          </div>
+          <div id="gwDetail" class="meta" style="margin-top:10px"></div>
+        </section>
+        <section id="section-test-send" data-page="operations" class="card">
       <h2>测试发送</h2>
       <div class="row">
         <select id="tsKind" style="width:100px">
@@ -7607,6 +7617,80 @@ async function spaceDeletePost(tid, btn) {
       el.textContent = '点开看看';   // 没令牌/接口没起来也给个入口，别留空
     }
   }
+
+// 官方通道存活（0.4.130）：连着但长时间没数据 → 顶栏亮红
+  let officialBadgeTimer = null;
+  async function pollOfficialHealth() {
+    const el = document.getElementById('officialBadge');
+    if (!el) return;
+    try {
+      const d = await api('/api/official/health');
+      if (!d || !d.liveness || (!d.liveness.connected && !d.liveness.ready)) { el.hidden = true; return; }
+      el.hidden = false;
+      el.textContent = d.level === 'ok' ? '官方通道正常' : (d.level === 'warn' ? '官方通道连接中' : '官方通道无响应');
+      el.className = 'status-badge ' + (d.level === 'ok' ? 'online' : (d.level === 'warn' ? '' : 'offline'));
+      el.title = d.text || '';
+      el.style.cursor = 'pointer';
+      if (!el.dataset.bound) { el.dataset.bound = '1'; el.addEventListener('click', () => setConsolePage('official')); }
+    } catch { /* 没令牌/没启用：安静隐藏 */ }
+  }
+  function startOfficialBadgePolling() {
+    if (officialBadgeTimer) return;
+    pollOfficialHealth();
+    officialBadgeTimer = setInterval(pollOfficialHealth, 30000);
+  }
+  if (document.readyState !== 'loading') startOfficialBadgePolling();
+  else document.addEventListener('DOMContentLoaded', startOfficialBadgePolling);
+
+// 网关状态 / 手动启动（0.4.131）
+  async function gwRefresh() {
+    const badge = document.getElementById('gwState');
+    const detail = document.getElementById('gwDetail');
+    const btn = document.getElementById('gwStart');
+    if (!badge) return;
+    try {
+      const d = await api('/api/gateway/control');
+      badge.textContent = d.running ? '网关运行中' : '网关未运行';
+      badge.className = 'status-badge ' + (d.running ? 'online' : 'offline');
+      if (btn) btn.disabled = !!d.running;
+      if (detail) {
+        const ports = Object.entries(d.listening || {}).map(([p, ok]) => p + (ok ? '✓' : '✗')).join('  ');
+        detail.textContent = (d.hint || '') + (ports ? '　·　端口 ' + ports : '') + (d.taskExists ? '' : '　·　未注册计划任务（点击时用独立进程拉起）');
+      }
+    } catch (e) {
+      badge.textContent = '状态未知';
+      badge.className = 'status-badge offline';
+      if (detail) detail.textContent = '读取失败：' + (e && e.message ? e.message : e);
+    }
+  }
+  async function gwStartClick() {
+    const badge = document.getElementById('gwState');
+    const btn = document.getElementById('gwStart');
+    const detail = document.getElementById('gwDetail');
+    if (btn) { btn.disabled = true; btn.textContent = '启动中…'; }
+    if (badge) { badge.textContent = '正在启动…'; badge.className = 'status-badge'; }
+    try {
+      const d = await api('/api/gateway/control/start', 'POST');
+      if (d.ok) {
+        if (badge) { badge.textContent = d.started ? '网关已启动' : '网关本来就在跑'; badge.className = 'status-badge online'; }
+      } else {
+        if (badge) { badge.textContent = '启动失败'; badge.className = 'status-badge offline'; }
+        if (detail) detail.textContent = d.error || '未知错误';
+      }
+    } catch (e) {
+      if (badge) { badge.textContent = '启动失败'; badge.className = 'status-badge offline'; }
+      if (detail) detail.textContent = (e && e.message) ? e.message : String(e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '启动网关'; }
+      gwRefresh();
+    }
+  }
+  document.addEventListener('click', (ev) => {
+    if (ev.target && ev.target.id === 'gwStart') gwStartClick();
+    if (ev.target && ev.target.id === 'gwRefresh') gwRefresh();
+  });
+  if (document.readyState !== 'loading') setTimeout(gwRefresh, 800);
+  else document.addEventListener('DOMContentLoaded', () => setTimeout(gwRefresh, 800));
 
 function runPageHooks(page) {
     const names = PAGE_HOOKS[page];

@@ -2,6 +2,116 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.131：网关（SnowLuma）状态 + 用户点按钮才启动
+
+### 背景
+
+个人号通道今天整个挂掉过：SnowLuma 进程 12:00 前后消失，桥接每 30 秒重连报 `code=1006`，
+日志刷了 40 分钟没人知道。根因是 **`schtasks` 里只有 `qq-bridge`，没有任何东西管网关**。
+
+### 设计（跟用户确认后）
+
+| 原则 | 做法 |
+| --- | --- |
+| **不自动拉起** | 只在用户点按钮时动手；桥接不当第三方程序的管理者 |
+| **不是桥接的子进程** | 用 `detached: true` 拉起，桥接重启不会带走它（实测：桥接停掉后 3000/3001/5099 仍在听） |
+| **优先计划任务** | 有 `qq-snowluma` 任务时走 `schtasks /run`（Windows 托管）；没有再退回 detached spawn |
+| 不监控、不自动重启 | 崩了就崩了，下次点按钮 |
+
+### 新增
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/gateway-control.js` | `probePort` / `getGatewayStatus` / `startGateway` / `startViaSpawn` / `snowlumaDir`（遍历盘符找安装目录，不写死盘符） |
+| `src/api/gateway-control-route.js` | `GET /api/gateway/control`（状态）、`POST /api/gateway/control/start`（启动） |
+| `scripts/test-gateway-control.mjs` | 7 条：状态判定、已在跑不重复启动、schtasks 失败透传、无任务时走 spawn |
+| 控制台「调试与运维」页 | 新增「网关（SnowLuma）」卡片：状态徽标 + **启动网关**按钮 + 刷新 + 端口明细（手机也能点） |
+| `排错程序.exe` 第 4 行 | ⑯ **启动网关**（跑 `start-all.ps1`，它会先探测 3000，通了不重复拉） |
+
+### 实测（真点，不是"应该能行"）
+
+```
+POST /api/gateway/control/start  → ok=True started=True waited=1632ms via=spawn pid=25720
+端口：3000/3001/5099 全部 listening
+桥接日志：[gateway] 用户手动启动（来源：控制台）→ 已启动
+          [gateway] WS 已恢复（累计断开 5 次）
+停掉桥接后网关仍在听；重启桥接 → 网关=connected
+```
+
+### 一个发现
+
+`schtasks /create` 在当前权限下被拒（Access is denied），所以计划任务那一步在普通用户上
+大概率装不上；`install-snowluma-task.ps1` 保留了（有管理员权限时更干净），
+但**默认路径是 detached spawn**，不依赖它。
+
+**审计 178/178。**
+## 2026-11-02 — 0.4.130：官方通道「假连接」告警（能区分连着 vs 还活着）
+
+### 问题
+
+0.4.129 修掉了「掉线不重连」，但还缺一半：**没有任何地方能发现它死了**。
+控制台一直显示 `connected`（last-known 状态），用户以为在跑，实际一条消息收不到。
+
+### 做法
+
+新增 `src/official-health.js`：记录「最后一次收到服务端任意帧的时间」，超过阈值判 `stale`。
+
+| 字段 | 含义 |
+| --- | --- |
+| `connected` | WebSocket 是否连着 |
+| `ready` | 是否鉴权成功（READY/RESUMED） |
+| `ageMs` | 距最后一次收到数据多久 |
+| `stale` | **连着 + 就绪 + 超过 5 分钟没数据** = 假连接 |
+| `staleMs` | 阈值（默认 5 分钟） |
+
+接线：
+
+- `qqbot-official.js`：`open/close/READY/RESUMED` 与**每一帧**都 `touch()`；暴露 `health()`
+- `official-transport.js`：转发 `health()`
+- `bridge.js`：`deps.getOfficialHealth()`（1 行）
+- 新路由 `GET /api/official/health` → `{ level, text, liveness }`
+- 控制台顶栏：DSH 胶囊旁边多一颗「官方通道」胶囊，**30 秒轮询一次**
+  - 正常 = 绿色「官方通道正常」
+  - 连接中 = 灰色「官方通道连接中」
+  - **5 分钟没数据 = 红色「官方通道无响应」**（点一下跳到官方通道页）
+
+### 测试
+
+`scripts/test-official-health.mjs`（7 条）：未连接、就绪不 stale、超时判 stale、touch 重置、断开不误报 stale、四种描述、阈值透出。
+
+**审计 178/178。**
+## 2026-11-02 — 0.4.129：官方通道掉线不再永久死不重连
+
+### 现场
+
+```
+11:03:53 [official] 服务端要求重连（op 7）
+11:03:53 [official] WebSocket 关闭 code=4009 reason=Session timed out
+（之后再没有任何 [official] 日志）
+```
+
+腾讯服务器每小时会发 `op 7`（或直接 `4009 Session timed out`）要求重连。
+我们的 `close` 处理器只做了三件事：`ready=false`、清心跳、打日志 —— **没有重连**。
+所以那一刻之后官方通道就死了，而控制台/健康检查还显示 `connected`（那是 last-known 状态）。
+
+### 修法
+
+`src/qqbot-official.js`：
+
+| 改动 | 说明 |
+| --- | --- |
+| `close` 里排重连 | `stopped` 为假且不是被新连接取代时，按退避排 `connect()` |
+| 指数退避 + 抖动 | 1s → 2s → 4s → 8s → 16s，封顶 30s，±20% 抖动；`unref()` 不挡进程退出 |
+| `READY` 重置退避 | 连上了就把次数归零 |
+| `4009` 清会话 | 会话超时后 `session_id`/`seq` 已失效，下次必须重新 IDENTIFY，不能 RESUME |
+| `close()` 标记 stopped | 主动关闭不再触发重连（否则停不掉） |
+| 导出 `officialReconnectDelay()` | 纯函数，便于单测 |
+
+### 测试
+
+`scripts/test-official-reconnect.mjs`（6 条）：退避序列、封顶、抖动下限、非法 attempt、`close()` 后不再排定时器。
+
+**审计 176/176。**
 ## 2026-11-02 — 0.4.128：找到那条白带（0.4.112 的窄屏渐隐漏出了媒体查询）
 
 ### 根因

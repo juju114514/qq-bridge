@@ -1,0 +1,155 @@
+// 网关（SnowLuma）状态与「用户手动启动」（0.4.131）
+//
+// 设计取向（跟用户确认过）：
+//   · **不自动拉起**：只在用户点按钮时动手，桥接不当第三方程序的管理者
+//   · **不由桥接 spawn**：改为触发 Windows 计划任务 qq-snowluma ——
+//     这样网关不是桥接的子进程，桥接重启也不会把它带走
+//   · 启动后不监控、不自动重启（崩了就崩了，下次点按钮）
+import { execFile, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import net from 'node:net';
+
+export const TASK_NAME = 'qq-snowluma';
+export const DEFAULT_PORTS = [3000, 3001, 5099];
+
+/** 端口探活：能连上就算在听 */
+export function probePort(port, { host = '127.0.0.1', timeoutMs = 800 } = {}) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ port: Number(port), host });
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      try { sock.destroy(); } catch { /* ignore */ }
+      resolve(ok);
+    };
+    sock.setTimeout(timeoutMs);
+    sock.once('connect', () => finish(true));
+    sock.once('timeout', () => finish(false));
+    sock.once('error', () => finish(false));
+  });
+}
+
+function run(cmd, args, { timeoutMs = 8000 } = {}) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout: timeoutMs, windowsHide: true }, (error, stdout, stderr) => {
+      resolve({ ok: !error, code: error?.code ?? 0, stdout: String(stdout || ''), stderr: String(stderr || '') });
+    });
+  });
+}
+
+/** SnowLuma 安装目录：环境变量 > 常见位置 */
+export function snowlumaDir(env = process.env) {
+  const explicit = String(env.QQB_SNOWLUMA_DIR || '').trim();
+  if (explicit && fs.existsSync(path.join(explicit, 'index.mjs'))) return explicit;
+  // 不写死盘符：遍历所有盘符找 <盘>:\\QQBot\\snowluma（换机器也能找到）
+  for (let i = 2; i < 26; i += 1) {              // C..Z
+    const root = String.fromCharCode(65 + i) + ':';
+    const cand = path.join(root, 'QQBot', 'snowluma');
+    try { if (fs.existsSync(path.join(cand, 'index.mjs'))) return cand; } catch { /* 盘不存在 */ }
+  }
+  return '';
+}
+
+/**
+ * 退路：直接拉起一个**脱离父进程**的网关进程。
+ * 为什么 detached：这样桥接重启不会把它带走（子进程关系不成立）。
+ */
+export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, probe = probePort, ports = DEFAULT_PORTS, now = () => Date.now(), spawnImpl = spawn } = {}) {
+  if (!dir) return { ok: false, started: false, error: '找不到 SnowLuma 目录（设 QQB_SNOWLUMA_DIR）' };
+  const nodeExe = path.join(dir, 'node.exe');
+  const entry = path.join(dir, 'index.mjs');
+  if (!fs.existsSync(nodeExe)) return { ok: false, started: false, error: '缺少 node.exe：' + dir };
+  const t0 = now();
+  const child = spawnImpl(nodeExe, ['index.mjs'], {
+    cwd: dir,
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  });
+  child.unref();
+  let waited = 0;
+  while (waited < timeoutMs) {
+    for (const p of ports) {
+      if (await probe(p)) return { ok: true, started: true, waited: now() - t0, pid: child.pid, via: 'spawn', error: '' };
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    waited = now() - t0;
+  }
+  return { ok: false, started: true, waited: now() - t0, pid: child.pid, via: 'spawn', error: `已拉起（pid ${child.pid}），但 ${Math.round(timeoutMs / 1000)} 秒内端口没起来` };
+}
+
+/** 计划任务在不在（windows only） */
+export async function taskExists(name = TASK_NAME) {
+  if (process.platform !== 'win32') return false;
+  const r = await run('schtasks', ['/query', '/tn', name]);
+  return r.ok;
+}
+
+/**
+ * 当前状态。
+ * @param {{ports?:number[], task?:string, probe?:(p:number)=>Promise<boolean>}} [opts]
+ */
+export async function getGatewayStatus(opts = {}) {
+  const ports = Array.isArray(opts.ports) && opts.ports.length ? opts.ports : DEFAULT_PORTS;
+  const probe = opts.probe || probePort;
+  const listening = {};
+  for (const p of ports) listening[p] = await probe(p);
+
+  const anyUp = Object.values(listening).some(Boolean);
+  const hasTask = opts.taskExistsImpl ? await opts.taskExistsImpl() : await taskExists(opts.task);
+  return {
+    running: anyUp,
+    listening,
+    task: opts.task || TASK_NAME,
+    taskExists: hasTask,
+    // 给 UI 用的一句结论
+    hint: anyUp
+      ? '网关在运行'
+      : (hasTask ? '网关未运行，可一键启动' : '网关未运行，且没有 qq-snowluma 计划任务（先跑 install-snowluma-task.ps1）')
+  };
+}
+
+/**
+ * 用户点击「启动网关」。
+ * 只在网关确实没起来时才触发；启动后轮询端口，最多等 waitMs。
+ * @returns {Promise<{ok:boolean, started:boolean, waited:number, status:object, error?:string}>}
+ */
+export async function startGateway(opts = {}) {
+  const {
+    ports = DEFAULT_PORTS,
+    probe = probePort,
+    waitMs = 15000,
+    pollMs = 1000,
+    runImpl = run,
+    now = () => Date.now()
+  } = opts;
+
+  const before = await getGatewayStatus({ ports, probe, task: opts.task, taskExistsImpl: opts.taskExistsImpl });
+  if (before.running) {
+    return { ok: true, started: false, waited: 0, status: before, error: '' };
+  }
+  if (!before.taskExists) {
+    // 没有计划任务（创建任务需要管理员）→ 退到 detached spawn，仍然不是桥接的子进程生命周期
+    const spawned = await startViaSpawn({ probe, ports, now });
+    return { ...spawned, status: await getGatewayStatus({ ports, probe, taskExistsImpl: async () => false }), via: 'spawn' };
+  }
+
+  const t0 = now();
+  const started = await runImpl('schtasks', ['/run', '/tn', before.task]);
+  if (!started.ok) {
+    return { ok: false, started: false, waited: 0, status: before, error: `schtasks /run 失败：${started.stderr.trim() || started.code}` };
+  }
+
+  // 轮询到 3000（或任意一个端口）通为止
+  let waited = 0;
+  while (waited < waitMs) {
+    const st = await getGatewayStatus({ ports, probe, task: before.task, taskExistsImpl: async () => true });
+    if (st.running) return { ok: true, started: true, waited: now() - t0, status: st, error: '' };
+    await new Promise((r) => setTimeout(r, pollMs));
+    waited = now() - t0;
+  }
+  const final = await getGatewayStatus({ ports, probe, task: before.task, taskExistsImpl: async () => true });
+  return { ok: false, started: true, waited: now() - t0, status: final, error: `已触发计划任务，但 ${Math.round(waitMs / 1000)} 秒内端口没起来（看 D:\\QQBot\\snowluma\\logs）` };
+}

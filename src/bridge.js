@@ -4440,7 +4440,7 @@ async function main() {
             // 总览仪表盘（/api/overview）用的访问器
             getMode: () => currentMode,
             isDshReady: () => dshReady,
-            getOfficialStatus: () => {
+            getOfficialHealth: () => (officialTransport?.health?.() ?? null), getOfficialStatus: () => {
               if (!officialTransport) return 'disabled';
               return officialTransport.ready === true ? 'connected' : 'disconnected';
             },

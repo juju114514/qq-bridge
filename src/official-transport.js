@@ -273,8 +273,8 @@ export function createOfficialTransport(opts = {}) {
     rememberInbound,
     stripOfficialId,
     isOfficialId,
-
     get ready() { return bot.ready; },
+    health() { return bot.health?.() ?? null; },   // 存活快照（0.4.130）
 
     /** 连上去收事件；每条消息都经 onMessage 回调（已是 OneBot 形状）。 */
     async start({ onMessage } = {}) {

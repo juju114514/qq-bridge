@@ -27,6 +27,8 @@ import { handleOfficialTestRoute } from './official-test-route.js';
 import { handleUpdateRoute } from './update-route.js';
 import { handleT2iPreviewRoute } from './t2i-route.js';
 import { handleSetupStatusRoute } from './setup-route.js';
+import { handleOfficialHealthRoute } from './official-health-route.js';
+import { handleGatewayControlRoute } from './gateway-control-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -114,6 +116,12 @@ export async function handleExtraRoutes(ctx = {}) {
 
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
+
+  // 网关状态 / 手动启动（0.4.131）
+  if (await handleGatewayControlRoute({ req, url, sendJson, deps: resolveDeps })) return true;
+
+  // 官方通道存活（0.4.130）
+  if (await handleOfficialHealthRoute({ req, url, sendJson, deps: resolveDeps })) return true;
 
   // 新手向导状态（0.4.124）
   if (await handleSetupStatusRoute({ req, url, sendJson, deps: resolveDeps })) return true;

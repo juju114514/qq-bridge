@@ -1,0 +1,84 @@
+// 网关状态与手动启动（0.4.131）
+import assert from 'node:assert/strict';
+
+const m = await import(new URL('../src/gateway-control.js', import.meta.url).href);
+
+let failures = 0;
+const check = async (name, fn) => {
+  try { await fn(); console.log(`  ok   ${name}`); }
+  catch (e) { failures += 1; console.error(`  FAIL ${name}\n       ${e.message}`); }
+};
+
+await check('getGatewayStatus：全部端口不通 → running=false', async () => {
+  const st = await m.getGatewayStatus({ probe: async () => false, taskExistsImpl: async () => true });
+  assert.equal(st.running, false);
+  assert.equal(st.taskExists, true);
+  assert.match(st.hint, /可一键启动/);
+});
+
+await check('getGatewayStatus：任意端口通 → running=true', async () => {
+  const st = await m.getGatewayStatus({ probe: async (p) => p === 3001, taskExistsImpl: async () => true });
+  assert.equal(st.running, true);
+  assert.equal(st.listening[3001], true);
+  assert.match(st.hint, /在运行/);
+});
+
+await check('没有计划任务时 hint 提示先装任务', async () => {
+  const st = await m.getGatewayStatus({ probe: async () => false, taskExistsImpl: async () => false });
+  assert.match(st.hint, /install-snowluma-task/);
+});
+
+await check('startGateway：已经在跑 → 不重复启动', async () => {
+  let spawned = 0;
+  const r = await m.startGateway({
+    probe: async () => true,
+    taskExistsImpl: async () => true,
+    runImpl: async () => { spawned += 1; return { ok: true }; }
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.started, false);
+  assert.equal(spawned, 0, '不该再触发 schtasks');
+});
+
+await check('startGateway：有任务 → schtasks /run 后轮询到端口通', async () => {
+  let calls = 0;
+  let port = false;
+  const r = await m.startGateway({
+    probe: async () => port,
+    taskExistsImpl: async () => true,
+    pollMs: 5,
+    waitMs: 3000,
+    runImpl: async (cmd, args) => { calls += 1; assert.equal(cmd, 'schtasks'); assert.deepEqual(args.slice(0, 2), ['/run', '/tn']); port = true; return { ok: true }; }
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.started, true);
+  assert.equal(calls, 1);
+});
+
+await check('startGateway：schtasks 失败 → ok=false 且带错误', async () => {
+  const r = await m.startGateway({
+    probe: async () => false,
+    taskExistsImpl: async () => true,
+    runImpl: async () => ({ ok: false, code: 1, stderr: 'Access is denied.', stdout: '' })
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Access is denied/);
+});
+
+await check('startGateway：没任务 → 走 detached spawn 而不是 schtasks', async () => {
+  let spawnedDir = '';
+  const r = await m.startGateway({
+    probe: async () => false,
+    taskExistsImpl: async () => false,
+    pollMs: 5,
+    waitMs: 200,
+    runImpl: async () => { throw new Error('不该走 schtasks'); },
+    spawnFallback: async ({ dir }) => { spawnedDir = dir; return { ok: false, started: true, error: 'port timeout' }; }
+  });
+  // 没传 spawnFallback 时用的是内部 startViaSpawn（会因找不到目录而失败）
+  assert.equal(r.ok, false);
+});
+
+console.log('');
+if (failures === 0) console.log('  全部通过');
+else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
