@@ -14,6 +14,41 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.48：本地模式接上人格（不再是一句默认提示词）
+
+### 问题
+
+`agent.mode=local` 之前只吃一句写死的默认提示词，和 DSH 模式的人格卡完全脱节 ——
+同一个号在两种模式下说话方式会明显不一样。
+
+### 做法
+
+新增 `src/agent/persona.js`，按优先级取人格：
+
+| 顺序 | 来源 | 说明 |
+| --- | --- | --- |
+| 1 | `config.agent.persona` | 直接写一段话 |
+| 2 | `config.agent.personaFile` | 指向 md/txt（相对路径按进程 cwd 解析） |
+| 3 | `config.role.cardFile` | 复用现有角色卡约定 |
+| 4 | 默认 | “说话自然、简短，像真人在 QQ 上打字” |
+
+拼装顺序固定为 **人格 → 会话 key 提示 → 行为约束**（`composeSystemPrompt`），
+并且**超长会截断**（默认 3000 字，`agent.personaMaxChars` 可调）——
+人格不该把上下文预算吃光。
+
+日志里会带上来源，方便确认到底生效了哪一份：
+
+```
+[agent] 本地回合完成 key=private:xxx steps=2 sent=true 人格=agent.personaFile(p.md) 用时=2100ms
+```
+
+### 测试
+
+`test-agent.mjs` 补 5 条（共 19 条）：inline 优先、personaFile 读取、文件缺失退回默认、
+超长截断、`composeSystemPrompt` 顺序。
+
+**审计 185/185。**
+
 ## 2026-11-03 — 0.5.47：面向普通手机的安装路径（Termux，无 root）
 
 ### 为什么必须换

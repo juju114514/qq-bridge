@@ -194,6 +194,42 @@ await check('tools：defaultKey 覆盖模型自填的 key（只能发当前会�
   assert.deepEqual(sent, [['private:111', 'hi']]);
 });
 
+
+const personaMod = await import(new URL('../src/agent/persona.js', import.meta.url).href);
+
+await check('persona：config 里直接写的一句话优先', () => {
+  const r = personaMod.resolvePersona({ agent: { persona: '我是小鲸鱼' } });
+  assert.equal(r.text, '我是小鲸鱼');
+  assert.equal(r.source, 'agent.persona');
+});
+
+await check('persona：personaFile 能读到文件', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-persona-'));
+  const f = path.join(dir, 'p.md');
+  fs.writeFileSync(f, '# 人设\n说话简短。');
+  const r = personaMod.resolvePersona({ agent: { personaFile: f } });
+  assert.match(r.text, /说话简短/);
+  assert.match(r.source, /personaFile/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await check('persona：文件不存在 → 退回默认，不崩', () => {
+  const r = personaMod.resolvePersona({ agent: { personaFile: '/no/such/file.md' } });
+  assert.equal(r.source, 'default');
+  assert.ok(r.text.length > 5);
+});
+
+await check('persona：超长会被截断（别把上下文吃光）', () => {
+  const long = 'x'.repeat(5000);
+  const r = personaMod.resolvePersona({ agent: { persona: long } }, { maxChars: 100 });
+  assert.equal(r.text.length, 101);   // 100 + '…'
+});
+
+await check('composeSystemPrompt：人格在前、key 居中、约束在后', () => {
+  const s = personaMod.composeSystemPrompt({ persona: 'P', keyLine: 'K', base: 'B' });
+  assert.equal(s, 'P\n\nK\n\nB');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

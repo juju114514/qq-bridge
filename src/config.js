@@ -82,6 +82,9 @@ export function createConfigLoader(deps = {}) {
       apiKey: String(file.agent?.apiKey ?? ''),
       baseUrl: String(file.agent?.baseUrl ?? 'https://api.deepseek.com'),
       model: String(file.agent?.model ?? 'deepseek-chat'),
+      persona: String(file.agent?.persona ?? ''),
+      personaFile: String(file.agent?.personaFile ?? ''),
+      personaMaxChars: Number(file.agent?.personaMaxChars) || 3000,
       systemPrompt: String(file.agent?.systemPrompt ?? ''),
       maxSteps: Number(file.agent?.maxSteps) || 2,
       temperature: Number.isFinite(Number(file.agent?.temperature)) ? Number(file.agent.temperature) : 0.8

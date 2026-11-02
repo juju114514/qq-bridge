@@ -9,6 +9,7 @@
 import { createProvider } from './provider.js';
 import { createAgentLoop } from './loop.js';
 import { createSocialTools } from './tools.js';
+import { resolvePersona, composeSystemPrompt } from './persona.js';
 
 const DEFAULT_SYSTEM = '你是一个在 QQ 群里聊天的中文助手。根据给定的上下文和当前消息，写一条自然、简短、像本人的回复（不超过 80 字）。'
   + '需要看更多上下文就调用工具；要开口说话就用 qq_send_message 工具发出去，不要只把回复写在正文里。';
@@ -47,10 +48,15 @@ export async function runLocalAgentTurn(input = {}) {
 
   // 把「当前会话 key」写进系统提示的最前面：模型常常忽略后面那句，导致反问"发到哪个会话"
   const keyLine = `当前会话 key = ${key}。调用 qq_send_message 时用这个 key（省略也默认发给它），不要再问用户在哪个会话。`;
+  const persona = resolvePersona(cfg, { cwd: process.cwd(), maxChars: Number(a.personaMaxChars) || 3000 });
   const loop = createAgentLoop({
     provider,
     tools: wrapped,
-    systemPrompt: `${keyLine}\n\n${String(a.systemPrompt || DEFAULT_SYSTEM)}`,
+    systemPrompt: composeSystemPrompt({
+      persona: persona.text,
+      keyLine,
+      base: String(a.systemPrompt || DEFAULT_SYSTEM)
+    }),
     // 有工具时至少给两轮：一轮看上下文，一轮发消息
     maxSteps: Number(a.maxSteps) || 4,
     temperature: Number.isFinite(Number(a.temperature)) ? Number(a.temperature) : 0.8,
@@ -73,6 +79,6 @@ export async function runLocalAgentTurn(input = {}) {
     }
   }
 
-  log(`[agent] 本地回合完成 key=${key} steps=${r.steps} sent=${sent} 用时=${Date.now() - started}ms`);
+  log(`[agent] 本地回合完成 key=${key} steps=${r.steps} sent=${sent} 人格=${persona.source} 用时=${Date.now() - started}ms`);
   return { ok: true, sent, steps: r.steps, reply: r.reply, usage: r.usage, error: r.error };
 }
