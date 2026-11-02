@@ -14,6 +14,61 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.46：桥接自己的大脑（C1→C3）：手机不再需要 DSH
+
+### 背景
+
+到 0.5.45 为止，桥接能跑在手机上、能连 NapCat、能收发个人号消息 —— 但「思考」仍然外包给 DSH
+（PC 上的 Electron 桌面应用）。AstrBot 能做到手机独立，是因为 agent 就是框架的一部分
+（`astrbot/core/agent` + 进程内 `InternalAgentSubStage`，模型调用是纯 HTTP）。这一版照同一个思路补齐。
+
+### 新增三块（代码自己写，不引入 SDK）
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/agent/provider.js` | OpenAI 兼容 `textChat`：messages + tools → 回复，usage 记账，错误原文透出 |
+| `src/agent/loop.js` | agent 循环：调模型 → 执行工具 → 回填结果；步数硬上限；`doneWhen` 提前收尾 |
+| `src/agent/tools.js` | 三个内置工具：`qq_get_context` / `qq_memory_query` / `qq_send_message` |
+| `src/agent/dispatch.js` | 把一条 prompt 当成用户消息跑完本地回合；模型只写正文没调工具时**代发** |
+| `src/api/agent-route.js` | `POST /api/agent/chat`（C1 的验证入口，也是本地调试口） |
+
+### 接入方式
+
+`deliverPrompt` 里一行分支：
+
+```js
+if (cfg.agent?.mode === 'local' && cfg.agent?.apiKey && !opts.silent)
+  return runLocalAgentTurn({ cfg, key, promptText, sendToQQ, stateDir: STATE_DIR, log })...
+```
+
+`agent.mode` 默认 `dsh`（行为不变），设成 `local` 就完全不碰 DSH。
+
+### 实测（Android 模拟器，DSH 隧道已断）
+
+```
+[agent] 已发送 → private:1599683156（17 字）
+[agent] 本地回合完成 key=private:1599683156 steps=1 sent=true 用时=2019ms
+
+QQ 里：02:34:01  机器人: 本地大脑已接管，不用问我在哪个会话
+```
+
+工具链也验证过：`qq_get_context(ok)` → `qq_memory_query(ok)` → `qq_send_message(ok)`，
+模型引用的上下文来自工具读到的真实数据（不是编的）。
+
+### 踩到并修掉的三个坑
+
+1. **`config.js` 逐字段装配**：`agent` 段不登记就读不到；连 `mode` 都漏了一次（`official` 段同一坑，已第三次）
+2. **Android 的 node 没有系统 CA**：所有 HTTPS 报 `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`，
+   必须 `NODE_EXTRA_CA_CERTS` 指向 CA 包
+3. **`doneWhen` 时机**：一开始放在"执行工具前"，导致消息发完还要多问一轮；必须放在工具执行之后
+
+### 测试
+
+`test-agent.mjs`（14 条）：provider 请求体/鉴权/错误透出、loop 无工具/有工具/步数上限/模型异常/
+工具不存在、`doneWhen` 提前收尾、tools 发送/非法 key 拒绝/`defaultKey` 限制/坏状态文件不崩。
+
+**审计 185/185。**
+
 ## 2026-11-03 — 0.5.45：网关抽象（SnowLuma / NapCat 可切换）+ 能力矩阵
 
 ### 为什么

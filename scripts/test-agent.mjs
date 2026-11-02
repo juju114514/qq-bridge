@@ -1,0 +1,199 @@
+// agent 的 provider / loop / tools（0.5.46 · C1+C2）
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const providerMod = await import(new URL('../src/agent/provider.js', import.meta.url).href);
+const loopMod = await import(new URL('../src/agent/loop.js', import.meta.url).href);
+const toolsMod = await import(new URL('../src/agent/tools.js', import.meta.url).href);
+
+let failures = 0;
+const check = async (name, fn) => {
+  try { await fn(); console.log(`  ok   ${name}`); }
+  catch (e) { failures += 1; console.error(`  FAIL ${name}\n       ${e.message}`); }
+};
+
+/** 假 provider：按脚本依次返回 */
+const scripted = (steps) => {
+  let i = 0;
+  return {
+    calls: [],
+    async textChat(req) {
+      this.calls.push(req);
+      const s = steps[Math.min(i, steps.length - 1)];
+      i += 1;
+      return typeof s === 'function' ? s(req) : s;
+    }
+  };
+};
+
+await check('provider：没 apiKey 直接抛（不发出无凭据请求）', () => {
+  assert.throws(() => providerMod.createProvider({ apiKey: '' }), /apiKey/);
+});
+
+await check('provider：请求体与鉴权头正确', async () => {
+  let seen = null;
+  const p = providerMod.createProvider({
+    apiKey: 'k-123',
+    model: 'm-1',
+    fetchImpl: async (url, init) => {
+      seen = { url, init };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }], usage: { prompt_tokens: 3, completion_tokens: 2 } }) };
+    }
+  });
+  const r = await p.textChat({ messages: [{ role: 'user', content: 'x' }], tools: [{ type: 'function', function: { name: 't' } }] });
+  assert.match(seen.url, /\/chat\/completions$/);
+  assert.equal(seen.init.headers.authorization, 'Bearer k-123');
+  const body = JSON.parse(seen.init.body);
+  assert.equal(body.model, 'm-1');
+  assert.equal(body.tools.length, 1);
+  assert.equal(r.content, 'hi');
+});
+
+await check('provider：HTTP 非 2xx 把服务端原文带出来', async () => {
+  const p = providerMod.createProvider({
+    apiKey: 'k',
+    fetchImpl: async () => ({ ok: false, status: 402, text: async () => '余额不足' })
+  });
+  await assert.rejects(() => p.textChat({ messages: [{ role: 'user', content: 'x' }] }), /402.*余额不足/s);
+});
+
+await check('loop：无工具调用 → 一轮就返回', async () => {
+  const prov = scripted([{ content: '答案', toolCalls: [], usage: { prompt_tokens: 1, completion_tokens: 1 }, finishReason: 'stop' }]);
+  const loop = loopMod.createAgentLoop({ provider: prov, maxSteps: 3 });
+  const r = await loop.run({ userText: '问' });
+  assert.equal(r.reply, '答案');
+  assert.equal(r.steps, 1);
+  assert.equal(prov.calls.length, 1);
+});
+
+await check('loop：模型要工具 → 执行并把结果回填成 tool 消息', async () => {
+  const calls = [];
+  const prov = scripted([
+    { content: '', toolCalls: [{ id: 'c1', function: { name: 'echo', arguments: '{"v":"你好"}' } }], usage: null, finishReason: 'tool_calls' },
+    { content: '收到你好', toolCalls: [], usage: null, finishReason: 'stop' }
+  ]);
+  const loop = loopMod.createAgentLoop({
+    provider: prov, maxSteps: 3,
+    tools: [{ name: 'echo', description: 'echo', parameters: { type: 'object', properties: { v: { type: 'string' } } }, run: async (a) => { calls.push(a); return { ok: true, echo: a.v }; } }]
+  });
+  const r = await loop.run({ userText: '试' });
+  assert.equal(r.reply, '收到你好');
+  assert.equal(r.steps, 2);
+  assert.deepEqual(calls, [{ v: '你好' }]);
+  const toolMsg = prov.calls[1].messages.find((m) => m.role === 'tool');
+  assert.ok(toolMsg, '没回填 tool 消息');
+  assert.match(toolMsg.content, /你好/);
+});
+
+await check('loop：模型一直要工具 → 到步数上限就停，不无限烧', async () => {
+  const prov = {
+    async textChat() {
+      return { content: '', toolCalls: [{ id: 'x', function: { name: 'noop', arguments: '{}' } }], usage: null, finishReason: 'tool_calls' };
+    }
+  };
+  const loop = loopMod.createAgentLoop({ provider: prov, maxSteps: 2, tools: [{ name: 'noop', description: '', parameters: {}, run: async () => ({ ok: true }) }] });
+  const r = await loop.run({ userText: 'x' });
+  assert.equal(r.steps, 2);
+  assert.equal(r.error, 'max-steps');
+  assert.match(r.reply, /圈/);
+});
+
+await check('loop：模型调用失败 → 返回人话，不抛', async () => {
+  const prov = { async textChat() { throw new Error('ECONNREFUSED'); } };
+  const loop = loopMod.createAgentLoop({ provider: prov });
+  const r = await loop.run({ userText: 'x' });
+  assert.match(r.reply, /模型没连上/);
+  assert.match(r.error, /ECONNREFUSED/);
+});
+
+await check('loop：工具不存在 → 回填错误而不是崩', async () => {
+  const prov = scripted([
+    { content: '', toolCalls: [{ id: 'c', function: { name: 'ghost', arguments: '{}' } }], usage: null, finishReason: 'tool_calls' },
+    { content: '好的', toolCalls: [], usage: null, finishReason: 'stop' }
+  ]);
+  const loop = loopMod.createAgentLoop({ provider: prov, tools: [] });
+  const r = await loop.run({ userText: 'x' });
+  assert.equal(r.reply, '好的');
+  assert.equal(r.toolRuns[0].ok, false);
+});
+
+await check('tools：qq_send_message 走注入的发送通道', async () => {
+  const sent = [];
+  const tools = toolsMod.createSocialTools({ stateDir: os.tmpdir(), sendToQQ: async (k, t) => sent.push([k, t]) });
+  const send = tools.find((t) => t.name === 'qq_send_message');
+  const r = await send.run({ key: 'group:123', text: '测试' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(sent, [['group:123', '测试']]);
+});
+
+await check('tools：非法 key 被拒（正则白名单）', async () => {
+  const tools = toolsMod.createSocialTools({ stateDir: os.tmpdir(), sendToQQ: async () => {} });
+  const send = tools.find((t) => t.name === 'qq_send_message');
+  const r = await send.run({ key: '../../etc/passwd', text: 'x' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /key 格式不对/);
+});
+
+await check('tools：qq_get_context 读 state/social-v2.json', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-agent-'));
+  fs.writeFileSync(path.join(dir, 'social-v2.json'), JSON.stringify({
+    conversations: {
+      'group:123': {
+        lastWakeReason: 'atMention',
+        recentMessages: [{ seq: 1, sender: '甲', text: '在吗' }, { seq: 2, sender: '乙', text: '在' }],
+        unread: [{ seq: 3, sender: '丙', text: '来玩' }]
+      }
+    }
+  }));
+  const tools = toolsMod.createSocialTools({ stateDir: dir });
+  const get = tools.find((t) => t.name === 'qq_get_context');
+  const r = await get.run({ key: 'group:123' });
+  assert.equal(r.ok, true);
+  assert.equal(r.recent.length, 2);
+  assert.equal(r.unread.length, 1);
+  assert.equal(r.wakeReason, 'atMention');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await check('tools：状态文件坏了也不崩', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qqb-agent-'));
+  fs.writeFileSync(path.join(dir, 'social-v2.json'), '{坏 JSON');
+  const tools = toolsMod.createSocialTools({ stateDir: dir });
+  const get = tools.find((t) => t.name === 'qq_get_context');
+  const r = await get.run({ key: 'group:123' });
+  assert.equal(r.ok, true);
+  assert.equal(r.found, false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+
+await check('loop：doneWhen 命中就收尾（发过消息不再追问）', async () => {
+  const prov = scripted([
+    { content: '', toolCalls: [{ id: 'c', function: { name: 'send', arguments: '{}' } }], usage: null, finishReason: 'tool_calls' },
+    { content: '不该走到这里', toolCalls: [], usage: null, finishReason: 'stop' }
+  ]);
+  let sent = false;
+  const loop = loopMod.createAgentLoop({
+    provider: prov, maxSteps: 4,
+    tools: [{ name: 'send', description: '', parameters: {}, run: async () => { sent = true; return { ok: true }; } }],
+    doneWhen: () => sent
+  });
+  const r = await loop.run({ userText: 'x' });
+  assert.equal(r.steps, 1);
+  assert.equal(r.doneEarly, true);
+  assert.equal(r.reply, '');
+});
+
+await check('tools：defaultKey 覆盖模型自填的 key（只能发当前会话）', async () => {
+  const sent = [];
+  const tools = toolsMod.createSocialTools({ stateDir: os.tmpdir(), sendToQQ: async (k, t) => sent.push([k, t]), defaultKey: 'private:111' });
+  const send = tools.find((t) => t.name === 'qq_send_message');
+  await send.run({ key: 'group:999', text: 'hi' });
+  assert.deepEqual(sent, [['private:111', 'hi']]);
+});
+
+console.log('');
+if (failures === 0) console.log('  全部通过');
+else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

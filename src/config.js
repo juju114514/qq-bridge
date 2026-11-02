@@ -32,7 +32,7 @@ export function createConfigLoader(deps = {}) {
     'dsh', 'snowluma', 'sessionCwd', 'agentPreset', 'workspaceTitle', 'ownerQQ',
     'allow', 'deny', 'allowAllWhenEmpty', 'official', 'ackMessage', 'sendDelayMs',
     'questionTimeoutMs', 'consolePort', 'consoleHost', 'inject', 'consoleToken',
-    'pricing', 'security', 'slang', 'social', 'socialV2', 'paths', 'role', 'gateway'
+    'pricing', 'security', 'slang', 'social', 'socialV2', 'paths', 'role', 'gateway', 'agent'
   ]);
 
   // 端口校验：接受 1-65535 的整数（数字或纯数字字符串）；其它一律抛错。
@@ -73,6 +73,19 @@ export function createConfigLoader(deps = {}) {
     channel: { enabled: file.channel?.enabled !== false },
     // 网关（OneBot 实现）归一化：新写法 gateway.{provider,httpUrl,wsUrl,token}，老写法 snowluma.* 继续有效。
     // 桥接内部仍读 snowluma.*，由这里映射（0.5.45）。
+    // 自带 agent（0.5.46 · C1）：不经 DSH 直接调模型。
+    // loadConfig 逐字段装配，不在这里登记的话 config.json 的 agent.* 会被静默丢弃。
+    agent: {
+      enabled: (file.agent?.enabled ?? true) !== false,
+      // mode 必须在逐字段装配里登记，否则 config 写了也读不到（同一坑踩过三次）
+      mode: String(file.agent?.mode ?? 'dsh'),
+      apiKey: String(file.agent?.apiKey ?? ''),
+      baseUrl: String(file.agent?.baseUrl ?? 'https://api.deepseek.com'),
+      model: String(file.agent?.model ?? 'deepseek-chat'),
+      systemPrompt: String(file.agent?.systemPrompt ?? ''),
+      maxSteps: Number(file.agent?.maxSteps) || 2,
+      temperature: Number.isFinite(Number(file.agent?.temperature)) ? Number(file.agent.temperature) : 0.8
+    },
     gateway: normalizeGateway(file),
     snowluma: toLegacySnowlumaShape(normalizeGateway(file)),
     // 空 => 每个会话在 state/agents/<key> 下建独立工作目录

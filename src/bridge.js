@@ -113,6 +113,7 @@ import { makeTextImageSegment } from './t2i-send.js';
 import { createContextUsageStore } from './context-usage.js';
 import { markMemoryClear } from './memory-guard.js';
 import { createThrottledLogger } from './log-throttle.js';
+import { runLocalAgentTurn } from './agent/dispatch.js';
 import { splitForPrompt } from './role-dialogues.js';
 import { warmUpT2i } from './t2i.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
@@ -4476,7 +4477,7 @@ async function main() {
             readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } },
             getOfficialRuntime: () => ({ enabled: Boolean(officialTransport), ready: officialTransport?.ready === true, lastError: String(officialTransport?.lastError ?? '') }),
             files: { runner: path.join(STATE_DIR, 'runner.log'), watchdog: path.join(STATE_DIR, 'watchdog.log'), probe: path.join(STATE_DIR, 'official-probe.json'), bridgeLog: path.join(STATE_DIR, 'bridge.log'), qzoneDraft: path.join(STATE_DIR, 'qzone-draft.json'), qzoneUploads: path.join(STATE_DIR, 'qzone-uploads'), sessionBackups: path.join(STATE_DIR, 'session-backups'), config: path.join(ROOT, 'config.json'), roleImages: path.join(STATE_DIR, 'role-images'), socialV2: SOCIAL_V2_FILE, rolesByKey: ROLES_BY_KEY_FILE },
-            deliverPrompt: (key, text, opts) => deliverPromptNow(key, text, opts),
+            deliverPrompt: (key, text, opts) => deliverPrompt(key, text, opts),   // 走队列：让 agent.mode=local 的分支也生效
             getStickerEntries: () => {
               // 内存为空时回退读磁盘：启动时 WS 同步失败会让 stickerEntries 是空的
               try {
@@ -7123,6 +7124,7 @@ async function main() {
   // 每个 QQ 会话串行投递 DSH prompt，保证 turn 完成顺序与提交顺序一致，
   // 从而让 [SILENT]、摘要静默、退场标记都能准确匹配到自己的 turn。
   function deliverPrompt(key, promptText, opts = {}) {
+    if (cfg.agent?.mode === 'local' && cfg.agent?.apiKey && !opts.silent) return runLocalAgentTurn({ cfg, key, promptText, sendToQQ, stateDir: STATE_DIR, log }).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
     return new Promise((resolve, reject) => {
       let entry = promptQueues.get(key);
       if (!entry) {
@@ -10172,8 +10174,6 @@ function selfCheckSnapshot() {
     reconnect: true
   });
 
-  // 网关断线计数：/自检 要能回答"网关断过几次"，而不是让模型靠印象编。
-  // 真实事故（2026-10-30 00:51）：用户问网关为什么断，模型只能含糊说"断过几次"。
   let gatewayLastLossAt = 0;
   const gwLog = createThrottledLogger(log, { windowMs: 60000 });   // 手机/长跑：网关断线日志别刷屏
   try {
