@@ -1799,14 +1799,15 @@ button:active:not(:disabled) {
     /* 导航别把首屏吃掉：默认两行，点「全部功能」展开 */
     #mainNav { max-height: 92px; overflow: hidden; position: relative; }
     #mainNav.open { max-height: none; }
-  }
+    /* 底部渐隐：只在窄屏生效（之前漏到媒体查询外，桌面宽度也会画一条白带） */
     #mainNav:not(.open)::after {
       content: '';
       position: absolute; left: 0; right: 0; bottom: 0; height: 16px;
       background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.92));
       pointer-events: none;
     }
-  .nav-more { display: none }
+  }
+      .nav-more { display: none }
   @media (max-width: 760px) { .nav-more { display: inline-flex } }
 </style>
 <script src="/vendor/qrcode.min.js" defer></script>

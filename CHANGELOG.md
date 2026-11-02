@@ -2,6 +2,50 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.128：找到那条白带（0.4.112 的窄屏渐隐漏出了媒体查询）
+
+### 根因
+
+0.4.112 给窄屏加了「导航底部渐隐」，防止两行截断太生硬：
+
+```css
+#mainNav:not(.open)::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 16px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.92));
+  pointer-events: none;
+}
+```
+
+**但这段规则写在了 `@media (max-width: 760px)` 的闭合括号之外** —— 于是桌面宽度也生效了：
+`#mainNav` 在桌面没有定位，`::after` 就按最近的定位祖先（`.sidebar`，`position:fixed`）去放，
+结果在侧栏某一行上画了一条**白色渐变带**（`rgba(255,255,255,.92)`，上淡下浓）。
+
+这也解释了之前所有反常现象：
+
+- **只压在某一行**：它是 16px 高的绝对定位条，不跟任何导航项绑定
+- **Chrome 和 Edge 都有**：是页面 CSS，不是扩展
+- **刷新还在**：CSS 规则，不依赖选中状态
+- **我的无头渲染里没看到**：我的截图窗口高 1000、侧栏内容刚好排满，
+  那条 `::after` 落到了可视区之外；用户窗口更矮，正好压住「定时任务」那一行
+- **inspect 显示 `button.nav-item`**：绝对定位条 `pointer-events:none`，命中的是底下的按钮
+
+### 修法
+
+把规则移回 `@media (max-width: 760px)` 内。
+
+实测（CDP 计算样式）：
+
+```
+desktop 1440: mainNav::after = none（没有白带）
+mobile   390: mainNav::after = linear-gradient(rgba(255,255,255,0), rgba(255,255,255,.92))   ← 窄屏仍然有效
+```
+
+### 附带
+
+- 0.4.126 的 `overflow-x:hidden` / `user-select:none` / 细滚动条 保留（都是该做的）
+- 0.4.127 的深色主题 active 项显式配色 保留
+
+**审计 175/175。**
 ## 2026-11-02 — 0.4.127：深色主题下的「当前项」不再依赖变量解析
 
 用户反馈：侧栏上只有「定时任务」那一行有一条浅色带。对比测试了 **8 个页面**
