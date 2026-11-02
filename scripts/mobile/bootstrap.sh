@@ -28,6 +28,16 @@ APP="$BASE/app"
 say() { printf '\033[1;36m[qqb]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[qqb] 失败：%s\033[0m\n' "$*" >&2; exit 1; }
 
+# 手机架构：真机几乎全是 arm64，模拟器是 x86_64 —— 下载的资产必须跟着变
+detect_arch() {
+  case "$(uname -m)" in
+    aarch64|arm64) ARCH=arm64 ;;
+    x86_64|amd64)  ARCH=amd64 ;;
+    *) die "不支持的架构：$(uname -m)" ;;
+  esac
+  say "架构：$ARCH"
+}
+
 need_termux() {
   case "${PREFIX:-}" in
     */com.termux/*) return 0 ;;
@@ -67,7 +77,7 @@ setup_ubuntu() {
   mkdir -p "$UBUNTU" "$LOG"
   if [ ! -x "$UBUNTU/bin/bash" ]; then
     local tarball="$BASE/ubuntu-base.tar.gz"
-    fetch "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-amd64.tar.gz" "$tarball"
+    fetch "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-${ARCH}.tar.gz" "$tarball"
     say "解压 Ubuntu rootfs（约 80MB）"
     tar xzf "$tarball" -C "$UBUNTU" || die "解压失败"
   else
@@ -110,7 +120,7 @@ apt-get install -y -qq coreutils procps xz-utils curl ca-certificates \
 
 install_qq() {
   local deb="$BASE/linuxqq.deb"
-  fetch "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.36/beta/9ee04bef/linuxqq_3.2.34-53644_amd64.deb" "$deb"
+  fetch "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.36/beta/9ee04bef/linuxqq_3.2.34-53644_${ARCH}.deb" "$deb"
   say "安装 QQ Linux 客户端"
   cp "$deb" "$BASE/tmp/QQ.deb"
   proot_exec 'export DEBIAN_FRONTEND=noninteractive; apt-get install -y -qq /tmp/QQ.deb' || die "QQ 安装失败"
@@ -190,6 +200,7 @@ SH
 
 main() {
   local mode="${1:-all}"
+  detect_arch
   check_env
   case "$mode" in
     --check) exit 0 ;;
