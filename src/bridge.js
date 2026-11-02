@@ -112,6 +112,7 @@ import { createOfficialTestSend } from './official-test-send.js';
 import { makeTextImageSegment } from './t2i-send.js';
 import { createContextUsageStore } from './context-usage.js';
 import { markMemoryClear } from './memory-guard.js';
+import { createThrottledLogger } from './log-throttle.js';
 import { splitForPrompt } from './role-dialogues.js';
 import { warmUpT2i } from './t2i.js';
 import { writeHeartbeat, markRunning, markCleanExit, detectUncleanShutdown, appendIncident, listIncidents, countRecentIncidents, describeIncident, HEARTBEAT_GAP_MS } from './boot-watch.js';
@@ -4871,7 +4872,6 @@ async function main() {
     return sendChain.then(() => sent);
   }
 
-
   // ═══════ 本地攻略：主题别名 + 模板直出 ═══════
   const GUIDES_DIR = path.join(ensureDirSafe(resolveRuntimeDir('QQBOT_DATA', 'data', '')), 'guides');
 
@@ -9256,7 +9256,6 @@ function selfCheckSnapshot() {
       }
     }
 
-
     // 管理命令：仅管理员（ownerQQ）可用，且由桥接直接执行（硬性，不经过模型）
     if (plainContent.startsWith('/')) {
       if (!isOwner) {
@@ -10176,13 +10175,14 @@ function selfCheckSnapshot() {
   // 网关断线计数：/自检 要能回答"网关断过几次"，而不是让模型靠印象编。
   // 真实事故（2026-10-30 00:51）：用户问网关为什么断，模型只能含糊说"断过几次"。
   let gatewayLastLossAt = 0;
+  const gwLog = createThrottledLogger(log, { windowMs: 60000 });   // 手机/长跑：网关断线日志别刷屏
   try {
     bot.on('close', () => {
       counters.gatewayReconnects += 1;
       gatewayLastLossAt = Date.now();
-      log('[gateway] WS 断开，等待自动重连');
+      gwLog('gw-close', '[gateway] WS 断开，等待自动重连（同类日志每分钟最多一条）');
     });
-    bot.on('error', (error) => log(`[gateway] WS 错误：${error?.message ?? error}`));
+    bot.on('error', (error) => gwLog('gw-err', `[gateway] WS 错误：${error?.message || error?.code || ''}`.trim()));
     bot.on('open', () => {
       if (gatewayLastLossAt) log(`[gateway] WS 已恢复（累计断开 ${counters.gatewayReconnects} 次）`);
     });
@@ -10407,7 +10407,7 @@ function selfCheckSnapshot() {
     try {
       const r = await discoverSnowLumaConnection({ cfg, timeoutMs: 4000 });
       if (!r.ok) {
-        log(`⚠️ token 自愈失败（${reason}）：${r.error}`);
+        gwLog('gw-heal', `⚠️ token 自愈失败（${reason}）：${r.error}`);
         return;
       }
       await applyHealedTokens(r);
@@ -10419,7 +10419,7 @@ function selfCheckSnapshot() {
 
   bot.on('close', (info) => {
     snowlumaHealth.connected = false;
-    log(`SnowLuma 连接断开（code=${info?.code ?? '?'}），重连中…`);
+    gwLog('gw-close', `SnowLuma 连接断开（code=${info?.code ?? '?'}），重连中…`);
     // 连不上时最常见的原因就是换了 QQ 账号 → token 变了；顺手自愈。
     // 注意 1006 在**每次启动**都可能出现一次：HTTP token 与 WS token 是两个不同的值，
     // config.json 里存的是前者，WS 需要用自愈发现的那个（详见 bot.connect() 处的说明）。
@@ -10432,7 +10432,7 @@ function selfCheckSnapshot() {
     const detail = error && typeof error === 'object'
       ? [error.code, error.message, error.reason, error.type].filter(Boolean).join(' | ') || JSON.stringify(error)
       : String(error ?? '');
-    log(`SnowLuma 错误：${detail || '(无详情)'}`);
+    gwLog('gw-err', `SnowLuma 错误：${detail || '(无详情)'}`);
     void healTokenIfStale(`error ${detail}`.trim().slice(0, 200));
   });
 
@@ -10473,7 +10473,7 @@ function selfCheckSnapshot() {
     // → 重连成功后才是「SnowLuma 已连接」。若 homeDir 没配/被移动/读不到 SnowLuma 的
     // config/onebot_<QQ>.json，自愈就无从下手，这时才会一直连不上 —— 那种情况请查
     // 日志里的「token 自愈失败」与 config.json 的 snowluma.homeDir。
-    log(`SnowLuma 首次连接未成功（将在后台自动重连并尝试自愈 WS token）: ${error?.message ?? error}`);
+    gwLog('gw-first-fail', `SnowLuma 首次连接未成功（将在后台自动重连并尝试自愈 WS token）: ${error?.message ?? error}`);
   });
   // 健康状态：进程/通道/服务分开（0.4.41）
   try {

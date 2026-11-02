@@ -14,6 +14,63 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.43：在 Android 上真的把桥接跑起来了（P1 验证完成）
+
+### 怎么验证的（不是推演，是实机）
+
+MuMu 模拟器（Android 15 / x86_64 / adb 127.0.0.1:16384），没有 Termux，
+直接把 Termux 仓库的 `nodejs-lts 24.22.2` 连同 8 个依赖 .deb 解出来推到 `/data/local/tmp`，
+用 `LD_LIBRARY_PATH` 跑起来：
+
+```
+$ ./bin/node -v
+v24.22.2
+$ node src/bridge.js
+[bridge] 桥接已启动。按 Ctrl+C 退出。
+[bridge] 本地控制台已启动：http://127.0.0.1:3100
+[bridge] 启动摘要：{"version":"0.5.42", ...,"console":"connected"}
+```
+
+`GET /health/detail` → 版本 0.5.42，console=connected。**桥接本体在 Android 上是能跑的。**
+
+### 由此暴露的三件事
+
+1. **日志刷屏**：网关没起来时每 1~3 秒重连一次、每次两三条，手机上一小时几千行 —— 费电且把有用信息淹掉
+2. **能力是"点了才报错"**：手机上没有 ffmpeg / PowerShell / Edge / 计划任务，用户点「点歌」才知道不行
+3. **DSH 连不上**：`dsh.authToken` 为空时桥接会去读 `~/.dsh/.credentials.yaml`，手机上必然没有
+
+### 改了什么
+
+- `src/log-throttle.js`：按 key 分组的日志节流，同 key 每窗口只放一条，跨窗口补「已省略 N 次」
+- `src/platform-capabilities.js`：探测 ffmpeg / powershell / scheduledTask / textToImage / ocr / watchdog，
+  给出人话结论（`平台 android：6 项不可用 —— 语音/点歌…`）
+- `src/api/platform-route.js`：`GET /api/platform`
+- 网关的 5 处日志（断开/错误/首次失败/token 自愈/连接断开）全部走节流
+
+### 实测效果（同样 45 秒，同样"网关没起来"）
+
+| 指标 | 改前 | 改后 |
+| --- | --- | --- |
+| 总日志行数 | 61 | **27** |
+| gateway 相关 | 6+ | **2** |
+| SnowLuma 错误 | 18 | **1** |
+
+手机侧的真实返回：
+
+```json
+{ "platform": "android", "android": true, "windows": false,
+  "features": {"ffmpeg":false,"powershell":false,"scheduledTask":false,
+               "textToImage":false,"ocr":false,"watchdog":false},
+  "summary": "平台 android：6 项不可用 —— 语音/点歌（需要 ffmpeg）；点歌脚本、OCR、抖音工具（需要 PowerShell）；…" }
+```
+
+### 测试
+
+`test-platform-capabilities.mjs`（8 条）：节流三条（同 key、跨窗口补省略、不同 key 隔离）+
+平台探测五条（Windows 全可用、Android 六项缺失、有 ffmpeg 不算缺、describe 文案、PATH 跨平台）。
+
+**审计 182/182。**
+
 ## 2026-11-02 — 0.5.42：版本号规则改成「100 个小版本 = 1 个 minor」
 
 ### 规则

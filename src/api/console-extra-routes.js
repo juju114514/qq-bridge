@@ -32,6 +32,7 @@ import { handleGatewayControlRoute } from './gateway-control-route.js';
 import { handleMusicAuthRoute } from './music-auth-route.js';
 import { handleMusicQqRoute } from './music-qq-route.js';
 import { handleContextUsageRoute } from './context-usage-route.js';
+import { handlePlatformRoute } from './platform-route.js';
 import { handleReportRoute } from './report-route.js';
 import { createPeopleListHandler } from './people-list.js';
 import { createSchedulerRoutes } from './scheduler-routes.js';
@@ -52,7 +53,6 @@ export async function handleExtraRoutes(ctx = {}) {
     return true;
   }
 
-
   // GET /api/overview —— 总览仪表盘（只读聚合，一个时间戳 + 每项自己的 at）
   if (req.method === 'GET' && url.pathname === '/api/overview') {
     const d = resolveDeps();
@@ -71,7 +71,6 @@ export async function handleExtraRoutes(ctx = {}) {
     await handler.handle();
     return true;
   }
-
 
   // GET /api/supervisor —— 守护进程视图（存活以进程为准，历史来自日志）
   if (req.method === 'GET' && url.pathname === '/api/supervisor') {
@@ -120,6 +119,7 @@ export async function handleExtraRoutes(ctx = {}) {
   // GET/POST /api/gateway/accounts —— 网关多账号
   if (await handleGatewayAccountsRoute({ req, url, sendJson, readBody: ctx.readBody, deps: resolveDeps })) return true;
 
+  if (await handlePlatformRoute({ req, url, sendJson })) return true;
   if (await handleContextUsageRoute({ req, url, sendJson, deps: resolveDeps })) return true;   // 上下文用量 0.4.141
   // QQ 音乐点歌（0.4.136）
   if (await handleMusicQqRoute({ req, url, sendJson, readBody, deps: resolveDeps })) return true;

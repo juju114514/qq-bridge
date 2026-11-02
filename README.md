@@ -279,7 +279,7 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 
 ## 版本怎么看
 
-> 📌 **文档版本：0.5.42**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
+> 📌 **文档版本：0.5.43**（与 `package.json` 一同发布；改版本用 `node scripts/bump-version.mjs <版本>`，
 > 有守卫 `check-readme-version.mjs` 校验它和代码是否一致。）
 
 

@@ -361,6 +361,17 @@ const roleCardRaw = fs.readFileSync(path.join(root, 'src/core/prompt.js'), 'utf8
     );
   }
 
+  // src/log-throttle.js：bridge.js 从它 import 了 createThrottledLogger（0.5.43）。
+  {
+    const raw = fs.readFileSync(path.join(root, 'src/log-throttle.js'), 'utf8');
+    const body = stripExports(stripImports(raw));
+    vm.runInContext(
+      `Object.assign(globalThis, (() => {\n${body}\nreturn { createThrottledLogger };\n})());`,
+      context,
+      { filename: 'src/log-throttle.js' },
+    );
+  }
+
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);
