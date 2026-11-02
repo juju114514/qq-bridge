@@ -15,6 +15,7 @@ import { resolvePersona, composeSystemPrompt } from './persona.js';
 import { resolveApiKey } from '../secret-box.js';
 import { formatLongTerm } from '../memory-store.js';
 import { getSharedRouter } from './brain-router.js';
+import { readHandoff, writeHandoff, buildHandoffBrief } from './handoff.js';
 
 const DEFAULT_SYSTEM = '你是一个在 QQ 群里聊天的中文助手。根据给定的上下文和当前消息，写一条自然、简短、像本人的回复（不超过 80 字）。'
   + '需要看更多上下文就调用工具；要开口说话就用 qq_send_message 工具发出去，不要只把回复写在正文里。';
@@ -34,10 +35,26 @@ export async function runLocalAgentTurn(input = {}) {
   // 自动模式：中继可达就走 PC 的 DSH（那边有本地工具与更强的模型），否则自己扛
   if (a.mode === 'auto' && typeof input.dshDeliver === 'function') {
     const router = getSharedRouter(cfg, { log });
+    const h = readHandoff(stateDir);
     if (router.brain === 'dsh') {
+      // 切到 DSH：把手机上聊过的内容打成交接包，附在这次 prompt 前面
+      let outbound = promptText;
+      if (h.lastBrain && h.lastBrain !== 'dsh') {
+        const brief = buildHandoffBrief({ stateDir, key, from: '手机本地', to: 'PC 的 DSH' });
+        if (brief) { outbound = brief + '\n\n' + promptText; log('[agent] 已附交接包 → DSH（' + brief.length + ' 字）'); }
+      }
+      writeHandoff(stateDir, { ...h, lastBrain: 'dsh' });
       log('[agent] auto → DSH（中继可达）');
-      await input.dshDeliver(key, promptText, {});
+      await input.dshDeliver(key, outbound, {});
       return { ok: true, sent: true, steps: 0, reply: '', usage: {}, brain: 'dsh' };
+    }
+    if (h.lastBrain === 'dsh') {
+      // 从 DSH 切回本地：交接包塞进系统提示（一次性），随后清掉
+      const brief = buildHandoffBrief({ stateDir, key, from: 'PC 的 DSH', to: '手机本地' });
+      if (brief) { input.handoffBrief = brief; log('[agent] 已附交接包 → 本地（' + brief.length + ' 字）'); }
+      writeHandoff(stateDir, { ...h, lastBrain: 'local' });
+    } else if (h.lastBrain !== 'local') {
+      writeHandoff(stateDir, { ...h, lastBrain: 'local' });
     }
   }
   if (!apiKey) return { ok: false, sent: false, steps: 0, reply: '', usage: {}, error: '没有 apiKey' };
@@ -66,13 +83,14 @@ export async function runLocalAgentTurn(input = {}) {
   const persona = resolvePersona(cfg, { cwd: process.cwd(), maxChars: Number(a.personaMaxChars) || 3000 });
   // P2：长期记忆（跨重启存活的那一层）按相关度挑几条塞进提示——这是"不失忆"的关键
   const memoryBlock = readLongTermBlock(stateDir, key, promptText);
+  const handoffBlock = String(input.handoffBrief || '').trim();
   const loop = createAgentLoop({
     provider,
     tools: wrapped,
     systemPrompt: composeSystemPrompt({
       persona: persona.text,
       keyLine,
-      base: [memoryBlock, String(a.systemPrompt || DEFAULT_SYSTEM)].filter(Boolean).join('\n\n')
+      base: [handoffBlock, memoryBlock, String(a.systemPrompt || DEFAULT_SYSTEM)].filter(Boolean).join('\n\n')
     }),
     // 有工具时至少给两轮：一轮看上下文，一轮发消息
     maxSteps: Number(a.maxSteps) || 4,
