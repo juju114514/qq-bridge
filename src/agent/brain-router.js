@@ -149,3 +149,11 @@ export function getSharedRouter(cfg = {}, o = {}) {
 export function sharedRouterStatus() {
   return shared ? shared.status() : null;
 }
+
+
+/** 控制台手动切一次（没有实例就先不强制，返回 null） */
+export function sharedRouterForce(brain, reason = 'manual') {
+  if (!shared) return null;
+  shared.force(brain, reason);
+  return shared.status();
+}

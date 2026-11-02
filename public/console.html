@@ -3255,9 +3255,12 @@ button:active:not(:disabled) {
       <div class="card" style="padding:12px">
         <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">本地大脑</div>
         <div id="hubAgent" style="font-size:13px;line-height:1.7">（加载中…）</div>
+        <div id="hubBrain" style="margin-top:8px;font-size:12px;line-height:1.6;color:#9fb0cc"></div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-          <button class="btn" data-hub-mode="dsh" type="button">用 DSH</button>
-          <button class="btn" data-hub-mode="local" type="button">用手机本地</button>
+          <button class="btn" data-hub-mode="dsh" type="button">用 DSH（写配置）</button>
+          <button class="btn" data-hub-mode="local" type="button">用手机本地（写配置）</button>
+          <button class="btn" data-hub-brain="dsh" type="button">立刻切 DSH</button>
+          <button class="btn" data-hub-brain="local" type="button">立刻切本地</button>
         </div>
         <div id="hubAgentMsg" style="margin-top:8px;font-size:12px;color:#8fa3c4"></div>
       </div>
@@ -8139,11 +8142,36 @@ async function spaceDeletePost(tid, btn) {
         'Key：' + (a.keyEnc ? '已加密' : (a.hasKey ? '明文' : '未配置'));
       const idx = document.getElementById('hubIndex');
       if (idx) idx.innerHTML = '状态：' + (r.fileIndex.enabled ? '已启用' : '已关闭') + '<br>根目录：' + ((r.fileIndex.roots || []).join('、') || '（未配置）');
+      renderHubBrain(r.brainRouter, a);
       await loadHubIndexStatus();
       await loadHubSecret();
     } catch (e) {
       agentBox.textContent = '读取失败：' + (e && e.message ? e.message : e);
     }
+  }
+  function renderHubBrain(br, agent) {
+    const box = document.getElementById('hubBrain');
+    if (!box) return;
+    if (!br) {
+      box.innerHTML = '路由：<b>' + ((agent && agent.brain) || '—') + '</b>（还没初始化，发一条消息或等一次探测）';
+      return;
+    }
+    const label = br.brain === 'dsh' ? 'PC 的 DSH' : '手机本地';
+    const hist = (br.history || []).slice(-3).reverse()
+      .map((x) => new Date(x.at).toLocaleTimeString('zh-CN') + ' → ' + (x.to === 'dsh' ? 'DSH' : '本地') + '（' + x.reason + '）')
+      .join('<br>');
+    box.innerHTML = '现在谁在思考：<b style="color:#9fd6a0">' + label + '</b><br>' +
+      '健康：可达 ' + (br.okStreak || 0) + ' 次 / 失败 ' + (br.failStreak || 0) + ' 次' +
+      (br.lastProbeOk ? ' · 上次探测 ✓' : ' · 上次探测 ✗') +
+      (hist ? '<br><span style="color:#8fa3c4">最近切换：<br>' + hist + '</span>' : '');
+  }
+  async function hubForceBrain(brain) {
+    const box = document.getElementById('hubBrain');
+    try {
+      const r = await api('/api/hub/brain', 'POST', { brain });
+      if (!r || r.ok === false) throw new Error((r && r.error) || '切换失败');
+      await loadHub();
+    } catch (e) { if (box) box.innerHTML = '切换失败：' + (e && e.message ? e.message : e); }
   }
   async function loadHubIndexStatus() {
     const box = document.getElementById('hubIndex');
@@ -8223,6 +8251,8 @@ async function spaceDeletePost(tid, btn) {
     } catch (e) { /* 静默 */ }
   }
   document.addEventListener('click', (ev) => {
+    const brainBtn = ev.target.closest('[data-hub-brain]');
+    if (brainBtn) { hubForceBrain(brainBtn.getAttribute('data-hub-brain')); return; }
     const modeBtn = ev.target.closest('[data-hub-mode]');
     if (modeBtn) { hubSetMode(modeBtn.getAttribute('data-hub-mode')); return; }
     const delBtn = ev.target.closest('[data-hub-mem-del]');

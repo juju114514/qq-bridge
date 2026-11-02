@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePersona } from '../agent/persona.js';
 import { atomicWriteJson } from '../atomic-write.js';
-import { sharedRouterStatus } from '../agent/brain-router.js';
+import { sharedRouterStatus, sharedRouterForce } from '../agent/brain-router.js';
 
 
 /** 写 config.json：走仓库统一的原子写（rename 只允许出现在 src/atomic-write.js） */
@@ -79,6 +79,17 @@ export async function handleHubRoute(ctx = {}) {
     } catch (error) {
       sendJson({ ok: false, error: String(error?.message ?? error).slice(0, 200) }, 500);
     }
+    return true;
+  }
+
+  // ── 手动切大脑（P4）：不写 config，只影响运行时；重启后按 auto 重新判定 ──
+  if (url.pathname === '/api/hub/brain' && req.method === 'POST') {
+    const body = await readBody();
+    const brain = String(body?.brain || '');
+    if (!['dsh', 'local'].includes(brain)) { sendJson({ ok: false, error: 'brain 只能是 dsh 或 local' }, 400); return true; }
+    const st = sharedRouterForce(brain, 'manual(console)');
+    if (!st) { sendJson({ ok: false, error: '路由还没初始化（先发一条消息，或等一次探测）' }, 409); return true; }
+    sendJson({ ok: true, brain: st.brain, router: st });
     return true;
   }
 
