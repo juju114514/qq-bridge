@@ -177,6 +177,7 @@ const tests = [
   'test-brain-router.mjs',
   'test-handoff.mjs',
   'test-dsh-relay.mjs',
+  'test-archive.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

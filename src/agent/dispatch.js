@@ -16,6 +16,7 @@ import { resolveApiKey } from '../secret-box.js';
 import { formatLongTerm } from '../memory-store.js';
 import { getSharedRouter } from './brain-router.js';
 import { readHandoff, writeHandoff, buildHandoffBrief } from './handoff.js';
+import { appendArchive } from './archive.js';
 
 const DEFAULT_SYSTEM = '你是一个在 QQ 群里聊天的中文助手。根据给定的上下文和当前消息，写一条自然、简短、像本人的回复（不超过 80 字）。'
   + '需要看更多上下文就调用工具；要开口说话就用 qq_send_message 工具发出去，不要只把回复写在正文里。';
@@ -100,8 +101,14 @@ export async function runLocalAgentTurn(input = {}) {
     doneWhen: () => sent
   });
 
+  // 原文归档：进来的一条先落盘（出去的那条在回合结束、确认发出后落）
+  appendArchive({ stateDir, key, sender: '对方', text: promptText });
+
   const started = Date.now();
   const r = await loop.run({ userText: promptText });
+
+  // 发出去的那条也进归档（只记成功发出的）
+  if (sent && r && r.reply) appendArchive({ stateDir, key, sender: '我', text: String(r.reply) });
 
   // 兜底：模型只写了正文没调工具 → 由这里发出去（用户不该看到"没反应"）
   if (!sent && r.reply && !r.error) {

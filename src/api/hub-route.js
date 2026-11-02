@@ -8,6 +8,7 @@ import path from 'node:path';
 import { resolvePersona } from '../agent/persona.js';
 import { atomicWriteJson } from '../atomic-write.js';
 import { sharedRouterStatus, sharedRouterForce } from '../agent/brain-router.js';
+import { findArchive, readArchive } from '../agent/archive.js';   // hub-route-archive
 
 
 /** 写 config.json：走仓库统一的原子写（rename 只允许出现在 src/atomic-write.js） */
@@ -114,6 +115,28 @@ export async function handleHubRoute(ctx = {}) {
       canDecrypt: algo === 'dpapi' ? process.platform === 'win32' : algo === 'aes-256-gcm',
       hint: plain ? '明文：跑 node scripts/encrypt-agent-key.mjs --config <部署>/config.json' : ''
     });
+    return true;
+  }
+
+  // ── 原文归档检索（0.5.58）：按字面线索找历史，再按 ref 读原文 ──
+  if (url.pathname === '/api/hub/archive' && req.method === 'GET') {
+    const r = findArchive({
+      stateDir,
+      q: String(url.searchParams.get('q') || ''),
+      key: String(url.searchParams.get('key') || ''),
+      limit: Number(url.searchParams.get('limit') || 8),
+      offset: Number(url.searchParams.get('offset') || 0)
+    });
+    sendJson({ ok: true, at: Date.now(), ...r });
+    return true;
+  }
+  if (url.pathname === '/api/hub/archive/read' && req.method === 'GET') {
+    const r = readArchive({
+      stateDir,
+      ref: String(url.searchParams.get('ref') || ''),
+      limit: Number(url.searchParams.get('limit') || 4000)
+    });
+    sendJson({ at: Date.now(), ...r });
     return true;
   }
 

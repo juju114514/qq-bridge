@@ -3292,6 +3292,15 @@ button:active:not(:disabled) {
       </div>
 
       <div class="card" style="padding:12px">
+        <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">原文检索</div>
+        <div style="display:flex;gap:8px">
+          <input id="hubArcInput" placeholder="搜历史原话，如 钓鱼" style="flex:1;min-width:0;background:#0e1726;border:1px solid #26364f;border-radius:6px;color:#dbe6ff;padding:6px 8px;font-size:12px">
+          <button class="btn" id="hubArcGo" type="button">找</button>
+        </div>
+        <div id="hubArcHits" style="margin-top:8px;font-size:12px;line-height:1.6;max-height:150px;overflow:auto"></div>
+        <pre id="hubArcBody" style="margin-top:8px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.5;background:rgba(12,20,34,.75);border:1px solid #24344f;border-radius:8px;padding:8px;color:#dbe6ff"></pre>
+      </div>
+      <div class="card" style="padding:12px">
         <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">密钥状态</div>
         <div id="hubSecret" style="font-size:13px;line-height:1.7">（加载中…）</div>
         <div style="margin-top:8px;font-size:12px;color:#8fa3c4">控制台只显示状态，不提供「看明文」——那等于把防线拆了。</div>
@@ -8202,6 +8211,32 @@ async function spaceDeletePost(tid, btn) {
       if (msg) msg.innerHTML = '<span style="color:#9fd6a0">已切换到 ' + mode + '</span> · 重启桥接后生效';
       await loadHub();
     } catch (e) { if (msg) msg.textContent = '保存失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubArchiveFind() {
+    const q = (document.getElementById('hubArcInput') || {}).value || '';
+    const hitsBox = document.getElementById('hubArcHits');
+    const body = document.getElementById('hubArcBody');
+    if (!hitsBox) return;
+    if (!q.trim()) { hitsBox.textContent = ''; if (body) body.textContent = ''; return; }
+    hitsBox.textContent = '（查找中…）';
+    try {
+      const r = await api('/api/hub/archive?q=' + encodeURIComponent(q) + '&limit=8');
+      if (!r || r.ok === false) throw new Error((r && r.error) || '查找失败');
+      if (!r.total) { hitsBox.textContent = '没有命中（原文归档只记本地 agent 处理过的消息）'; return; }
+      hitsBox.innerHTML = '共 ' + r.total + ' 条，显示前 ' + r.hits.length + '：<br>' + r.hits.map((x) =>
+        '<div style="margin-bottom:4px"><button class="btn" style="padding:1px 6px;font-size:11px" data-hub-arc-ref="' + encodeURIComponent(x.ref) + '">读</button> ' +
+        '<span style="color:#8fa3c4">' + x.day + '</span> ' + x.text + '</div>').join('');
+    } catch (e) { hitsBox.textContent = '查找失败：' + (e && e.message ? e.message : e); }
+  }
+  async function hubArchiveRead(ref) {
+    const body = document.getElementById('hubArcBody');
+    if (!body) return;
+    body.textContent = '（读取中…）';
+    try {
+      const r = await api('/api/hub/archive/read?ref=' + encodeURIComponent(decodeURIComponent(ref)) + '&limit=4000');
+      if (!r || r.ok === false) throw new Error((r && r.error) || '读取失败');
+      body.textContent = r.text + (r.truncated ? '\n…（已截断，可在 qq_memory_read 里要更多）' : '');
+    } catch (e) { body.textContent = '读取失败：' + (e && e.message ? e.message : e); }
   }
   async function hubSearch() {
     const q = (document.getElementById('hubSearchInput') || {}).value || '';

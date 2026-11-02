@@ -7,6 +7,7 @@
 // 写：走注入进来的 sendToQQ（桥接已有的发送通道，含审计/限流/拦截）
 import fs from 'node:fs';
 import path from 'node:path';
+import { findArchive, readArchive } from './archive.js';
 
 const SAFE_KEY = /^(group|private):[A-Za-z0-9_-]{1,40}$/;
 
@@ -112,6 +113,39 @@ export function createSocialTools(deps = {}) {
         } catch (error) {
           return { ok: false, error: String(error?.message ?? error).slice(0, 200) };
         }
+      }
+    },
+    {
+      name: 'qq_memory_find',
+      description: '在历史原文里按字面线索找（不是语义搜索）。找那天到底怎么说的用它；只回摘录，要全文再用 qq_memory_read。',
+      parameters: {
+        type: 'object',
+        properties: {
+          q: { type: 'string', description: '要找的字或词' },
+          key: { type: 'string', description: '可选：只在某个会话里找' },
+          limit: { type: 'number', description: '返回几条（默认 8，最多 40）' },
+          offset: { type: 'number', description: '跳过前 N 条，用于翻页' }
+        },
+        required: ['q']
+      },
+      async run(args = {}) {
+        const r = findArchive({ stateDir, q: String(args.q || ''), key: String(args.key || ''), limit: args.limit, offset: args.offset });
+        return r;
+      }
+    },
+    {
+      name: 'qq_memory_read',
+      description: '按 qq_memory_find 返回的 ref 读原文（默认 4000 字，最多 16000），用于深挖上下文。',
+      parameters: {
+        type: 'object',
+        properties: {
+          ref: { type: 'string', description: '形如 2026-11-03/private_10001.md:12' },
+          limit: { type: 'number', description: '最多读多少字符' }
+        },
+        required: ['ref']
+      },
+      async run(args = {}) {
+        return readArchive({ stateDir, ref: String(args.ref || ''), limit: args.limit });
       }
     }
   ];
