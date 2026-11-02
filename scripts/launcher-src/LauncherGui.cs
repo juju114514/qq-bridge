@@ -1,4 +1,4 @@
-// qq-bridge 小应用（GUI，0.4.83）
+// qq-bridge 小应用（GUI，0.4.123）
 //
 // 用户："做成一个小应用那样的，有很多按钮，每个按键代表一个指令"；名字叫「排错程序」——
 // 因为这 12 个按钮干的就是排错：体检、看日志、自检、查更新、扫码、停止。
@@ -67,12 +67,12 @@ static class LauncherGui
 
         // ── 按钮区：4 列 × 3 行（每个 = 一条命令）────────────────────────
         var grid = new TableLayoutPanel();
-        grid.SetBounds(14, 62, w, 172);
+        grid.SetBounds(14, 62, w, 228);
         grid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         grid.ColumnCount = 4;
-        grid.RowCount = 3;
+        grid.RowCount = 4;
         for (int c = 0; c < 4; c++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-        for (int r = 0; r < 3; r++) grid.RowStyles.Add(new RowStyle(SizeType.Percent, 33.3f));
+        for (int r = 0; r < 4; r++) grid.RowStyles.Add(new RowStyle(SizeType.Percent, 25f));
         form.Controls.Add(grid);
 
         AddButton(grid, 0, 0, "① 体检", "快速自检：Node / 配置 / 网关 / 桥接", () => RunNode("scripts\\launcher.mjs", "--check"));
@@ -90,6 +90,13 @@ static class LauncherGui
         AddButton(grid, 2, 2, "⑪ 运行报告", "打开控制台 → 运行报告", () => OpenUrl("http://127.0.0.1:" + ConsolePort() + "/#report"));
         AddButton(grid, 3, 2, "⑫ 清空输出", "清空下面的输出", () => { output.Clear(); SetStatus("就绪"); });
 
+        // ── 第 4 行：首次上手（0.4.123）────────────────────────────────
+        // 别人 clone/解压后最缺的是"接下来点哪个"；这一行就是给他答案的。
+        AddButton(grid, 0, 3, "⑬ 首次向导", "体检 → 依赖 → 配置 → DSH 预设 →（可选）启动", () => RunPs("scripts\\first-run.ps1"));
+        AddButton(grid, 1, 3, "⑭ 打开说明", "打不开就看我：说明.txt / QUICKSTART", OpenReadme);
+        AddButton(grid, 2, 3, "⑮ 手机连接", "显示连接二维码（手机扫一下）", () => OpenUrl("http://127.0.0.1:" + ConsolePort() + "/#devices"));
+        AddButton(grid, 3, 3, "⑯ 复制令牌", "把控制台令牌复制到剪贴板", CopyConsoleToken);
+
         // ── 输出区 ────────────────────────────────────────────────────
         output = new TextBox();
         output.Multiline = true;
@@ -100,7 +107,7 @@ static class LauncherGui
         output.BackColor = Color.FromArgb(12, 18, 28);
         output.ForeColor = Color.FromArgb(210, 226, 255);
         output.BorderStyle = BorderStyle.FixedSingle;
-        output.SetBounds(14, 240, w, form.ClientSize.Height - 300);
+        output.SetBounds(14, 296, w, form.ClientSize.Height - 356);
         output.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         form.Controls.Add(output);
 
@@ -125,6 +132,21 @@ static class LauncherGui
         quit.ForeColor = Color.Gainsboro;
         quit.Click += (s, e) => form.Close();
         form.Controls.Add(quit);
+
+        // 首启向导：没有 config.json 说明还没配过，直接问一句（不打扰老用户）
+        try
+        {
+            var cfgPath = Path.Combine(root, "config.json");
+            if (!File.Exists(cfgPath))
+            {
+                var ret = MessageBox.Show(
+                    "第一次运行：还没有 config.json。\n\n要走「首次向导」吗？（体检 → 装依赖 → 生成配置 → DSH 预设）\n\n" +
+                    "选「否」可以自己先看看输出区的提示。",
+                    "QQ 桥接 · 首次运行", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (ret == DialogResult.Yes) RunPs("scripts\\first-run.ps1");
+            }
+        }
+        catch { /* 向导打不开也不能挡住主界面 */ }
 
         if (node == null)
         {
@@ -191,6 +213,29 @@ static class LauncherGui
     }
 
     static void RunPsInline(string commandLine) { StartProcess("cmd.exe", "/c " + commandLine, commandLine); }
+
+    // 打开说明：优先 说明.txt（绿色包里有），否则 QUICKSTART.md，再否则 README.md
+    static void OpenReadme()
+    {
+        var candidates = new[] { "\u8bf4\u660e.txt", "QUICKSTART.md", "README.md" };
+        foreach (var name in candidates)
+        {
+            var p = Path.Combine(root, name);
+            if (File.Exists(p)) { Process.Start(new ProcessStartInfo(p) { UseShellExecute = true }); SetStatus("已打开：" + name); return; }
+        }
+        OpenUrl("https://github.com/juju114514/qq-bridge#readme");
+    }
+
+    // 复制控制台令牌：手机/别的浏览器要连进来时，直接粘
+    static void CopyConsoleToken()
+    {
+        var p = Path.Combine(root, "state", "console-token");
+        if (!File.Exists(p)) { Append("⚠ 还没有 state/console-token —— 先启动一次桥接，它会自己生成。"); return; }
+        var token = File.ReadAllText(p).Trim();
+        if (token.Length == 0) { Append("⚠ 令牌文件是空的，删掉后重启桥接会重新生成。"); return; }
+        try { Clipboard.SetText(token); Append("✓ 已复制控制台令牌（" + token.Length + " 字符）到剪贴板。"); SetStatus("令牌已复制"); }
+        catch (Exception ex) { Append("✗ 复制失败：" + ex.Message); }
+    }
 
     static void StartProcess(string file, string arguments, string label)
     {

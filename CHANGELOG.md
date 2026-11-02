@@ -2,6 +2,53 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-02 — 0.4.123：A 方案收尾（首次向导 + APK 常驻通知）
+
+用户定调：**PC 为主，只有手机的用户也要能用**。这一版先补"上手"这一层，
+不改架构（桥接仍在电脑上跑）。
+
+### 1) 排错程序.exe：3 行按钮 → 4 行，新增「首次向导」
+
+| 按钮 | 作用 |
+| --- | --- |
+| ⑬ 首次向导 | 直接跑 `scripts/first-run.ps1`：体检 → 装依赖 → 生成配置 → DSH 预设 →（可选）启动 |
+| ⑭ 打开说明 | 依次找 `说明.txt` / `QUICKSTART.md` / `README.md` |
+| ⑮ 手机连接 | 打开控制台「手机设备」页看二维码 |
+| ⑯ 复制令牌 | 把 `state/console-token` 复制到剪贴板（手机连接要粘它） |
+
+另外：**首次启动时若没有 `config.json`，会自动弹窗问「要不要走向导」**——老用户不受打扰。
+
+参考的是 AstrBot 泡泡版（`MuFengDR/AstrBot-Bubble-Android-App`）的交互：
+它用「四步安装面板 + 绿勾状态」把零基础用户带过初始化，我们原来只有一堆裸按钮。
+
+### 2) APK：前台服务 + 常驻通知
+
+新增 `BridgeService.java`：
+
+- 连上控制台即 `startForeground`，Android 8+ 不再因切后台把 WebView 回收
+- 通知标题「QQ 桥接」、正文「已连接控制台」、展开显示地址
+- 断开（回到连接表单）时停止服务
+- 权限：`FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` / `POST_NOTIFICATIONS`
+
+编译验证（aapt2 dump，不是"应该能行"）：
+
+```
+uses-permission: android.permission.FOREGROUND_SERVICE            ✓
+uses-permission: android.permission.FOREGROUND_SERVICE_DATA_SYNC  ✓
+service: dev.qqbridge.shell.BridgeService  foregroundServiceType=0x1 ✓
+```
+
+产物 `app-release.apk` 3.9 MB。**未做真机启动验证**（模拟器没起来），
+下次上机时确认通知是否出现、息屏后 WebView 是否还活着。
+
+### 3) 关于"只有手机的用户"
+
+这条路（AstrBot 泡泡版）的真实底子是 **Code LFA 的 Android Ubuntu 容器 + NapCat**，
+代价是包体 +200 MB、首次安装要联网拉几百 MB、失败要清数据重来。
+本版**没有**走这条路，只把"PC 方案的安装体验"补上；
+真·无电脑跑桥接（把 Node 塞进 APK）留作后续评估。
+
+**审计 175/175。**
 ## 2026-11-02 — 0.4.122：按预演报告修三处真问题（隐私回退 / 备份范围 / 端口不拦）
 
 外部拿 Docker/Linux 模拟盘做了「真装上游 → 造 state → 跑 adopt-fork.ps1」的预演，
