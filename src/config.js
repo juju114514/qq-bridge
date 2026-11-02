@@ -11,6 +11,8 @@
 // 依赖注入是为了**保持行为完全不变**：readJsonSafe / normalizeOwnerQQ / log 等仍在
 // bridge.js 里，签名里原样传入，逻辑一个字没改。
 
+import { normalizeGateway, toLegacySnowlumaShape } from './gateway-config.js';
+
 export function createConfigLoader(deps = {}) {
   const {
     readJsonSafe,
@@ -69,7 +71,10 @@ export function createConfigLoader(deps = {}) {
     // 通道开关：false = sidecar-only（只提供控制台/契约/定时器，不连网关、不占通道），
     // 用来把通道让给 DSH 插件。默认 true。
     channel: { enabled: file.channel?.enabled !== false },
-    snowluma: { wsUrl: 'ws://127.0.0.1:3001', accessToken: '', ...(file.snowluma ?? {}) },
+    // 网关（OneBot 实现）归一化：新写法 gateway.{provider,httpUrl,wsUrl,token}，老写法 snowluma.* 继续有效。
+    // 桥接内部仍读 snowluma.*，由这里映射（0.5.45）。
+    gateway: normalizeGateway(file),
+    snowluma: toLegacySnowlumaShape(normalizeGateway(file)),
     // 空 => 每个会话在 state/agents/<key> 下建独立工作目录
     sessionCwd: file.sessionCwd ?? '',
     agentPreset: file.agentPreset ?? 'qq-chat',

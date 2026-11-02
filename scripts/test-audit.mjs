@@ -171,6 +171,7 @@ const tests = [
   'test-memory-guard.mjs',
   'test-platform-capabilities.mjs',
   'test-dsh-probe.mjs',
+  'test-gateway-config.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

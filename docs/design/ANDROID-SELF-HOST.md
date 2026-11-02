@@ -49,7 +49,27 @@ launch token 是进程启动凭据，拒绝发往非回环地址（需显式 `ds
             {"name":"auth","ok":true,"detail":"有浏览器会话密钥"}] }
 ```
 
-下一步（未做）：P0-b 网关抽象 + P2 NapCat 上手机（见第 4 节）。
+### P0-b 也做完了（2026-11-03）
+
+网关不再写死 SnowLuma，配置可切换（老配置无感）：
+
+```
+gateway: { provider: "napcat", httpUrl, wsUrl, token }   ← 新写法
+snowluma: { wsUrl, accessToken }                          ← 老写法，继续有效
+onebot: { http, ws, token }                               ← 历史写法，也认
+```
+
+优先级 `gateway.*` > `snowluma.*` > `onebot.*` > 预设。桥接内部仍读 `cfg.snowluma.*`，
+由归一化层映射，所以**零改动**接入。
+
+能力矩阵（差异显式化，缺的降级而不是报"未知错误"）：
+
+| 能力 | SnowLuma | NapCat |
+| --- | --- | --- |
+| 文本/图片/语音/群成员 | ✅ | ✅ |
+| 系统表情实体、收藏表情、QQ 空间 | ✅ | ❌ |
+
+下一步（未做）：P2 NapCat 上手机（见第 4 节）。
 
 ## 1. 先说结论
 

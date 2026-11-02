@@ -14,6 +14,52 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.45：网关抽象（SnowLuma / NapCat 可切换）+ 能力矩阵
+
+### 为什么
+
+桥接内部到处在写 `cfg.snowluma.*`，而手机方案要换成 **NapCat**（Linux/Android 上的 OneBot 实现）。
+一次性改完风险太大，所以这一版做**兼容归一化**：
+
+```
+配置可以写：gateway: { provider: "napcat", httpUrl, wsUrl, token }
+桥接内部仍读：cfg.snowluma.*（由归一化层映射过去）
+老配置：snowluma: { wsUrl, accessToken } 继续有效
+历史配置：onebot: { http, ws, token } 也能识别
+```
+
+优先级：`gateway.*` > `snowluma.*` > `onebot.*` > 预设默认值。
+
+### 端点预设
+
+| provider | http | ws |
+| --- | --- | --- |
+| `snowluma`（默认） | `http://127.0.0.1:3000` | `ws://127.0.0.1:3001` |
+| `napcat` | `http://127.0.0.1:6099` | `ws://127.0.0.1:6199` |
+
+未知 provider（如 `llonebot`）不会崩：标 `unknownProvider`，能力按 SnowLuma 兜底。
+
+### 能力矩阵
+
+两个网关不是等价物。这版把差异显式化：
+
+| 能力 | SnowLuma | NapCat |
+| --- | --- | --- |
+| 文本 / 图片 / 语音 / 群成员 | ✅ | ✅ |
+| 系统表情实体（`fetch_face_entity`） | ✅ | ❌ |
+| 收藏表情同步 | ✅ | ❌ |
+| QQ 空间 | ✅ | ❌ |
+
+`describeGatewayLimits()` 输出人话：`NapCatQQ（napcat）@ 127.0.0.1:6199：不支持 系统表情实体（fetch_face_entity）、收藏表情同步、QQ 空间`
+
+### 测试
+
+`test-gateway-config.mjs`（10 条）：空配置向后兼容、老写法标记 legacy、NapCat 预设端点、
+能力矩阵、gateway 优先于 snowluma、onebot 历史配置、未知 provider 兜底、URL 尾斜杠、
+映射回老结构、describe 文案。
+
+**审计 184/184。**
+
 ## 2026-11-03 — 0.5.44：手机连上远程 DSH 了（P0-a 完成）
 
 ### 实测（模拟器 + 真 DSH）

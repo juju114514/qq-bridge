@@ -372,6 +372,17 @@ const roleCardRaw = fs.readFileSync(path.join(root, 'src/core/prompt.js'), 'utf8
     );
   }
 
+  // src/gateway-config.js：config.js 从它 import 了 normalizeGateway / toLegacySnowlumaShape（0.5.45）。
+  {
+    const raw = fs.readFileSync(path.join(root, 'src/gateway-config.js'), 'utf8');
+    const body = stripExports(stripImports(raw));
+    vm.runInContext(
+      `Object.assign(globalThis, (() => {\n${body}\nreturn { normalizeGateway, toLegacySnowlumaShape, GATEWAY_PRESETS, describeGatewayLimits };\n})());`,
+      context,
+      { filename: 'src/gateway-config.js' },
+    );
+  }
+
   vm.runInContext(source + '\nglobalThis.auditReady = main();', context);
   const bridge = await context.auditReady;
   bridge.setPresets(['standard', 'qq-chat', 'qq-chat-v2']);
