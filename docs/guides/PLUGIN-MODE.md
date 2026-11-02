@@ -247,7 +247,7 @@ node scripts/sync-snowluma-token.mjs          # 真改
 | 投递 | 会话建了、消息没进去、不报错 | 新建 agent 的 `whenIdle()` 可能永不 resolve | `Promise.race(whenIdle(), 1.5s)` |
 | Agent 启动 | 有入队、无任何 turn 事件 | `agents.create` 没给模型（`agentOptions:{}` + 无 `setup`） | 取 `ctx.get('agentDefaultModel').currentSelection()`，传 `{provider, model}` + `installModelSelection` |
 | Agent 启动 | 同上 | `meta` 没带 `cwd`（宿主建 agent 必带） | `cwd = state/agents/<key>`，先 `mkdir -p` |
-| **Windows 路径** | `mkdir …\stategents\group:994920175: ENOENT` | **Windows 文件名不允许 `:`** | 目录名把 `:` 换成 `_` |
+| **Windows 路径** | `mkdir …\stategents\group:100000001: ENOENT` | **Windows 文件名不允许 `:`** | 目录名把 `:` 换成 `_` |
 | 回复转发 | 模型明明回答了，QQ 里没有 | 会话 id 撞车时 driver 用 fallback id（`…#xxxx`），监听却按原始 id 匹配 | 用 `deliver()` 返回的**真实** sessionId 建映射 |
 | 只 @ 不带字 | `入站丢弃（empty）` | 用户发 `@小鲸鱼 `（只有 @）被判空文本丢掉 | 群消息且 @ 了自己 → 当成一次"戳"，给占位文本 |
 

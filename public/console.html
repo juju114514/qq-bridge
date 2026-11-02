@@ -7385,7 +7385,7 @@ function setSpaceTab(name) {
   try { sessionStorage.setItem('spaceTab', name); } catch (e) { /* 无所谓 */ }
 }
 // ── 重置会话（0.4.91）─────────────────────────────────────────────
-// key 形如 group:630679184 / private:1599683156 → 人能读的标签。
+// key 形如 group:100000002 / private:10002 → 人能读的标签。
 // 注意：/api/socialV2/states 返回的 conversations 是**数组**（不是对象），
 // 早先直接用 Object.keys() 会得到 "0","1","2"… —— 下拉里显示的就是下标。
 function describeSessionKey(key) {

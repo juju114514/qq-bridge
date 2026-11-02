@@ -20,7 +20,7 @@ const base = {
   gatewayStats: { disconnects: 3, lastRecoverAt: now - 3600_000 },
   messages: { runs: 120, errors: 0 },
   disk: { freeGb: 20, totalGb: 60, path: '<repo>' },
-  configSummary: { mode: 'reserved2', ownerQQ: '1599683156', groups: 2, privates: 1, officialEnabled: true, officialProbe: false }
+  configSummary: { mode: 'reserved2', ownerQQ: '10002', groups: 2, privates: 1, officialEnabled: true, officialProbe: false }
 };
 
 check('健康状态 → 总体 PASS，且包含关键小节', () => {
@@ -68,10 +68,10 @@ check('脱敏：长数字、十六进制、路径、令牌都不原样出现', (
   const r = m.buildReport({
     ...base,
     repoPath: 'D:\\deepseek工作区\\qq-bridge',
-    messages: { runs: 10, errors: 1, lastError: '发送失败 uid=3976372760 path=D:\\deepseek工作区\\qq-bridge\\state\\x.log token=sk-abcdef1234567890' }
+    messages: { runs: 10, errors: 1, lastError: '发送失败 uid=20003 path=D:\\deepseek工作区\\qq-bridge\\state\\x.log token=sk-abcdef1234567890' }
   });
-  assert.ok(!r.markdown.includes('3976372760'), '完整 QQ 号不应出现');
-  assert.ok(!r.markdown.includes('D:\\deepseek工作区'), '私有路径不应出现');
+  assert.ok(!r.markdown.includes('10001'), '完整 QQ 号不应出现');
+    assert.ok(!r.markdown.includes('D:\\deepseek工作区'), '私有路径不应出现');
   assert.ok(!r.markdown.includes('sk-abcdef1234567890'), '令牌不应出现');
   assert.ok(r.markdown.includes('<repo>') || r.markdown.includes('***'), '应留下脱敏痕迹');
 });

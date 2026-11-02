@@ -34,7 +34,7 @@ check('最多保留 max 条（默认 200）', () => {
 });
 
 check('老备份（只有 unread）也能恢复', () => {
-  const snapshot = { key: 'group:994920175', messages: [], unread: [{ seq: 445, messageId: 'a', text: '有备份' }, { seq: 446, messageId: 'b', text: '烧烧你的' }] };
+  const snapshot = { key: 'group:100000001', messages: [], unread: [{ seq: 445, messageId: 'a', text: '有备份' }, { seq: 446, messageId: 'b', text: '烧烧你的' }] };
   const patch = m.buildRestorePatch({ snapshot, live: {} });
   assert.equal(patch.recentMessages.length, 2, 'unread 应兜底进历史');
   assert.equal(patch.addedRecent, 2);

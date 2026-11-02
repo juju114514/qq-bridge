@@ -35,7 +35,7 @@ git rev-list --count origin/main..upstream/main   → 92    （落后上游）
 | #85 | forward-media 会话校验 + **媒体端口白名单** | ⚠️ **部分缺失** | 没有端口白名单（`allowedPorts` 不存在） |
 | #86 | 提问通道 owner 门 | ✅ 有 | `bridge.js` L2987 |
 | #87 | 表情备注/黑话按会话隔离 | ✅ 有（自研隔离） | 会话键即隔离维度 |
-| #88 | agent 视角隐藏 QQ 号/管理员身份 | ❌ **没有，且方向相反** | 我们的 prompt 明确写「QQ 3976372760」 |
+| #88 | agent 视角隐藏 QQ 号/管理员身份 | ❌ **没有，且方向相反** | 我们的 prompt 明确写「QQ 10001」 |
 | #100/#118 | 唤醒注入完整人格卡 + 节奏注入 | ✅ 有 | `roles.js` L26 / 快照含 `role.hint` |
 | #63 | DSH 随机端口自动发现 + rebind | ✅ 有 | `prelude.js` L8；真机日志「端口漂移 3080 → 63262」 |
 | 596626f | sendChain 严格模式 ReferenceError | ✅ 我们的声明在位（L4303） | 审计 129/129 通过 |
@@ -57,7 +57,7 @@ git rev-list --count origin/main..upstream/main   → 92    （落后上游）
 
 上游在 agent 视角里把 QQ 号、管理员身份脱敏（只给昵称/标记）。
 
-我们反过来：prompt 明确告诉模型「你的昵称是 X（QQ 3976372760）」，理由是**避免它把 @自己 当成 @别人**（issue #29 那类问题）。
+我们反过来：prompt 明确告诉模型「你的昵称是 X（QQ 10001）」，理由是**避免它把 @自己 当成 @别人**（issue #29 那类问题）。
 
 两者目标不同：
 

@@ -55,8 +55,8 @@ check('文本抽取：bridge 的 onebot text() 与插件 extractText 一致', ()
 });
 
 check('私聊准入：插件不拦，bridge 的 decideFromOneBot 对 owner 放行（语义不冲突）', () => {
-  const ownerEvent = ev({ message_type: 'private', user_id: 1599683156, group_id: undefined });
-  const d = priv.decideFromOneBot({}, ownerEvent, { ownerQQ: '1599683156', allowList: [], friends: null });
+  const ownerEvent = ev({ message_type: 'private', user_id: 10002, group_id: undefined });
+  const d = priv.decideFromOneBot({}, ownerEvent, { ownerQQ: '10002', allowList: [], friends: null });
   assert.equal(d.allowed, true);
   assert.equal(d.reason, 'owner');
   // 插件侧私聊不设白名单（P1 简化）→ 也应放行同一个会话

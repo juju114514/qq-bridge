@@ -33,7 +33,7 @@ check('官方通道 + markdown 关 → 明确纯文本', () => {
 });
 
 check('个人号（OneBot）→ 纯文本，别用 markdown', () => {
-  const s = channelCapabilityLine('group:631539503', true);
+  const s = channelCapabilityLine('group:100000003', true);
   assert.match(s, /个人号/);
   assert.match(s, /纯文本/);
 });

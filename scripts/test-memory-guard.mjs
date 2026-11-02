@@ -12,16 +12,16 @@ const conv = (over = {}) => ({ memberImpressions: {}, activeTopics: [], pendingT
 
 await check('真实事故重放：磁盘有印象、内存是空 → 救回来', () => {
   const disk = {
-    'group:994920175': conv({
-      memberImpressions: { 居居: { traits: ['爱发语音'], interactionCount: 3 }, 迷城骇兔: { traits: ['爱调戏'] } },
+    'group:100000001': conv({
+      memberImpressions: { 甲: { traits: ['爱发语音'], interactionCount: 3 }, 乙: { traits: ['爱调戏'] } },
       activeTopics: [{ text: '在更新仓库' }]
     })
   };
-  const memory = { 'group:994920175': conv() };
+  const memory = { 'group:100000001': conv() };
   const { restored, memory: out } = m.restoreDroppedMemory({ memory, disk });
   assert.equal(restored.length, 2);
-  assert.equal(Object.keys(out['group:994920175'].memberImpressions).length, 2);
-  assert.equal(out['group:994920175'].activeTopics.length, 1);
+  assert.equal(Object.keys(out['group:100000001'].memberImpressions).length, 2);
+  assert.equal(out['group:100000001'].activeTopics.length, 1);
 });
 
 await check('内存里有新内容时不覆盖（新数据优先）', () => {

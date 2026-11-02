@@ -5,7 +5,7 @@
 // 事实（本机实测）：
 //   · SnowLuma 每个账号一个配置文件 `config/onebot_<uin>.json`
 //   · 每个账号可以有自己的 httpServers / wsServers（端口、token）
-//   · 目前只有 3976372760 配了端口（3000/3001），1599683156 那份 networks 是空的
+//   · 目前只有 10001 配了端口（3000/3001），10002 那份 networks 是空的
 //
 // 我们能做的是"**看见并选择**"，不是"同时驱动"：
 //   · 看：枚举 config/onebot_*.json，逐个打 get_login_info 确认在线与昵称

@@ -10,7 +10,7 @@ const check = (name, fn) => {
 };
 
 check('脱敏：真 QQ 号只留后 4 位', () => {
-  assert.equal(m.maskQqId('1599683156'), '群友3156');
+  assert.equal(m.maskQqId('10002'), '群友0002');
 });
 
 check('脱敏：数字串（非 QQ 长度）也照常打码', () => {
@@ -28,18 +28,18 @@ check('空值 → 群友', () => {
 });
 
 check('有昵称：直接用昵称，不看开关', () => {
-  assert.equal(m.senderNameForModel('阿明', '1599683156', { exposeUserId: false }), '阿明');
-  assert.equal(m.senderNameForModel('阿明', '1599683156', { exposeUserId: true }), '阿明');
+  assert.equal(m.senderNameForModel('阿明', '10002', { exposeUserId: false }), '阿明');
+  assert.equal(m.senderNameForModel('阿明', '10002', { exposeUserId: true }), '阿明');
 });
 
 check('没昵称 + 默认（不暴露）→ 打码', () => {
-  assert.equal(m.senderNameForModel('', '1599683156'), '群友3156');
-  assert.equal(m.senderNameForModel('', '1599683156', {}), '群友3156');
-  assert.equal(m.senderNameForModel('', '1599683156', { exposeUserId: false }), '群友3156');
+  assert.equal(m.senderNameForModel('', '10002'), '群友0002');
+  assert.equal(m.senderNameForModel('', '10002', {}), '群友0002');
+  assert.equal(m.senderNameForModel('', '10002', { exposeUserId: false }), '群友0002');
 });
 
 check('没昵称 + 显式打开 exposeUserId → 原样（给需要真号的运维场景）', () => {
-  assert.equal(m.senderNameForModel('', '1599683156', { exposeUserId: true }), '1599683156');
+  assert.equal(m.senderNameForModel('', '10002', { exposeUserId: true }), '10002');
 });
 
 check('没昵称也没兜底 → 群友', () => {

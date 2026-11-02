@@ -18,8 +18,8 @@ const sample = {
 };
 
 check('解析正常配置：uin 来自文件名、端口/token 来自 networks', () => {
-  const r = m.parseOnebotConfig(sample, 'onebot_3976372760.json');
-  assert.equal(r.uin, '3976372760');
+  const r = m.parseOnebotConfig(sample, 'onebot_10001.json');
+  assert.equal(r.uin, '10001');
   assert.equal(r.httpPort, 3000);
   assert.equal(r.wsPort, 3001);
   assert.equal(r.httpToken, 'tok-abc');
@@ -27,8 +27,8 @@ check('解析正常配置：uin 来自文件名、端口/token 来自 networks',
 });
 
 check('空 networks（另一个号就是这样）→ configured=false，端口 null', () => {
-  const r = m.parseOnebotConfig({ mode: 'snapshot', networks: { httpServers: [], wsServers: [] } }, 'onebot_1599683156.json');
-  assert.equal(r.uin, '1599683156');
+  const r = m.parseOnebotConfig({ mode: 'snapshot', networks: { httpServers: [], wsServers: [] } }, 'onebot_10002.json');
+  assert.equal(r.uin, '10002');
   assert.equal(r.httpPort, null);
   assert.equal(r.configured, false);
 });
@@ -57,7 +57,7 @@ check('探测：连不上的端口 → online=false 且带错误（不抛）', a
 
 check('绑定：返回新的 http/ws 地址（格式正确）', () => {
   // 用假实现验证拼接逻辑：直接调 parse 结果进函数会写盘，这里只验证字段名约定
-  const r = m.parseOnebotConfig(sample, 'onebot_3976372760.json');
+  const r = m.parseOnebotConfig(sample, 'onebot_10001.json');
   assert.match(`http://127.0.0.1:${r.httpPort}`, /^http:\/\/127\.0\.0\.1:3000$/);
   assert.match(`ws://127.0.0.1:${r.wsPort}`, /^ws:\/\/127\.0\.0\.1:3001$/);
 });
