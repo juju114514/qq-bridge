@@ -69,6 +69,10 @@ export function createContextUsageStore({ now = () => Date.now(), maxSessions = 
         { key: 'messages', label: '对话消息', tokens: one.messageTokens, color: '#43c59e' }
       ];
       const broken = parts.reduce((n, p) => n + p.tokens, 0);
+      // 压力读数通常大于 breakdown（前者含缓存/系统开销），差额单列"未分类"，
+      // 这样分段条之和 = 压力读数，视觉上不会留一块看不懂的空缺。
+      const unaccounted = Math.max(0, (one.pressureTokens || 0) - broken);
+      if (unaccounted > 0) parts.push({ key: 'other', label: '未分类', tokens: unaccounted, color: '#5a6b86' });
       // breakdown 是"下一条请求的启发式构成"，pressure 是"上一次请求的实际读数"；
       // 两者可能不等 —— 分开呈现，不强行凑成一个数。
       return {

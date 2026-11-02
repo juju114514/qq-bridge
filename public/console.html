@@ -1895,8 +1895,8 @@ button:active:not(:disabled) {
           <circle id="ctxRingFill" cx="56" cy="56" r="46" fill="none" stroke="#6b8cff" stroke-width="12"
                   stroke-linecap="round" stroke-dasharray="289.03" stroke-dashoffset="289.03"
                   transform="rotate(-90 56 56)" style="transition:stroke-dashoffset .5s ease"></circle>
-          <text id="ctxPct" x="56" y="52" text-anchor="middle" font-size="22" font-weight="600" fill="#dbe6ff">--</text>
-          <text id="ctxPctLabel" x="56" y="72" text-anchor="middle" font-size="11" fill="#8fa3c4">已用</text>
+          <text id="ctxPct" x="56" y="54" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">--</text>
+          <text id="ctxPctLabel" x="56" y="74" text-anchor="middle" font-size="11" fill="#a9bcd8">已用</text>
         </svg>
         <div style="flex:1;min-width:220px">
           <div style="display:flex;justify-content:space-between;font-size:12px;opacity:.8">
@@ -7627,7 +7627,7 @@ async function spaceDeletePost(tid, btn) {
   //
   // 每条钩子独立 try：一个钩子炸了不影响其它钩子（这曾经让整个控制台卡在"加载中"）。
   const PAGE_HOOKS = {
-    overview: ['loadOverview', 'loadSetupEntry'],
+    overview: ['loadOverview', 'loadSetupEntry', 'loadContextUsage'],
     sessions: ['loadHeatmap'],
     people: ['loadPeople'],
     scheduler: ['loadScheduler'],
@@ -7961,7 +7961,7 @@ async function spaceDeletePost(tid, btn) {
   else document.addEventListener('DOMContentLoaded', () => setTimeout(musicRefreshStatus, 1200));
 
   // ── 上下文用量（0.4.141）─────────────────────────────────────────
-  const CTX_COLORS = { system: '#6b8cff', tools: '#9a7bff', messages: '#43c59e' };
+  const CTX_COLORS = { system: '#6b8cff', tools: '#9a7bff', messages: '#43c59e', other: '#5a6b86' };
   function fmtTok(n) {
     if (!Number.isFinite(n) || n <= 0) return '0';
     if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
@@ -7982,20 +7982,24 @@ async function spaceDeletePost(tid, btn) {
       const d = await api('/api/context/usage');
       if (!d.ok) { pct.textContent = '--'; nums.textContent = d.reason || '暂无数据'; bar.innerHTML = ''; legend.innerHTML = ''; return; }
       const circumference = 2 * Math.PI * 46;
-      const p = d.percent == null ? 0 : Math.max(0, Math.min(100, d.percent));
-      ring.style.strokeDashoffset = String(circumference * (1 - p / 100));
-      ring.style.stroke = p >= 80 ? '#ff6b6b' : (p >= 50 ? '#ffb14d' : '#6b8cff');
-      pct.textContent = d.percent == null ? '--' : p.toFixed(0) + '%';
+      const known = d.percent != null;
+      const p = known ? Math.max(0, Math.min(100, d.percent)) : 0;
+      ring.style.strokeDashoffset = String(circumference * (1 - (known ? p / 100 : 0.995)));
+      ring.style.stroke = !known ? '#3d5375' : (p >= 80 ? '#ff6b6b' : (p >= 50 ? '#ffb14d' : '#6b8cff'));
+      // 容量未知时环形不装作有百分比：中间直接显示已用绝对值
+      pct.textContent = known ? (p.toFixed(0) + '%') : fmtTok(d.pressureTokens);
+      const sub = document.getElementById('ctxPctLabel');
+      if (sub) sub.textContent = '已用';
       nums.textContent = fmtTok(d.pressureTokens) + ' / ' + (d.capacityTokens ? fmtTok(d.capacityTokens) : '容量未知');
       remain.textContent = d.remainder != null ? ('剩余 ' + fmtTok(d.remainder)) : '';
-      const total = Math.max(d.brokenTotal || 0, d.pressureTokens || 0, 1);
+      const total = Math.max(d.pressureTokens || 0, d.brokenTotal || 0, 1);
       bar.innerHTML = '';
       for (const part of (d.parts || [])) {
         if (!part.tokens) continue;
         const seg = document.createElement('div');
         seg.style.width = (part.tokens / total * 100) + '%';
         seg.style.background = CTX_COLORS[part.key] || '#6b8cff';
-        seg.title = part.label + ' ' + fmtTok(part.tokens);
+        seg.title = part.label + ' ' + fmtTok(part.tokens) + '（' + (part.tokens / total * 100).toFixed(1) + '%）';
         bar.appendChild(seg);
       }
       legend.innerHTML = (d.parts || []).map((part) =>

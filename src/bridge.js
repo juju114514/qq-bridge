@@ -4438,7 +4438,7 @@ async function main() {
         if (await handleExtraRoutes({
           req, url, res, sendJson, readBody,
           // 惰性：只在命中路由时求值（否则每请求一次，VM 注入不全时会 ReferenceError）
-  deps: () => ({ log, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, sendToQQ, onebotSend, allowed, resolveMode: () => currentMode,
+  deps: () => ({ log, contextUsage, getSelfCheck: () => selfCheckSnapshot(), getDecisionTrace: () => decisionTrace, getToolProbe, buildSelfCheckReport, loadPeopleDb, levelOf, notesInScope, normalizeQQ, stateDir: STATE_DIR, getCfg: () => cfg, deliverPrompt, sendToQQ, onebotSend, allowed, resolveMode: () => currentMode,
             // 总览仪表盘（/api/overview）用的访问器
             getMode: () => currentMode,
             isDshReady: () => dshReady,

@@ -36,7 +36,9 @@ await check('正常快照：百分比 = 压力 / 容量', () => {
   assert.equal(v.percent, 1.2);                          // 1.15% → 1.2
   assert.equal(v.remainder, 988500);
   assert.equal(v.brokenTotal, 6100);
-  assert.deepEqual(v.parts.map((p) => p.key), ['system', 'tools', 'messages']);
+  // 压力 11500 - breakdown 6100 = 5400 归入"未分类"，所以多一段
+  assert.deepEqual(v.parts.map((p) => p.key), ['system', 'tools', 'messages', 'other']);
+  assert.equal(v.parts[3].tokens, 5400);
 });
 
 await check('容量未知时 percent 为 null（不假装 0%）', () => {
@@ -77,6 +79,14 @@ await check('百分比封顶 100（压力超过容量时不出现 137%）', () =
   s.record('a', snap({ pressureTokens: 1370, capacityTokens: 1000 }, { systemTokens: 1 }));
   assert.equal(s.view('a').percent, 100);
   assert.equal(s.view('a').remainder, 0);
+});
+
+
+await check('压力与 breakdown 相等时不出现"未分类"', () => {
+  const s = m.createContextUsageStore();
+  s.record('a', snap({ pressureTokens: 600, capacityTokens: 1000 }, { systemTokens: 100, toolsTokens: 200, messageTokens: 300 }));
+  const v = s.view('a');
+  assert.deepEqual(v.parts.map((x) => x.key), ['system', 'tools', 'messages']);
 });
 
 console.log('');
