@@ -174,6 +174,7 @@ const tests = [
   'test-gateway-config.mjs',
   'test-agent.mjs',
   'test-file-index.mjs',
+  'test-brain-router.mjs',
   'test-boot-watch.mjs',
   'test-qzone-draft.mjs',
   'test-qzone-styles.mjs',

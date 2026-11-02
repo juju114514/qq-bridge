@@ -7124,7 +7124,7 @@ async function main() {
   // 每个 QQ 会话串行投递 DSH prompt，保证 turn 完成顺序与提交顺序一致，
   // 从而让 [SILENT]、摘要静默、退场标记都能准确匹配到自己的 turn。
   function deliverPrompt(key, promptText, opts = {}) {
-    if (cfg.agent?.mode === 'local' && (cfg.agent?.apiKey || cfg.agent?.apiKeyEnc) && !opts.silent) return runLocalAgentTurn({ cfg, key, promptText, sendToQQ, stateDir: STATE_DIR, log }).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+    if (['local', 'auto'].includes(cfg.agent?.mode) && (cfg.agent?.apiKey || cfg.agent?.apiKeyEnc) && !opts.silent) return runLocalAgentTurn({ cfg, key, promptText, sendToQQ, stateDir: STATE_DIR, log, dshDeliver: (k, t2, o2) => deliverPromptNow(k, t2, o2) }).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
     return new Promise((resolve, reject) => {
       let entry = promptQueues.get(key);
       if (!entry) {

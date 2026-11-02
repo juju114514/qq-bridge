@@ -14,6 +14,56 @@
 新增：`src/music-auth.js`、`src/api/music-auth-route.js`、控制台「音乐账号」卡片、`scripts/test-music-auth.mjs`（11 条）。
 状态判定：`GET /api/music/status` 会真的带上 cookie 打一次账户接口，**失效就显示"未登录"**，不会只看有没有文件。
 
+## 2026-11-03 — 0.5.53：大脑路由（P1）——在家用 PC，出门用手机
+
+### 设计前提
+
+**桥接只有一份（在手机上），换的只是「思考端」。** 这样 state/ 是唯一真相源，
+QQ 不用重登、表情与群列表不用重建、不会出现两个桥接抢消息。
+
+### 新增 src/agent/brain-router.js
+
+`
+agent.mode = auto
+  ├─ 中继（家里）可达  → 交给 PC 的 DSH（强模型 + 本地工具）
+  └─ 不可达/超时       → 自己调 DeepSeek API（手机本地大脑）
+`
+
+三条硬规则：
+
+| 规则 | 为什么 |
+| --- | --- |
+| 一轮对话中**绝不切换** | 同一句回复不能拼两套逻辑 |
+| 连续 3 次失败才判掉线 | 家里 Wi-Fi 抖动很常见，一次抖动不该切 |
+| 切换后 30 秒冷却 | 避免在可达边界上反复横跳 |
+
+配置：
+
+`json
+agent: { mode: auto,
+  auto: { dshBaseUrl: http://127.0.0.1:58783, intervalMs: 30000,
+            failThreshold: 3, recoverThreshold: 2, cooldownMs: 30000 } }
+`
+
+### 接线方式（几乎没动 bridge.js）
+
+deliverPrompt 的分支从「只认 local」放宽到 ['local','auto']，并给
+
+unLocalAgentTurn 传一个 dshDeliver 回调；dispatch.js 里当路由判定为 DSH 时，
+直接把 prompt 交回 DSH 投递函数 —— 所以 auto 模式下**命中 PC 时走的仍是原来那条 DSH 路径**，
+不需要第二套实现。
+
+### 控制台
+
+GET /api/hub/overview 多了 gent.brain 与 rainRouter（连续成功/失败数、上次切换原因、最近 8 次切换历史）。
+
+### 测试
+
+	est-brain-router.mjs（8 条）：默认落本地、一次抖动不切、连续 3 次失败切、
+冷却期不切、恢复需连续 2 次、探测抛异常按失败算、status 带历史、手动切换进冷却。
+
+**审计 187/187。**
+
 ## 2026-11-03 — 0.5.52：控制台「数字中枢」页（B 方案）
 
 ### 为什么

@@ -88,6 +88,14 @@ export function createConfigLoader(deps = {}) {
       personaMaxChars: Number(file.agent?.personaMaxChars) || 3000,
       systemPrompt: String(file.agent?.systemPrompt ?? ''),
       maxSteps: Number(file.agent?.maxSteps) || 2,
+      // auto 模式：中继可达走 DSH，否则走本地（P1）
+      auto: {
+        dshBaseUrl: String(file.agent?.auto?.dshBaseUrl ?? ''),
+        intervalMs: Number(file.agent?.auto?.intervalMs) || 30000,
+        failThreshold: Number(file.agent?.auto?.failThreshold) || 3,
+        recoverThreshold: Number(file.agent?.auto?.recoverThreshold) || 2,
+        cooldownMs: Number(file.agent?.auto?.cooldownMs) || 30000
+      },
       temperature: Number.isFinite(Number(file.agent?.temperature)) ? Number(file.agent.temperature) : 0.8
     },
     // 本机文件索引（P3）：只存元数据，不读内容

@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolvePersona } from '../agent/persona.js';
 import { atomicWriteJson } from '../atomic-write.js';
+import { sharedRouterStatus } from '../agent/brain-router.js';
 
 
 /** 写 config.json：走仓库统一的原子写（rename 只允许出现在 src/atomic-write.js） */
@@ -52,8 +53,10 @@ export async function handleHubRoute(ctx = {}) {
         keyEnc,
         keyLen,
         personaSource: persona.source,
-        maxSteps: Number(a.maxSteps) || 0
+        maxSteps: Number(a.maxSteps) || 0,
+        brain: sharedRouterStatus()?.brain || (a.mode === 'dsh' ? 'dsh' : 'local')
       },
+      brainRouter: sharedRouterStatus(),
       fileIndex: {
         enabled: cfg.fileIndex?.enabled !== false,
         roots: cfg.fileIndex?.roots || []

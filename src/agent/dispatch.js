@@ -14,6 +14,7 @@ import { createSocialTools } from './tools.js';
 import { resolvePersona, composeSystemPrompt } from './persona.js';
 import { resolveApiKey } from '../secret-box.js';
 import { formatLongTerm } from '../memory-store.js';
+import { getSharedRouter } from './brain-router.js';
 
 const DEFAULT_SYSTEM = '你是一个在 QQ 群里聊天的中文助手。根据给定的上下文和当前消息，写一条自然、简短、像本人的回复（不超过 80 字）。'
   + '需要看更多上下文就调用工具；要开口说话就用 qq_send_message 工具发出去，不要只把回复写在正文里。';
@@ -30,6 +31,15 @@ export async function runLocalAgentTurn(input = {}) {
   const a = cfg.agent || {};
   // P1：优先解密密文（apiKeyEnc），其次明文，最后环境变量
   const apiKey = resolveApiKey(a);
+  // 自动模式：中继可达就走 PC 的 DSH（那边有本地工具与更强的模型），否则自己扛
+  if (a.mode === 'auto' && typeof input.dshDeliver === 'function') {
+    const router = getSharedRouter(cfg, { log });
+    if (router.brain === 'dsh') {
+      log('[agent] auto → DSH（中继可达）');
+      await input.dshDeliver(key, promptText, {});
+      return { ok: true, sent: true, steps: 0, reply: '', usage: {}, brain: 'dsh' };
+    }
+  }
   if (!apiKey) return { ok: false, sent: false, steps: 0, reply: '', usage: {}, error: '没有 apiKey' };
   if (!key || !promptText) return { ok: false, sent: false, steps: 0, reply: '', usage: {}, error: '缺 key 或 promptText' };
 
