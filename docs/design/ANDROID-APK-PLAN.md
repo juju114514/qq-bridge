@@ -31,7 +31,7 @@ ABI  arm64-v8a, armeabi-v7a, armeabi     8 核
 DNS api.deepseek.com → 111.51.158.194，TCP 443 通 87ms
 ```
 
-## 三、已备好的 arm64 资产（都在 `D:\QQBot\tools\arm64`）
+## 三、已备好的 arm64 资产（都在 `<tools>\tools\arm64`）
 
 | 文件 | 大小 | 用途 |
 | --- | --- | --- |
@@ -100,8 +100,8 @@ APK ≈ 80 MB
 ## 七、工具链（已就绪，不需要 Gradle）
 
 ```
-JDK 17          D:\QQBot\tools\jdk\jdk-17.0.20.1+1
-Android SDK     D:\QQBot\tools\android-sdk（platform 34 / build-tools 34）
+JDK 17          <tools>\tools\jdk\jdk-17.0.20.1+1
+Android SDK     <tools>\tools\android-sdk（platform 34 / build-tools 34）
 流程            javac → d8 → aapt2 link → 注入 classes.dex → zipalign → apksigner
 已产出          体检 APK（20.4 KB，可跑，真机验证过）
 ```
@@ -159,11 +159,11 @@ APK 里的 assets（**全部平铺**，见坑 3）：
 
 ```powershell
 # 1) 打完整包
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\QQBot-open\mobile\apk\build-apk.ps1 -WithPayload `
-  -Out D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
+powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\mobile\apk\build-apk.ps1 -WithPayload `
+  -Out <repo>\mobile\dist\qq-bridge-app-full.apk
 
 # 2) 真机装 + 看日志
-adb install -r D:\QQBot-open\mobile\dist\qq-bridge-app-full.apk
+adb install -r <repo>\mobile\dist\qq-bridge-app-full.apk
 adb logcat -s qqb:V            # 看 node 的 stdout
 
 # 3) 通了之后，再叠 QQ/NapCat（第 2 步）

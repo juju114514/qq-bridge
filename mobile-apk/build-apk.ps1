@@ -9,18 +9,18 @@
 #
 param(
   [switch]$WithPayload,
-  [string]$Out = "D:\QQBot-open\mobile\dist\qq-bridge-app.apk"
+  [string]$Out = "<输出目录>\qq-bridge-app.apk"
 )
 
 $ErrorActionPreference = "Stop"
 $proj = $PSScriptRoot
-$jdk  = "D:\QQBot\tools\jdk\jdk-17.0.20.1+1"
-$sdk  = "D:\QQBot\tools\android-sdk"
+$jdk  = if ($env:ANDROID_JDK) { $env:ANDROID_JDK } else { "<JDK目录，如 C:\\Program Files\\Java\\jdk-17>" }
+$sdk  = if ($env:ANDROID_SDK) { $env:ANDROID_SDK } else { "<Android SDK 目录>" }
 $bt   = Join-Path $sdk "build-tools\34.0.0"
 $plat = Join-Path $sdk "platforms\android-34\android.jar"
 $dist = Join-Path $proj "build"
-$repo = "D:\QQBot-open\qq-bridge"
-$arm  = "D:\QQBot\tools\arm64\extract"
+$repo = if ($env:QQB_REPO) { $env:QQB_REPO } else { "<qq-bridge 仓库路径>" }
+$arm  = if ($env:QQB_ARM_DIR) { $env:QQB_ARM_DIR } else { "<arm64 资产目录（含 bin/node、cacert.pem、proot.tar、rootfs）>" }
 
 $env:JAVA_HOME = $jdk
 $env:PATH = "$jdk\bin;$env:PATH"
@@ -99,7 +99,7 @@ if ($WithPayload) {
 
   # node 是 Termux 构建的 bionic 二进制，needed 里有 libz.so.1 / libcares / libsqlite3 /
   # libcrypto / libssl / libicu* — Android 系统里没有，必须自带（用 tools/fetch-node-libs.py 抓）。
-  $libs = "D:\QQBot\tools\arm64\termux-libs"
+$libs = if ($env:QQB_LIBS_DIR) { $env:QQB_LIBS_DIR } else { "<termux 运行库目录>" }
   if (-not (Test-Path $libs)) { throw "缺 $libs，先跑：python mobile\apk\tools\fetch-node-libs.py" }
   & tar.exe -cf "$dist\assets\libs.tar" -C $libs "."
   if ($LASTEXITCODE -ne 0) { throw "libs.tar 打包失败" }

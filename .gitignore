@@ -14,8 +14,10 @@ assets/*
 !assets/social-preview.png
 # 文档里引用的配图也必须进仓库，否则 GitHub 上是死链
 !assets/video-storyboard-sample.jpg
-public/*
-!public/console.html
+# public 下的运行资源（vendor 二维码库 / icons / manifest / sw.js）必须进仓库，
+# 否则 clone 下来控制台缺件（二维码库缺失会让扫码功能直接报错）。
+public/*.bak*
+public/*.orig
 _snowluma-catalog.json
 .DS_Store
 .env

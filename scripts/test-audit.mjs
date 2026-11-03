@@ -313,6 +313,7 @@ const tests = [
   'test-build-info.mjs',
   'check-lock.mjs',
   'check-plugin-vendor-fresh.mjs',
+  'check-public-assets.mjs',
   'check-privacy.mjs',
   'check-route-index-fresh.mjs',
 ];

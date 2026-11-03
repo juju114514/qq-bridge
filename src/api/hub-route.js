@@ -8,13 +8,9 @@ import path from 'node:path';
 import { resolvePersona } from '../agent/persona.js';
 import { atomicWriteJson } from '../atomic-write.js';
 import { sharedRouterStatus, sharedRouterForce } from '../agent/brain-router.js';
-import { findArchive, readArchive } from '../agent/archive.js';   // hub-route-archive
+// hub-route-archive
+import { findArchive, readArchive } from '../agent/archive.js';
 
-
-/** 写 config.json：走仓库统一的原子写（rename 只允许出现在 src/atomic-write.js） */
-function writeConfig(file, obj) {
-  atomicWriteJson(file, obj);
-}
 
 function readConfigFile(file) {
   const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
@@ -75,7 +71,7 @@ export async function handleHubRoute(ctx = {}) {
     try {
       const onDisk = readConfigFile(cfgFile);
       onDisk.agent = { ...(onDisk.agent || {}), mode };
-      writeConfig(cfgFile, onDisk);
+      atomicWriteJson(cfgFile, onDisk);
       sendJson({ ok: true, mode, needRestart: true });
     } catch (error) {
       sendJson({ ok: false, error: String(error?.message ?? error).slice(0, 200) }, 500);

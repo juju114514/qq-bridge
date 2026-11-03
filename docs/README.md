@@ -169,3 +169,4 @@
 | 知道某个目录/脚本是干什么的 | [FOLDER_MAP.md](FOLDER_MAP.md) |
 | 权限边界与安全承诺 | [../RULES.md](../RULES.md) |
 | 这个项目要往哪走（QSH） | 上位目录的 `../../QSH-plan/`（总索引 `README.md`；另有工具面/技能/云部署/新仓库与官网四份专项） |
+| [一体化 APK 方案](design/ANDROID-APK-PLAN.md) | 真机验证：targetSdk 28 解锁 exec、arm64 资产、容器与 QQ 分阶段 |
