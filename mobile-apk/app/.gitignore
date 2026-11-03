@@ -1,0 +1,10 @@
+build/
+.gradle/
+local.properties
+src/main/assets/node
+src/main/assets/cacert.pem
+src/main/assets/payload.tar
+src/main/assets/libs.tar
+src/main/assets/bridge.js
+src/main/assets/package.json
+src/main/assets/config.example.json
