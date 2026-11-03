@@ -44,6 +44,9 @@ Write-Host "[3/7] 准备 assets" -ForegroundColor Cyan
 Copy-Item (Join-Path $arm "bin\node") "$dist\assets\node" -Force
 # CA 包：Android 的 node 没有系统 CA，不带上所有 HTTPS 都会 UNABLE_TO_GET_ISSUER_CERT_LOCALLY
 Copy-Item (Join-Path $arm "cacert.pem") "$dist\assets\cacert.pem" -Force
+# 阶段 A：容器（proot + Ubuntu rootfs）。二者都是首次启动才解，解过就打标记跳过
+Copy-Item (Join-Path $arm "proot.tar") "$dist\assets\proot.tar" -Force
+Copy-Item (Join-Path $arm "ubuntu-base-arm64.tar.gz") "$dist\assets\ubuntu-base-arm64.tar.gz" -Force
 if ($WithPayload) {
   # 入口文件单独进 assets：服务里先铺这几个（首启不依赖解包），解 tar 时再覆盖。
   # 名字必须平铺在 assets 根：aapt2 在 Windows 上会把子目录存成 assets/app\src\x（反斜杠），

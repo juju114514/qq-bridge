@@ -115,39 +115,10 @@ public class BridgeService extends Service {
             setStage("解压/校验资源（首次约 60 秒）…");
             stage(base);
             ensurePackageJson(base);
-            File node = new File(getFilesDir(), "bin/node");
-            chmod(node);
-            File script = new File(base, "src/bridge.js");
-            if (!script.exists()) throw new IOException("缺 src/bridge.js，assets 没铺好");
-
-            setStage("启动 node…");
-            ProcessBuilder pb = new ProcessBuilder(node.getAbsolutePath(), "src/bridge.js");
-            pb.directory(base);
-            pb.redirectErrorStream(true);
-            pb.environment().put("LD_LIBRARY_PATH", new File(getFilesDir(), "lib").getAbsolutePath());
-            pb.environment().put("HOME", base.getAbsolutePath());
-            pb.environment().put("TMPDIR", getCacheDir().getAbsolutePath());
-            pb.environment().put("NODE_ENV", "production");
-            pb.environment().put("NODE_EXTRA_CA_CERTS", new File(getFilesDir(), "ca/cacert.pem").getAbsolutePath());
-
-            proc = pb.start();
-            nodeRunning = true;
-            setStage("node 已启动，等控制台监听 3100…");
-            BufferedReader br = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-            String line;
-            while ((line = br.readLine()) != null) {
-                Log.i(TAG, line);
-                push(line);
-                if (line.contains("控制台已启动")) {
-                    setStage("桥接已就绪 · http://127.0.0.1:3100");
-                    updateNoti("已运行 · 3100");
-                }
-            }
-            nodeRunning = false;
-            int code = proc.waitFor();
-            failReason = "node 退出，code=" + code;
-            setStage("node 已退出");
-            updateNoti(failReason);
+            // 先把桥接拉起来：容器准备再慢（甚至卡住）也不该拖住控制台。
+            startNodeAsync(base);
+            // 阶段 A（容器）：proot + rootfs。失败/超时只记原因，不影响桥接本体。
+            setupContainer(base);
         } catch (Throwable t) {
             nodeRunning = false;
             String msg = String.valueOf(t.getMessage());
@@ -166,6 +137,56 @@ public class BridgeService extends Service {
             setStage("失败");
             updateNoti(failReason);
         }
+    }
+
+    /** node 单独一个线程跑：读它的 stdout 直到退出，不阻塞容器那一路 */
+    private void startNodeAsync(final File base) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    File node = new File(getFilesDir(), "bin/node");
+                    chmod(node);
+                    File script = new File(base, "src/bridge.js");
+                    if (!script.exists()) throw new IOException("缺 src/bridge.js，assets 没铺好");
+
+                    setStage("启动 node…");
+                    ProcessBuilder pb = new ProcessBuilder(node.getAbsolutePath(), "src/bridge.js");
+                    pb.directory(base);
+                    pb.redirectErrorStream(true);
+                    pb.environment().put("LD_LIBRARY_PATH", new File(getFilesDir(), "lib").getAbsolutePath());
+                    pb.environment().put("HOME", base.getAbsolutePath());
+                    pb.environment().put("TMPDIR", getCacheDir().getAbsolutePath());
+                    pb.environment().put("NODE_ENV", "production");
+                    pb.environment().put("NODE_EXTRA_CA_CERTS", new File(getFilesDir(), "ca/cacert.pem").getAbsolutePath());
+
+                    proc = pb.start();
+                    nodeRunning = true;
+                    setStage("node 已启动，等控制台监听 3100…");
+                    BufferedReader br = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        Log.i(TAG, line);
+                        push(line);
+                        if (line.contains("控制台已启动")) {
+                            setStage("桥接已就绪 · http://127.0.0.1:3100");
+                            updateNoti("已运行 · 3100");
+                        }
+                    }
+                    nodeRunning = false;
+                    int code = proc.waitFor();
+                    failReason = "node 退出，code=" + code;
+                    setStage("node 已退出");
+                    updateNoti(failReason);
+                } catch (Throwable t) {
+                    nodeRunning = false;
+                    failReason = "node 启动失败：" + t.getMessage();
+                    push("[错误] " + failReason);
+                    Log.e(TAG, "node failed", t);
+                    setStage("失败");
+                }
+            }
+        }, "qb-node").start();
     }
 
     private void ensurePackageJson(File base) throws IOException {
@@ -229,8 +250,174 @@ public class BridgeService extends Service {
         stamp.createNewFile();
     }
 
-    private void copyAsset(String name, File dst) throws IOException {
-        if (dst.exists() && dst.length() > 0) return;
+    /**
+     * 阶段 A：容器 = proot + Ubuntu rootfs。
+     *
+     * 关键参数（少一个就起不来，都是模拟器上踩出来的）：
+     *  · PROOT_LOADER 指向 proot/libexec/proot/loader —— 缺它 guest 里一切报 execve ENOENT
+     *  · LD_LIBRARY_PATH 指向 proot/lib —— libtalloc / libandroid-shmem 系统里没有
+     *  · -b <base>/shm:/dev/shm —— Android 没有 /dev/shm，Electron 会 FATAL
+     *  · /usr/bin/env -i PATH=... —— 不隔离 PATH，Android 的 PATH 会漏进 guest
+     */
+    private void setupContainer(File base) {
+        try {
+            File proot = new File(base, "proot");
+            File rootfs = new File(base, "rootfs");
+            File stamp = new File(base, ".container-ok");
+            if (!stamp.exists()) {
+                setStage("解压容器组件（首次约 60 秒）…");
+                File tar = new File(base, "proot.tar");
+                copyAsset("proot.tar", tar);
+                untar(tar, base);
+                tar.delete();
+                chmod(new File(proot, "bin/proot"));
+                chmod(new File(proot, "libexec/proot/loader"));
+                push("proot 已就位");
+
+                setStage("解压 Ubuntu rootfs（28MB，约 60 秒）…");
+                File gz = new File(getCacheDir(), "rootfs.tar.gz");
+                if (!gz.exists() || gz.length() == 0) copyAsset("ubuntu-base-arm64.tar.gz", gz);
+                mkdirs(rootfs);
+                untarGz(gz, rootfs);
+                push("rootfs 解压完成");
+
+                writeText(new File(rootfs, "etc/resolv.conf"),
+                        "nameserver 223.5.5.5\nnameserver 119.29.29.29\n");
+                File shm = new File(base, "shm");
+                mkdirs(shm);
+                chmodMode(shm, "1777");
+                mkdirs(new File(base, "tmp"));
+                if (!new File(rootfs, "bin/bash").exists()) throw new IOException("rootfs 里没有 bin/bash");
+                stamp.createNewFile();
+            } else {
+                push("容器已就位，跳过解压");
+            }
+
+            setStage("容器探针…");
+            String[] out = runProot(base, "echo CONTAINER_OK; uname -m; head -2 /etc/os-release");
+            boolean ok = false;
+            for (String l : out) {
+                push("[容器] " + l);
+                if (l.contains("CONTAINER_OK")) ok = true;
+            }
+            if (ok) {
+                setStage("容器可用（CONTAINER_OK）");
+            } else {
+                failReason = "容器探针没有输出 CONTAINER_OK";
+                push("[错误] " + failReason);
+            }
+        } catch (Throwable t) {
+            // 容器失败不阻断桥接：桥接本身还能跑，只是没有 QQ 通道
+            failReason = "容器失败：" + t.getMessage();
+            push("[错误] " + failReason);
+            Log.e(TAG, "container failed", t);
+        }
+    }
+
+    /** 在 guest 里跑一段 bash，返回前 40 行输出 */
+    private String[] runProot(File base, String bashCmd) throws IOException {
+        File proot = new File(base, "proot");
+        java.util.List<String> cmd = new java.util.ArrayList<String>();
+        cmd.add(new File(proot, "bin/proot").getAbsolutePath());
+        cmd.add("--link2symlink");
+        cmd.add("-0");
+        cmd.add("-r");
+        cmd.add(new File(base, "rootfs").getAbsolutePath());
+        cmd.add("-b");
+        cmd.add("/dev");
+        cmd.add("-b");
+        cmd.add("/proc");
+        cmd.add("-b");
+        cmd.add("/sys");
+        cmd.add("-b");
+        cmd.add(new File(base, "shm").getAbsolutePath() + ":/dev/shm");
+        cmd.add("-b");
+        cmd.add(new File(base, "tmp").getAbsolutePath() + ":/tmp");
+        cmd.add("-w");
+        cmd.add("/root");
+        cmd.add("/usr/bin/env");
+        cmd.add("-i");
+        cmd.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        cmd.add("HOME=/root");
+        cmd.add("/bin/bash");
+        cmd.add("-c");
+        cmd.add(bashCmd);
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        pb.directory(base);
+        pb.environment().put("PROOT_TMP_DIR", new File(base, "tmp").getAbsolutePath());
+        pb.environment().put("PROOT_NO_SECCOMP", "1");
+        pb.environment().put("PROOT_LOADER", new File(proot, "libexec/proot/loader").getAbsolutePath());
+        pb.environment().put("LD_LIBRARY_PATH", new File(proot, "lib").getAbsolutePath());
+
+        final Process p = pb.start();
+        // 看门狗：90 秒强制结束。必须在下 readLine 之前装 —— readLine 是阻塞的，
+        // 光在末尾 waitFor(90s) 没用（模拟器上 arm64 proot exec 不了，输出为空，会永久挂住）。
+        final boolean[] timedOut = { false };
+        final java.util.Timer watchdog = new java.util.Timer(true);
+        watchdog.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                timedOut[0] = true;
+                try { p.destroy(); } catch (Throwable ignored) { }
+            }
+        }, 90000);
+
+        java.util.List<String> lines = new java.util.ArrayList<String>();
+        BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+        try {
+            String line;
+            while ((line = br.readLine()) != null) {
+                lines.add(line);
+                if (lines.size() >= 40) break;
+            }
+        } catch (IOException e) {
+            // destroy() 会打断 readLine，这是看门狗的正常表现，不当错误往上抛
+            if (!timedOut[0]) throw e;
+        }
+        try { p.waitFor(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        watchdog.cancel();
+        if (timedOut[0]) {
+            lines.add("探针 90 秒无输出，已终止（若本机是 x86 模拟器，arm64 的 proot 本来跑不了，这是预期）");
+        }
+        return lines.toArray(new String[0]);
+    }
+
+    private void untarGz(File gz, File dir) throws IOException {
+        mkdirs(dir);
+        // toybox tar 支持 -z；万一没有就走 gzip 管道
+        String cmd = "cd '" + dir.getAbsolutePath() + "' && /system/bin/tar xzf '" + gz.getAbsolutePath() + "'";
+        Process p = new ProcessBuilder("/system/bin/sh", "-c", cmd).redirectErrorStream(true).start();
+        String out = readAll(p.getInputStream());
+        int code;
+        try {
+            code = p.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("解压被中断");
+        }
+        if (code != 0) throw new IOException("解压 rootfs 失败 code=" + code + "：" + out.trim());
+    }
+
+    private static void mkdirs(File d) throws IOException {
+        if (!d.exists() && !d.mkdirs()) throw new IOException("建目录失败：" + d);
+    }
+
+    private static void writeText(File f, String text) throws IOException {
+        f.getParentFile().mkdirs();
+        FileOutputStream out = new FileOutputStream(f);
+        out.write(text.getBytes("UTF-8"));
+        out.close();
+    }
+
+    private void chmodMode(File f, String mode) {
+        try {
+            Runtime.getRuntime().exec(new String[]{"/system/bin/chmod", mode, f.getAbsolutePath()}).waitFor();
+        } catch (Throwable ignored) { }
+    }
+
+    private void copyAsset(String name, File dst) throws IOException {        if (dst.exists() && dst.length() > 0) return;
         dst.getParentFile().mkdirs();
         InputStream in = getAssets().open(name);
         FileOutputStream out = new FileOutputStream(dst);

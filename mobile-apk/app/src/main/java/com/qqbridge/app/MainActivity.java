@@ -196,7 +196,10 @@ public class MainActivity extends Activity {
                     toggleBtn.setText("界面");
                     stageText.setText("已连接 · 3100");
                 } else if (!up && seconds > TIMEOUT_SECONDS) {
-                    stageText.setText("超时 " + TIMEOUT_SECONDS + "s：3100 没监听 · 点「复制」把日志发我");
+                    // 有明确失败原因时不要盖成"超时"——那会把真正的原因藏起来
+                    if (fail == null || fail.length() == 0) {
+                        stageText.setText("超时 " + TIMEOUT_SECONDS + "s：3100 没监听 · 点「复制」把日志发我");
+                    }
                 }
                 seconds += 1;
                 polling = false;
