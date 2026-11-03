@@ -16,6 +16,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.graphics.BitmapFactory;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -41,6 +43,9 @@ public class MainActivity extends Activity {
     private TextView stageText;
     private TextView logText;
     private Button toggleBtn;
+    /** 阶段 B：QQ 登录二维码（文件一变就换图） */
+    private ImageView qrView;
+    private long qrStamp = -1L;
 
     private boolean webLoaded = false;
     private int seconds = 0;
@@ -171,6 +176,27 @@ public class MainActivity extends Activity {
         polling = true;
         ui.postDelayed(new Runnable() {
             @Override public void run() {
+                // 二维码优先：NapCat 每 2 分钟换一张，文件一变就换图
+                try {
+                    java.io.File png = BridgeService.qrPng();
+                    if (png != null && png.exists()) {
+                        long stamp = png.lastModified();
+                        if (stamp != qrStamp) {
+                            qrStamp = stamp;
+                            if (qrView == null) {
+                                qrView = new ImageView(MainActivity.this);
+                                qrView.setAdjustViewBounds(true);
+                                content.addView(qrView, new FrameLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.WRAP_CONTENT));
+                            }
+                            qrView.setImageBitmap(BitmapFactory.decodeFile(png.getAbsolutePath()));
+                            qrView.setVisibility(View.VISIBLE);
+                            logPanel.setVisibility(View.GONE);
+                        }
+                    }
+                } catch (Throwable ignored) { }
+
                 String st = BridgeService.stage();
                 String fail = BridgeService.failReason();
                 String line = st + (BridgeService.nodeRunning() ? "（node 在跑）" : "");

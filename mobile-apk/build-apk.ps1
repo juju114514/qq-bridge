@@ -44,6 +44,9 @@ Write-Host "[3/7] 准备 assets" -ForegroundColor Cyan
 Copy-Item (Join-Path $arm "bin\node") "$dist\assets\node" -Force
 # CA 包：Android 的 node 没有系统 CA，不带上所有 HTTPS 都会 UNABLE_TO_GET_ISSUER_CERT_LOCALLY
 Copy-Item (Join-Path $arm "cacert.pem") "$dist\assets\cacert.pem" -Force
+# 阶段 B：NapCat 启动器源码 + OneBot 配置（随包带，手机不联网拉源码）
+Copy-Item (Join-Path $proj "assets\launcher.cpp") "$dist\assets\launcher.cpp" -Force
+Copy-Item (Join-Path $proj "assets\onebot11.json") "$dist\assets\onebot11.json" -Force
 # 阶段 A：容器（proot + Ubuntu rootfs）。二者都是首次启动才解，解过就打标记跳过
 Copy-Item (Join-Path $arm "proot.tar") "$dist\assets\proot.tar" -Force
 Copy-Item (Join-Path $arm "ubuntu-base-arm64.tar.gz") "$dist\assets\ubuntu-base-arm64.tar.gz" -Force

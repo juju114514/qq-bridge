@@ -39,6 +39,11 @@ public class BridgeService extends Service {
     private static volatile String stage = "尚未启动";
     private static volatile String failReason = "";
     private static volatile boolean nodeRunning = false;
+    /** 容器探针是否通过；阶段 B 必须等它为 true 才敢往下装 QQ */
+    static volatile boolean containerReady = false;
+    /** 二维码文件（guest 里的 napcat/cache/qrcode.png 拷出来的副本） */
+    private static volatile java.io.File qrPng = null;
+    private static volatile java.io.File qrTxt = null;
 
     private Process proc;
 
@@ -50,6 +55,94 @@ public class BridgeService extends Service {
     public static boolean nodeRunning() { return nodeRunning; }
 
     /** 最近 n 行日志（旧 → 新） */
+    /** 记录失败原因并上屏（阶段 B 与容器共用） */
+    static void fail(String why) {
+        failReason = why;
+        push("[错误] " + why);
+        setStage("失败：" + why);
+    }
+
+    /** 二维码就绪：MainActivity 轮询这两个文件 */
+    static void setQr(java.io.File png, java.io.File txt) {
+        qrPng = png;
+        qrTxt = txt;
+    }
+
+    static java.io.File qrPng() {
+        return qrPng;
+    }
+
+    static java.io.File qrTxt() {
+        return qrTxt;
+    }
+
+    /**
+     * 跑一段 guest 命令，**边跑边把输出推上屏**（apt 要跑几分钟，不能等结束才显示）。
+     * 与 runProot 的区别：可指定超时、不截断到 40 行、实时 push。
+     */
+    static String[] proot(java.io.File base, String bashCmd, long timeoutMs) throws java.io.IOException {
+        java.io.File proot = new java.io.File(base, "proot");
+        java.util.List<String> cmd = new java.util.ArrayList<String>();
+        cmd.add(new java.io.File(proot, "bin/proot").getAbsolutePath());
+        cmd.add("--link2symlink");
+        cmd.add("-0");
+        cmd.add("-r");
+        cmd.add(new java.io.File(base, "rootfs").getAbsolutePath());
+        for (String m : new String[]{"/dev", "/proc", "/sys"}) {
+            cmd.add("-b");
+            cmd.add(m);
+        }
+        cmd.add("-b");
+        cmd.add(new java.io.File(base, "shm").getAbsolutePath() + ":/dev/shm");
+        cmd.add("-b");
+        cmd.add(new java.io.File(base, "tmp").getAbsolutePath() + ":/tmp");
+        cmd.add("-w");
+        cmd.add("/root");
+        cmd.add("/usr/bin/env");
+        cmd.add("-i");
+        cmd.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        cmd.add("HOME=/root");
+        cmd.add("/bin/bash");
+        cmd.add("-c");
+        cmd.add(bashCmd);
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        pb.directory(base);
+        pb.environment().put("PROOT_TMP_DIR", new java.io.File(base, "tmp").getAbsolutePath());
+        pb.environment().put("PROOT_NO_SECCOMP", "1");
+        pb.environment().put("PROOT_LOADER", new java.io.File(proot, "libexec/proot/loader").getAbsolutePath());
+        pb.environment().put("LD_LIBRARY_PATH", new java.io.File(proot, "lib").getAbsolutePath());
+
+        final Process p = pb.start();
+        final boolean[] timedOut = { false };
+        final java.util.Timer watchdog = new java.util.Timer(true);
+        watchdog.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                timedOut[0] = true;
+                try { p.destroy(); } catch (Throwable ignored) { }
+            }
+        }, Math.max(30000, timeoutMs));
+
+        java.util.List<String> lines = new java.util.ArrayList<String>();
+        BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+        try {
+            String line;
+            while ((line = br.readLine()) != null) {
+                lines.add(line);
+                push("[B] " + line);
+                if (lines.size() >= 400) break;
+            }
+        } catch (java.io.IOException e) {
+            if (!timedOut[0]) throw e;
+        }
+        try { p.waitFor(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        watchdog.cancel();
+        if (timedOut[0]) lines.add("超时 " + (timeoutMs / 1000) + "s，已终止");
+        return lines.toArray(new String[0]);
+    }
+
     public static String[] tail(int n) {
         synchronized (LOG) {
             int size = LOG.size();
@@ -76,12 +169,12 @@ public class BridgeService extends Service {
         return sb.toString();
     }
 
-    private static void setStage(String s) {
+    static void setStage(String s) {
         stage = s;
         push("[阶段] " + s);
     }
 
-    private static void push(String line) {
+    static void push(String line) {
         String t = line.length() > 400 ? line.substring(0, 400) : line;
         synchronized (LOG) {
             LOG.addLast(t);
@@ -301,7 +394,15 @@ public class BridgeService extends Service {
                 if (l.contains("CONTAINER_OK")) ok = true;
             }
             if (ok) {
+                containerReady = true;
                 setStage("容器可用（CONTAINER_OK）");
+                // 阶段 B：QQ/NapCat。容器不可用时绝不走到这里
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        new StageB(BridgeService.this, base).run();
+                    }
+                }).start();
             } else {
                 failReason = "容器探针没有输出 CONTAINER_OK";
                 push("[错误] " + failReason);
