@@ -11,6 +11,32 @@
 const DEFAULT_BASE_URL = 'https://api.deepseek.com';
 const DEFAULT_MODEL = 'deepseek-chat';
 
+/** 这些状态码值得重试：限流 / 上游过载 / 网关错误 */
+export const RETRIABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 把上游的英文繁忙文案翻成人话（同时打上 code，供上层识别） */
+function normalizeUpstreamError(status, body) {
+  const text = String(body || '');
+  if (/too busy|overload|rate limit|temporarily unavailable/i.test(text) || status === 503) {
+    const e = new Error(`模型服务正忙（上游 ${status || '过载'}），请稍后重试`);
+    e.code = 'MODEL_BUSY';
+    e.status = status;
+    return e;
+  }
+  if (status === 429) {
+    const e = new Error('模型服务限流了，请稍后重试');
+    e.code = 'MODEL_BUSY';
+    e.status = status;
+    return e;
+  }
+  const e = new Error(`模型接口 HTTP ${status}：${text.slice(0, 300)}`);
+  e.status = status;
+  return e;
+}
+
+
 /** token 用量累加器（跨多轮） */
 export function createUsageMeter() {
   const total = { prompt: 0, completion: 0, cached: 0, calls: 0 };
@@ -55,20 +81,35 @@ export function createProvider(opts = {}) {
       body.tool_choice = 'auto';
     }
     const url = `${String(baseUrl).replace(/\/+$/, '')}/chat/completions`;
-    const res = await fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(body),
-      signal: signal || AbortSignal.timeout(timeoutMs)
-    });
+    // 退避重试：429/5xx 与网络抖动都值得再试，最多 3 次（1s → 3s → 8s）
+    const delays = [1000, 3000, 8000];
+    let res = null;
+    let lastError = null;
+    for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+      try {
+        res = await fetchImpl(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(body),
+          signal: signal || AbortSignal.timeout(timeoutMs)
+        });
+        if (res.ok || !RETRIABLE_STATUS.has(res.status)) break;
+        lastError = normalizeUpstreamError(res.status, await res.text().catch(() => ''));
+      } catch (error) {
+        // fetch 抛错（DNS/连接被重置/超时）也可以重试
+        lastError = error;
+        res = null;
+      }
+      if (attempt < delays.length) {
+        const jitter = Math.floor(Math.random() * 400);
+        await sleep(delays[attempt] + jitter);
+      }
+    }
 
+    if (!res) throw lastError || new Error('模型请求失败');
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      // 把服务端的错误原样带出来：401/402/429 的原文比"请求失败"有用得多
-      throw new Error(`模型接口 HTTP ${res.status}：${String(text).slice(0, 300)}`);
+      throw normalizeUpstreamError(res.status, text);
     }
     const json = await res.json();
     const choice = json?.choices?.[0];

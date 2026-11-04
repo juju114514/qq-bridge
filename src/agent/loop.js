@@ -66,8 +66,12 @@ export function createAgentLoop(opts = {}) {
         resp = await provider.textChat({ messages, tools: toolSpecs, maxTokens, temperature, signal });
       } catch (error) {
         const msg = String(error?.message ?? error);
-        log('[agent] 模型调用失败：' + msg);
-        return { reply: `（模型没连上：${msg.slice(0, 160)}）`, steps, toolRuns, usage: meter.snapshot(), error: msg };
+        const busy = error?.code === 'MODEL_BUSY';
+        log(`[agent] 模型调用失败${busy ? '（上游繁忙，已重试）' : ''}：${msg}`);
+        return {
+          reply: busy ? '（模型服务正忙，我过一会儿再试）' : `（模型没连上：${msg.slice(0, 160)}）`,
+          steps, toolRuns, usage: meter.snapshot(), error: msg, busy
+        };
       }
       meter.add(resp.usage);
 

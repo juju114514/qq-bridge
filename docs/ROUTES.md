@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**176** 条（51 个文件）
+- 已搬进模块：**179** 条（52 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/agent-route.js（1 条）
@@ -93,6 +93,14 @@
 | POST | `/api/gateway/control/start` | handleGatewayControlRoute |
 | POST | `/api/gateway/control/stop` | handleGatewayControlRoute |
 | GET | `/api/gateway/health` | handleGatewayControlRoute |
+
+## src/api/gateway-doctor-route.js（3 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| ANY | `/api/gateway/doctor` | handleGatewayDoctorRoute |
+| GET | `/api/gateway/doctor` | handleGatewayDoctorRoute |
+| POST | `/api/gateway/doctor/fix` | handleGatewayDoctorRoute |
 
 ## src/api/hub-route.js（10 条）
 

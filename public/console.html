@@ -2852,6 +2852,11 @@ button:active:not(:disabled) {
             <button id="gwRefresh" class="ghost">刷新状态</button>
           </div>
           <div id="gwDetail" class="meta" style="margin-top:10px"></div>
+          <div class="row" style="margin-top:12px;align-items:center;gap:10px">
+            <button id="opGwDoctor" class="ghost">运行体检</button>
+            <button id="opGwFix" class="ghost" disabled>一键修复</button>
+          </div>
+          <div id="opGwDoctorOut" class="meta" style="margin-top:8px;line-height:1.7">（点「运行体检」看配置和实际网关是否一致）</div>
         </section>
         <section id="section-test-send" data-page="operations" class="card">
       <h2>测试发送</h2>
@@ -7729,7 +7734,7 @@ async function spaceDeletePost(tid, btn) {
     // 人格与角色：重置会话 + 会话备份 + 人格下拉（三件最容易漏的接线）
     'role-map': ['bindRoleMap'],
     mobile: ['bindMobile'],
-    operations: ['bindGatewayAccountsPanel', 'bindDevicePanel'],
+    operations: ['bindGatewayAccountsPanel', 'bindDevicePanel', 'opGatewayDoctor'],
     persona: ['bindResetSession', 'bindSessionBackups', 'bindRolePick', 'bindRoleImage', 'bindEnvironment']
   };
 
@@ -8247,6 +8252,49 @@ async function spaceDeletePost(tid, btn) {
       body.textContent = r.text + (r.truncated ? '\n…（已截断，可在 qq_memory_read 里要更多）' : '');
     } catch (e) { body.textContent = '读取失败：' + (e && e.message ? e.message : e); }
   }
+  async function opGatewayDoctor() {
+    const box = document.getElementById('opGwDoctorOut');
+    const fixBtn = document.getElementById('opGwFix');
+    if (!box) return;
+    box.textContent = '（体检中…）';
+    try {
+      const r = await api('/api/gateway/doctor');
+      if (!r) throw new Error('没有返回');
+      const lines = [];
+      lines.push('配置：<b>' + (r.configuredLabel || r.configured) + '</b>　实际在跑：' + ((r.running || []).length ? r.running.join(' / ') : '（无）'));
+      if (r.login) {
+        lines.push(r.login.ok
+          ? '登录：<span style="color:#9fd6a0">QQ ' + (r.login.userId || '?') + '（' + (r.login.nickname || '') + '）</span>'
+          : '登录：<span style="color:#ffb27a">HTTP ' + r.login.status + ' ' + (r.login.text || '') + '</span>');
+      }
+      const probs = r.problems || [];
+      if (probs.length) {
+        lines.push('<span style="color:#ffb27a">问题：</span>');
+        for (const p of probs) lines.push('· ' + p);
+        for (const s of (r.suggestions || [])) lines.push('· ' + s);
+      } else {
+        lines.push('<span style="color:#9fd6a0">✓ 没问题：配置与实际运行的网关一致</span>');
+      }
+      box.innerHTML = lines.join('<br>');
+      if (fixBtn) fixBtn.disabled = !r.canAutoFix;
+    } catch (e) {
+      box.textContent = '体检失败：' + (e && e.message ? e.message : e);
+    }
+  }
+  async function opGatewayFix() {
+    const box = document.getElementById('opGwDoctorOut');
+    if (!box) return;
+    if (!confirm('会改 config.json（先自动备份），确定？')) return;
+    box.textContent = '（修复中…）';
+    try {
+      const r = await api('/api/gateway/doctor/fix', 'POST', {});
+      if (!r || r.ok === false) throw new Error((r && r.error) || '修复失败');
+      box.innerHTML = '<span style="color:#9fd6a0">✓ 已修复</span>　provider=' + r.fixed.provider + '　ws=' + r.fixed.wsUrl + '<br>备份：' + r.backup + '<br><span style="color:#8fa3c4">重启桥接后生效</span>';
+      setTimeout(opGatewayDoctor, 800);
+    } catch (e) {
+      box.textContent = '修复失败：' + (e && e.message ? e.message : e);
+    }
+  }
   async function hubGatewayDoctor() {
     const box = document.getElementById('gwDoctorOut');
     const fixBtn = document.getElementById('gwFix');
@@ -8350,6 +8398,8 @@ async function spaceDeletePost(tid, btn) {
     if (modeBtn) { hubSetMode(modeBtn.getAttribute('data-hub-mode')); return; }
     const delBtn = ev.target.closest('[data-hub-mem-del]');
     if (delBtn) { hubMemDel(delBtn.getAttribute('data-hub-mem-del')); return; }
+    if (ev.target.id === 'opGwDoctor') { opGatewayDoctor(); return; }
+    if (ev.target.id === 'opGwFix') { opGatewayFix(); return; }
     if (ev.target.id === 'gwDoctor') { hubGatewayDoctor(); return; }
     if (ev.target.id === 'gwFix') { hubGatewayFix(); return; }
     if (ev.target.id === 'hubRefresh') { loadHub(); return; }

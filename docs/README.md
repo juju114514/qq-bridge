@@ -21,6 +21,7 @@
 
 ## guides/ —— 面向使用者 / 运维
 
+| [guides/TROUBLESHOOT.md](guides/TROUBLESHOOT.md) | 排障手册：网关连不上 / 401 / DSH 端口 / 上游繁忙 / 白名单 / 手机容器，按症状索引 |
 | [RELEASE-0.5.42](guides/RELEASE-0.5.42.md) | 0.5.42 发布说明：顶栏三灯 / 网关启停 / 音乐登录 / 上下文面板 / 记忆护栏 |
 | [ANDROID-SELF-HOST](design/ANDROID-SELF-HOST.md) | 手机当服务器的方案（逆向只学原理）：三段依赖、七条可借鉴做法、P0~P3 路线 |
 | 文档 | 一句话说明 | 状态 |

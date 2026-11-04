@@ -267,6 +267,46 @@ await check('resolveApiKey：密文优先于明文，明文优先于环境变量
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+
+await check('provider：503 busy 会重试，重试后成功则正常返回', async () => {
+  let calls = 0;
+  const p = providerMod.createProvider({
+    apiKey: 'k',
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls < 2) return { ok: false, status: 503, text: async () => 'Service is too busy.' };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '好了' }, finish_reason: 'stop' }], usage: null }) };
+    }
+  });
+  const r = await p.textChat({ messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(r.content, '好了');
+  assert.equal(calls, 2);
+});
+
+await check('provider：连续 503 重试用尽后抛 MODEL_BUSY（人话）', async () => {
+  let calls = 0;
+  const p = providerMod.createProvider({
+    apiKey: 'k',
+    fetchImpl: async () => { calls += 1; return { ok: false, status: 503, text: async () => 'Service is too busy.' }; }
+  });
+  await assert.rejects(() => p.textChat({ messages: [{ role: 'user', content: 'x' }] }), (e) => {
+    assert.equal(e.code, 'MODEL_BUSY');
+    assert.match(e.message, /正忙/);
+    return true;
+  });
+  assert.ok(calls >= 2, `应该重试过，实际 ${calls} 次`);
+});
+
+await check('provider：401 不重试（配置错，重试没意义）', async () => {
+  let calls = 0;
+  const p = providerMod.createProvider({
+    apiKey: 'k',
+    fetchImpl: async () => { calls += 1; return { ok: false, status: 401, text: async () => 'unauthorized' }; }
+  });
+  await assert.rejects(() => p.textChat({ messages: [{ role: 'user', content: 'x' }] }));
+  assert.equal(calls, 1);
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
