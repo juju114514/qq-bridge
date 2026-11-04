@@ -125,14 +125,17 @@ public class BridgeService extends Service {
             }
         }, Math.max(30000, timeoutMs));
 
+        // 只保留**最后** 400 行：pip/apt 的输出来到几千行，
+        // 只留开头会把 PIP_FAIL / ALL_DONE 这种结尾标记丢掉；而且这里绝不能提前 break
+        // —— 读端一停，子进程写满管道就卡死，最后会被看门狗当成超时杀掉。
         java.util.List<String> lines = new java.util.ArrayList<String>();
         BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
         try {
             String line;
             while ((line = br.readLine()) != null) {
                 lines.add(line);
+                if (lines.size() > 400) lines.remove(0);
                 push("[B] " + line);
-                if (lines.size() >= 400) break;
             }
         } catch (java.io.IOException e) {
             if (!timedOut[0]) throw e;

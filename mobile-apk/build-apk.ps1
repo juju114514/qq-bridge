@@ -9,18 +9,18 @@
 #
 param(
   [switch]$WithPayload,
-  [string]$Out = "<输出目录>\qq-bridge-app.apk"
+  [string]$Out = "D:\QQBot-open\mobile\dist\qq-bridge-app.apk"
 )
 
 $ErrorActionPreference = "Stop"
 $proj = $PSScriptRoot
-$jdk  = if ($env:ANDROID_JDK) { $env:ANDROID_JDK } else { "<JDK目录，如 C:\\Program Files\\Java\\jdk-17>" }
-$sdk  = if ($env:ANDROID_SDK) { $env:ANDROID_SDK } else { "<Android SDK 目录>" }
+$jdk  = "D:\QQBot\tools\jdk\jdk-17.0.20.1+1"
+$sdk  = "D:\QQBot\tools\android-sdk"
 $bt   = Join-Path $sdk "build-tools\34.0.0"
 $plat = Join-Path $sdk "platforms\android-34\android.jar"
 $dist = Join-Path $proj "build"
-$repo = if ($env:QQB_REPO) { $env:QQB_REPO } else { "<qq-bridge 仓库路径>" }
-$arm  = if ($env:QQB_ARM_DIR) { $env:QQB_ARM_DIR } else { "<arm64 资产目录（含 bin/node、cacert.pem、proot.tar、rootfs）>" }
+$repo = "D:\QQBot-open\qq-bridge"
+$arm  = "D:\QQBot\tools\arm64\extract"
 
 $env:JAVA_HOME = $jdk
 $env:PATH = "$jdk\bin;$env:PATH"
@@ -99,11 +99,40 @@ if ($WithPayload) {
 
   # node 是 Termux 构建的 bionic 二进制，needed 里有 libz.so.1 / libcares / libsqlite3 /
   # libcrypto / libssl / libicu* — Android 系统里没有，必须自带（用 tools/fetch-node-libs.py 抓）。
-$libs = if ($env:QQB_LIBS_DIR) { $env:QQB_LIBS_DIR } else { "<termux 运行库目录>" }
+  $libs = "D:\QQBot\tools\arm64\termux-libs"
   if (-not (Test-Path $libs)) { throw "缺 $libs，先跑：python mobile\apk\tools\fetch-node-libs.py" }
   & tar.exe -cf "$dist\assets\libs.tar" -C $libs "."
   if ($LASTEXITCODE -ne 0) { throw "libs.tar 打包失败" }
   Write-Host ("      libs.tar   {0:N1} MB" -f ((Get-Item "$dist\assets\libs.tar").Length / 1MB))
+
+  # ── v9：AstrBot 离线素材（「安装 AstrBot」按钮用，手机端全程不联网下载）──
+  # whl 本身已压缩：打成**不压缩**的 tar 最省事，guest 里 `/system/bin/tar xf` 直接解。
+  # 只打 151 个 .whl：optional-sdist（18.6MB 源码包）、INSTALL.md、MANIFEST.txt 都不带。
+  # 名字必须平铺在 assets 根（同 payload.tar 的理由：aapt2 在 Windows 会写反斜杠）。
+  $wh = "D:\QQBot\tools\astrbot-wheels"
+  if (-not (Test-Path $wh)) { throw "缺 $wh" }
+  $whl = @(Get-ChildItem "$wh\*.whl")
+  if ($whl.Count -lt 100) { throw "wheelhouse 里只有 $($whl.Count) 个 whl，不对" }
+  & tar.exe -cf "$dist\assets\astrbot-wheels.tar" -C $wh `
+    --exclude optional-sdist --exclude INSTALL.md --exclude MANIFEST.txt --exclude requirements.lock.txt .
+  if ($LASTEXITCODE -ne 0) { throw "astrbot-wheels.tar 打包失败" }
+  Write-Host ("      astrbot-wheels.tar {0:N1} MB（{1} 个 whl）" -f `
+    ((Get-Item "$dist\assets\astrbot-wheels.tar").Length / 1MB), $whl.Count)
+
+  # 源码只带跑得起来的那几个入口：astrbot/ + main.py + runtime_bootstrap.py + requirements + pyproject + README。
+  # tests / pytest 缓存 / .git / dashboard 前端源码都不进包（压完 1.5MB）。
+  # runtime_bootstrap.py 不能漏：main.py 第 8 行就 import 它（CA 修补），漏了必崩。
+  $asrc = "D:\QQBot-open\research\AstrBot"
+  if (-not (Test-Path "$asrc\main.py")) { throw "缺 $asrc\main.py" }
+  & tar.exe -czf "$dist\assets\astrbot-src.tar.gz" -C $asrc `
+    --exclude "*/tests" --exclude "*/pytest_cache" --exclude "*__pycache__*" --exclude "*.pyc" `
+    astrbot main.py runtime_bootstrap.py requirements.txt pyproject.toml README.md
+  if ($LASTEXITCODE -ne 0) { throw "astrbot-src.tar.gz 打包失败" }
+  Write-Host ("      astrbot-src.tar.gz {0:N1} MB" -f ((Get-Item "$dist\assets\astrbot-src.tar.gz").Length / 1MB))
+
+  # lock 单独一个 asset：服务里直接铺到 files/app/tmp/requirements.lock.txt（= guest 的 /tmp），
+  # 不用等 /tmp/astrbot 解出来再拷，少一个先后顺序的坑。
+  Copy-Item "$wh\requirements.lock.txt" "$dist\assets\requirements.lock.txt" -Force
 } else {
   Write-Host "      跳过 payload（-WithPayload 才带 node_modules 与源码）" -ForegroundColor Yellow
 }
@@ -142,7 +171,7 @@ if ($bad) {
   throw "APK 里有反斜杠条目（AssetManager 打不开）：$badNames"
 }
 $required = @('assets/node', 'assets/cacert.pem', 'assets/bridge.js', 'assets/package.json', 'classes.dex')
-if ($WithPayload) { $required += @('assets/payload.tar', 'assets/libs.tar') }
+if ($WithPayload) { $required += @('assets/payload.tar', 'assets/libs.tar', 'assets/astrbot-wheels.tar', 'assets/astrbot-src.tar.gz', 'assets/requirements.lock.txt') }
 foreach ($need in $required) {
   if ($names -notcontains $need) { throw "APK 缺少 $need" }
 }

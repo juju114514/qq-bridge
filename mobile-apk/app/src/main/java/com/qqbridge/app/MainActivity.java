@@ -55,6 +55,11 @@ import java.util.regex.Pattern;
  *   · 没有 androidx、不能用 FileProvider（android.useAndroidX=false）→ 分享只能走 MediaStore 的 content Uri
  *   · targetSdk 28：API < 29 写公共目录要运行时申请 WRITE_EXTERNAL_STORAGE（29 走 MediaStore 免权限）
  *   · 二维码没出现时整条工具栏隐藏；登录链接没抓到就置灰并提示，不装作能用
+ *
+ * v8：「导出镜像」工具条（导出镜像 / 分享镜像）。
+ *   · 导出整件事在 RootfsExporter 的后台线程里，界面只读静态状态（进度每秒刷一次）
+ *   · 容器没就绪时按钮置灰但**仍可点** —— 点一下只会弹「容器还没就绪」，
+ *     禁用了反而连原因都看不到（用户不知道要等什么）
  */
 public class MainActivity extends Activity {
 
@@ -64,6 +69,7 @@ public class MainActivity extends Activity {
     private static final int PENDING_NONE = 0;
     private static final int PENDING_SAVE = 1;
     private static final int PENDING_SHARE = 2;
+    private static final int PENDING_EXPORT = 3;
     /** NapCat 打印的登录链接：https://txz.qq.com/p?xxxxxxxx */
     private static final Pattern LOGIN_URL =
             Pattern.compile("https://txz\\.qq\\.com/p\\?[^\\s\"'）)]+");
@@ -85,6 +91,31 @@ public class MainActivity extends Activity {
     private Button saveBtn;
     private Button shareBtn;
     private Button openBtn;
+
+    /** 导出工具栏（v8）：导出镜像 / 分享镜像 + 一行状态字 */
+    private LinearLayout exportBar;
+    private Button exportBtn;
+    private Button exportShareBtn;
+    private TextView exportNote;
+    /** AstrBot 工具条（v9）：安装 AstrBot / 打开 AstrBot + 一行账号信息 */
+    private LinearLayout astrBar;
+    private Button astrBtn;
+    private TextView astrNote;
+    /** 装好后常驻显示：WebUI 地址 + 用户名/密码（手机没 adb，这是用户唯一能看的地方） */
+    private TextView astrInfo;
+    /** 上一次处理的 AstrBot 结束序号（去重） */
+    private int seenAstrSeq = 0;
+    /** 上一次的 AstrBot 状态（只在变化时改按钮，避免每 500ms 都 setText） */
+    private int lastAstrState = -1;
+
+    /** 上一次看到的 containerReady，用来只在变化时改按钮 */
+    private boolean lastReady = false;
+    /** 上一次处理的导出结束序号（去重，避免同一结果反复上屏） */
+    private int seenExportSeq = 0;
+    /** 进度节流：每秒刷一次就够 */
+    private long lastProgressAt = 0L;
+    /** 上一次的「有没有可分享的产物」 */
+    private boolean lastHasShare = false;
     /** 顶部提示条：黄底一行，6~9 秒自动收，sticky 的留到条件消失 */
     private TextView hintView;
     private String hintText;
@@ -131,7 +162,7 @@ public class MainActivity extends Activity {
         copy.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                cm.setPrimaryClip(ClipData.newPlainText("qqb-diag", BridgeService.dump()));
+                cm.setPrimaryClip(ClipData.newPlainText("qqb-diag", BridgeService.dump() + "\n" + AstrBotInstaller.summary()));
                 stageText.setText("日志已复制到剪贴板");
             }
         });
@@ -151,6 +182,67 @@ public class MainActivity extends Activity {
         bar.addView(retry);
 
         root.addView(bar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // ── 导出工具条（v8）：容器 rootfs → 下载/qq-bridge/rootfs-<时间戳>.tar.gz ──
+        // 单独一行而不是塞进上面那排：上面已经有 3 个按钮 + 阶段文字，360dp 屏上再挤两个
+        // 按钮会把阶段文字压成 0 宽（之前就因为挤掉过文字）。
+        exportBar = new LinearLayout(this);
+        exportBar.setOrientation(LinearLayout.HORIZONTAL);
+        exportBar.setGravity(Gravity.CENTER_VERTICAL);
+        exportBar.setPadding(pad, dp(2), pad, dp(3));
+        exportBar.setBackgroundColor(0xFF16202B);
+
+        exportBtn = addExportButton("导出镜像", new View.OnClickListener() {
+            @Override public void onClick(View v) { exportImage(); }
+        });
+        exportShareBtn = addExportButton("分享镜像", new View.OnClickListener() {
+            @Override public void onClick(View v) { shareImage(); }
+        });
+        exportShareBtn.setAlpha(0.45f);
+
+        exportNote = new TextView(this);
+        exportNote.setTextSize(10);
+        exportNote.setTextColor(0xFF8FA6BF);
+        exportNote.setPadding(dp(6), 0, 0, 0);
+        exportNote.setText("容器还没就绪");
+        exportBar.addView(exportNote, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        root.addView(exportBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // ── AstrBot 工具条（v9）：离线 wheelhouse 装 AstrBot → 打开 WebUI ──
+        // 单独一行：容器就绪后这一行才「亮」，容器没就绪时置灰但仍可点（点一下会说原因）。
+        astrBar = new LinearLayout(this);
+        astrBar.setOrientation(LinearLayout.HORIZONTAL);
+        astrBar.setGravity(Gravity.CENTER_VERTICAL);
+        astrBar.setPadding(pad, dp(2), pad, dp(3));
+        astrBar.setBackgroundColor(0xFF1B2C3A);
+
+        astrBtn = addAstrButton("安装 AstrBot", new View.OnClickListener() {
+            @Override public void onClick(View v) { onAstrClick(); }
+        });
+
+        astrNote = new TextView(this);
+        astrNote.setTextSize(10);
+        astrNote.setTextColor(0xFF8FA6BF);
+        astrNote.setPadding(dp(6), 0, 0, 0);
+        astrNote.setText("容器还没就绪");
+        astrBar.addView(astrNote, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        root.addView(astrBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 装好后常驻的一行：WebUI 地址 + 用户名/密码（换行显示，360dp 屏放得下）
+        astrInfo = new TextView(this);
+        astrInfo.setTextSize(11);
+        astrInfo.setTextColor(0xFF9FE6B0);
+        astrInfo.setBackgroundColor(0xFF13202B);
+        astrInfo.setPadding(pad, dp(6), pad, dp(6));
+        astrInfo.setVisibility(View.GONE);
+        root.addView(astrInfo, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // ── 扫码按钮条：二维码没出来之前整条隐藏（点了也没东西可存/可分享）──
@@ -212,6 +304,9 @@ public class MainActivity extends Activity {
 
         setContentView(root);
 
+        // 导出结果是静态状态：Activity 重建后接着显示，不重复上屏
+        seenExportSeq = RootfsExporter.seq;
+        seenAstrSeq = AstrBotInstaller.seq;
         startBridge();
         poll();
     }
@@ -230,6 +325,34 @@ public class MainActivity extends Activity {
         b.setPadding(dp(2), dp(4), dp(2), dp(4));
         b.setOnClickListener(l);
         qrBar.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return b;
+    }
+
+    /** 导出工具条的按钮：和二维码那排一样压小字号，360dp 屏上两个按钮 + 状态字刚好放下 */
+    private Button addExportButton(String label, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(11);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setPadding(dp(6), dp(4), dp(6), dp(4));
+        b.setOnClickListener(l);
+        exportBar.addView(b, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return b;
+    }
+
+    /** AstrBot 那颗按钮：和导出按钮一样压小字号，320dp 屏上「安装 AstrBot」不会被截成省略号 */
+    private Button addAstrButton(String label, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(11);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setPadding(dp(6), dp(4), dp(6), dp(4));
+        b.setOnClickListener(l);
+        astrBar.addView(b, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return b;
     }
 
@@ -513,6 +636,207 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ───────────────────────── 4. 导出容器镜像（v8） ─────────────────────────
+
+    /**
+     * 把 getFilesDir()/app/rootfs 打成 tar.gz 放到「下载/qq-bridge」。
+     * 打包在 RootfsExporter 的线程里跑（main thread 只发号施令），界面靠 poll() 每秒读进度。
+     */
+    private void exportImage() {
+        if (!BridgeService.containerReady) {
+            showHint("容器还没就绪（等容器探针输出 CONTAINER_OK 再试）", 8000);
+            return;
+        }
+        if (RootfsExporter.running()) {
+            showHint("导出已经在跑了，别重复点", 5000);
+            return;
+        }
+        final File rootfs = RootfsExporter.rootfsDir(this);
+        if (!rootfs.isDirectory()) {
+            showHint("找不到容器目录：" + rootfs.getPath(), 10000);
+            return;
+        }
+        if (!hasStoragePerm()) {
+            pendingAction = PENDING_EXPORT;
+            requestStorage();
+            return;
+        }
+        if (!RootfsExporter.start(this, rootfs)) {
+            showHint("导出已经在跑了，别重复点", 5000);
+            return;
+        }
+        lastProgressAt = 0L;
+        exportNote.setText("导出中…");
+        showHint("导出中… 别退出 App（体积可能 1~2 GB，要几分钟）", 8000);
+    }
+
+    /** 分享同一份产物：走 MediaStore 的 content Uri，可直接发微信/网盘 */
+    private void shareImage() {
+        final String uriStr = RootfsExporter.shareUri;
+        if (uriStr == null || uriStr.length() == 0) {
+            showHint("先点「导出镜像」，成功后才能分享", 7000);
+            return;
+        }
+        try {
+            Uri uri = Uri.parse(uriStr);
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("application/gzip");
+            send.putExtra(Intent.EXTRA_STREAM, uri);
+            send.setClipData(ClipData.newUri(getContentResolver(), RootfsExporter.shareName, uri));
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(send, "分享容器镜像");
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(chooser);
+            showHint("选微信/网盘发出去（" + RootfsExporter.human(RootfsExporter.shareSize)
+                    + "，大文件建议直接 USB 拷）", 9000);
+        } catch (Throwable t) {
+            showHint("分享失败：" + t.getMessage(), 8000);
+        }
+    }
+
+    /**
+     * 每个 poll tick 调一次（500ms）：按钮灰度跟 containerReady 走，进度每秒刷一次，
+     * 结果只在 seq 变化时上屏一次。
+     */
+    private void tickExport() {
+        final boolean ready = BridgeService.containerReady;
+        if (ready != lastReady) {
+            lastReady = ready;
+            // 置灰但仍可点：点一下会弹「容器还没就绪」，禁用了用户就看不到原因了
+            exportBtn.setAlpha(ready ? 1f : 0.45f);
+            exportNote.setText(ready ? "容器已就绪" : "容器还没就绪");
+        }
+
+        final boolean run = RootfsExporter.running();
+        if (run) {
+            long now = System.currentTimeMillis();
+            if (now - lastProgressAt >= 1000L) {
+                lastProgressAt = now;
+                // 直接写 hintText：hintUntil 一直往后推，这条提示在导出期间不会过期
+                hintText = "导出中… " + RootfsExporter.phase + " 已用 "
+                        + RootfsExporter.human(RootfsExporter.bytes) + "（别退出 App）";
+                hintUntil = now + 8000L;
+                applyHint();
+                exportNote.setText("导出中… " + RootfsExporter.human(RootfsExporter.bytes));
+            }
+        }
+
+        final int seq = RootfsExporter.seq;
+        if (seq != seenExportSeq) {
+            seenExportSeq = seq;
+            boolean ok = RootfsExporter.state == RootfsExporter.OK;
+            String msg = RootfsExporter.result;
+            if (msg != null && msg.length() > 0) showHint(msg, 20000);
+            exportNote.setText(ok ? "已导出 " + RootfsExporter.human(RootfsExporter.shareSize) : "导出失败");
+        }
+
+        // 分享按钮只看「有没有可分享的产物」：Activity 重建 / 进程被回收后都能自己恢复
+        final boolean has = RootfsExporter.shareUri != null && RootfsExporter.shareUri.length() > 0;
+        if (has != lastHasShare) {
+            lastHasShare = has;
+            exportShareBtn.setAlpha(has ? 1f : 0.45f);
+        }
+    }
+
+    // ───────────────────────── 5. 安装 AstrBot（v9） ─────────────────────────
+
+    /**
+     * 三态点击：
+     *  · 已装好 → 按钮已变「打开 AstrBot」，点它是开 WebUI（不重装）
+     *  · 正在装 → 只说一句，不重复起线程
+     *  · 没装 → 必须 containerReady；否则只说原因（按钮置灰但**仍可点**）
+     */
+    private void onAstrClick() {
+        if (AstrBotInstaller.installed()) {
+            openAstrBot();
+            return;
+        }
+        if (AstrBotInstaller.running()) {
+            showLogPanel();
+            showHint("正在装 AstrBot（" + AstrBotInstaller.phase + "），别重复点", 6000);
+            return;
+        }
+        if (!BridgeService.containerReady) {
+            showHint("容器还没就绪（等探针输出 CONTAINER_OK）再装 AstrBot", 9000);
+            return;
+        }
+        if (!AstrBotInstaller.start(this)) {
+            showHint("正在装 AstrBot，别重复点", 5000);
+            return;
+        }
+        seenAstrSeq = AstrBotInstaller.seq;
+        lastAstrState = -1;
+        showLogPanel();
+        showHint("开始装 AstrBot：解包 → apt → 离线 pip → 启动（约 1~2 分钟）", 10000);
+    }
+
+    /** 用内嵌 WebView 打开 guest 里的 AstrBot WebUI（proot 不隔离网络，127.0.0.1:6185 直连） */
+    private void openAstrBot() {
+        try {
+            web.loadUrl(AstrBotInstaller.URL);
+            web.setVisibility(View.VISIBLE);
+            logPanel.setVisibility(View.GONE);
+            toggleBtn.setText("界面");
+            webLoaded = true;
+            showHint("已打开 AstrBot WebUI：" + AstrBotInstaller.URL, 8000);
+        } catch (Throwable t) {
+            showHint("打开 WebUI 失败：" + t.getMessage(), 8000);
+        }
+    }
+
+    /**
+     * 每个 poll tick（500ms）调一次：
+     *  · 按钮文案/灰度跟「容器是否就绪 + AstrBot 状态」走
+     *  · 装好后把 WebUI 地址 + 用户名/密码常驻在屏幕上
+     *  · 结束只在 seq 变化时上屏一次（成功给密码，失败自动切日志面板）
+     */
+    private void tickAstrBot() {
+        final boolean ready = BridgeService.containerReady;
+        final int st = AstrBotInstaller.state;
+
+        if (st != lastAstrState) {
+            lastAstrState = st;
+            astrBtn.setText(st == AstrBotInstaller.OK ? "打开 AstrBot" : "安装 AstrBot");
+            astrBtn.setAlpha((ready || st == AstrBotInstaller.OK) ? 1f : 0.45f);
+        }
+
+        if (st == AstrBotInstaller.RUN) {
+            astrNote.setText(AstrBotInstaller.phase);
+        } else if (st == AstrBotInstaller.OK) {
+            astrNote.setText("已装好 · 6185 已监听");
+            if (astrInfo.getVisibility() != View.VISIBLE) {
+                astrInfo.setText("AstrBot WebUI " + AstrBotInstaller.URL
+                        + "\n用户名 " + AstrBotInstaller.username
+                        + " · 密码 " + pwdText());
+                astrInfo.setVisibility(View.VISIBLE);
+            }
+        } else if (st == AstrBotInstaller.FAIL) {
+            astrNote.setText("失败：" + AstrBotInstaller.failKind + "（点「复制」发我）");
+            if (astrInfo.getVisibility() == View.VISIBLE) astrInfo.setVisibility(View.GONE);
+        } else {
+            astrNote.setText(ready ? "未安装（离线 wheels 随包带）" : "容器还没就绪");
+        }
+
+        final int seq = AstrBotInstaller.seq;
+        if (seq != seenAstrSeq) {
+            seenAstrSeq = seq;
+            if (st == AstrBotInstaller.OK) {
+                showHint("AstrBot 装好了：" + AstrBotInstaller.URL
+                        + " · 用户名 " + AstrBotInstaller.username + " · 密码 " + pwdText(), 20000);
+            } else if (st == AstrBotInstaller.FAIL) {
+                showLogPanel();
+                showHint("装 AstrBot 失败：" + AstrBotInstaller.failKind
+                        + " · 最后 20 行在日志面板（点「复制」发我）", 20000);
+            }
+        }
+    }
+
+    private String pwdText() {
+        return AstrBotInstaller.password.length() > 0
+                ? AstrBotInstaller.password
+                : "（只在首次启动打印，见 /root/astrbot/data/cmd_config.json）";
+    }
+
     // ───────────────────────── 存储权限（仅 API < 29 需要） ─────────────────────────
 
     private boolean hasStoragePerm() {
@@ -527,7 +851,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 29) return;
         try {
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_STORAGE);
-            showHint("请允许存储权限（写相册要用）", 5000);
+            showHint("请允许存储权限（写下载/相册要用）", 5000);
         } catch (Throwable t) {
             showHint("申请存储权限失败：" + t.getMessage(), 6000);
         }
@@ -547,6 +871,7 @@ public class MainActivity extends Activity {
         }
         if (action == PENDING_SAVE) saveToGallery();
         else if (action == PENDING_SHARE) shareQr();
+        else if (action == PENDING_EXPORT) exportImage();
     }
 
     private static void copyTo(File src, OutputStream os) throws IOException {
@@ -611,6 +936,8 @@ public class MainActivity extends Activity {
                     @Override public void run() { logPanel.fullScroll(View.FOCUS_DOWN); }
                 });
                 expireHint();
+                tickExport();
+                tickAstrBot();
 
                 boolean up = probe(CONSOLE_PORT);
                 if (up && !webLoaded) {
