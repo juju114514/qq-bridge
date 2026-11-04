@@ -112,7 +112,7 @@ import { createOfficialTestSend } from './official-test-send.js';
 import { makeTextImageSegment } from './t2i-send.js';
 import { createContextUsageStore } from './context-usage.js';
 import { markMemoryClear } from './memory-guard.js';
-import { createThrottledLogger } from './log-throttle.js';
+import { createThrottledLogger } from './log-throttle.js'; import { logGatewayPreflight } from './gateway-preflight.js';
 import { runLocalAgentTurn } from './agent/dispatch.js';
 import { splitForPrompt } from './role-dialogues.js';
 import { warmUpT2i } from './t2i.js';
@@ -10510,7 +10510,7 @@ function selfCheckSnapshot() {
       if (bootReport && !bootReport.summarized) emitStartupSummary(health?.snapshot() ?? {});
     } catch { /* ignore */ }
   }, 10_000);
-  log('桥接已启动。按 Ctrl+C 退出。');
+  log('桥接已启动。按 Ctrl+C 退出。'); logGatewayPreflight(cfg, log).catch(() => {});
   // 首次部署一次性任务：把已存在的群成员标成 listed（延迟 12 秒，不阻塞启动）
   setTimeout(() => { bootstrapPeopleListed().catch((e) => log(`⚠️ [people] 初始化失败：${e?.message ?? e}`)); }, 12000).unref?.();
   // 预热表情库：启动时同步一次 QQ 收藏表情，失败不阻塞（AI 首次调用工具时还会再试）。
