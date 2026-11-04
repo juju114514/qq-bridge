@@ -9,18 +9,18 @@
 #
 param(
   [switch]$WithPayload,
-  [string]$Out = "D:\QQBot-open\mobile\dist\qq-bridge-app.apk"
+  [string]$Out = "<repo>\mobile\dist\qq-bridge-app.apk"
 )
 
 $ErrorActionPreference = "Stop"
 $proj = $PSScriptRoot
-$jdk  = "D:\QQBot\tools\jdk\jdk-17.0.20.1+1"
-$sdk  = "D:\QQBot\tools\android-sdk"
+$jdk  = "<tools>\tools\jdk\jdk-17.0.20.1+1"
+$sdk  = "<tools>\tools\android-sdk"
 $bt   = Join-Path $sdk "build-tools\34.0.0"
 $plat = Join-Path $sdk "platforms\android-34\android.jar"
 $dist = Join-Path $proj "build"
-$repo = "D:\QQBot-open\qq-bridge"
-$arm  = "D:\QQBot\tools\arm64\extract"
+$repo = "<repo>\qq-bridge"
+$arm  = "<tools>\tools\arm64\extract"
 
 $env:JAVA_HOME = $jdk
 $env:PATH = "$jdk\bin;$env:PATH"
@@ -99,7 +99,7 @@ if ($WithPayload) {
 
   # node 是 Termux 构建的 bionic 二进制，needed 里有 libz.so.1 / libcares / libsqlite3 /
   # libcrypto / libssl / libicu* — Android 系统里没有，必须自带（用 tools/fetch-node-libs.py 抓）。
-  $libs = "D:\QQBot\tools\arm64\termux-libs"
+  $libs = "<tools>\tools\arm64\termux-libs"
   if (-not (Test-Path $libs)) { throw "缺 $libs，先跑：python mobile\apk\tools\fetch-node-libs.py" }
   & tar.exe -cf "$dist\assets\libs.tar" -C $libs "."
   if ($LASTEXITCODE -ne 0) { throw "libs.tar 打包失败" }
@@ -109,7 +109,7 @@ if ($WithPayload) {
   # whl 本身已压缩：打成**不压缩**的 tar 最省事，guest 里 `/system/bin/tar xf` 直接解。
   # 只打 151 个 .whl：optional-sdist（18.6MB 源码包）、INSTALL.md、MANIFEST.txt 都不带。
   # 名字必须平铺在 assets 根（同 payload.tar 的理由：aapt2 在 Windows 会写反斜杠）。
-  $wh = "D:\QQBot\tools\astrbot-wheels"
+  $wh = "<tools>\tools\astrbot-wheels"
   if (-not (Test-Path $wh)) { throw "缺 $wh" }
   $whl = @(Get-ChildItem "$wh\*.whl")
   if ($whl.Count -lt 100) { throw "wheelhouse 里只有 $($whl.Count) 个 whl，不对" }
@@ -122,7 +122,7 @@ if ($WithPayload) {
   # 源码只带跑得起来的那几个入口：astrbot/ + main.py + runtime_bootstrap.py + requirements + pyproject + README。
   # tests / pytest 缓存 / .git / dashboard 前端源码都不进包（压完 1.5MB）。
   # runtime_bootstrap.py 不能漏：main.py 第 8 行就 import 它（CA 修补），漏了必崩。
-  $asrc = "D:\QQBot-open\research\AstrBot"
+  $asrc = "<repo>\research\AstrBot"
   if (-not (Test-Path "$asrc\main.py")) { throw "缺 $asrc\main.py" }
   & tar.exe -czf "$dist\assets\astrbot-src.tar.gz" -C $asrc `
     --exclude "*/tests" --exclude "*/pytest_cache" --exclude "*__pycache__*" --exclude "*.pyc" `

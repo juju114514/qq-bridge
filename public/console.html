@@ -3301,6 +3301,14 @@ button:active:not(:disabled) {
         <pre id="hubArcBody" style="margin-top:8px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.5;background:rgba(12,20,34,.75);border:1px solid #24344f;border-radius:8px;padding:8px;color:#dbe6ff"></pre>
       </div>
       <div class="card" style="padding:12px">
+        <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">网关体检</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="gwDoctor" type="button">体检</button>
+          <button class="btn" id="gwFix" type="button" disabled>一键修复</button>
+        </div>
+        <div id="gwDoctorOut" style="margin-top:8px;font-size:12px;line-height:1.7">（点「体检」看当前网关状态）</div>
+      </div>
+      <div class="card" style="padding:12px">
         <div style="font-size:13px;color:#9fb0cc;margin-bottom:8px">密钥状态</div>
         <div id="hubSecret" style="font-size:13px;line-height:1.7">（加载中…）</div>
         <div style="margin-top:8px;font-size:12px;color:#8fa3c4">控制台只显示状态，不提供「看明文」——那等于把防线拆了。</div>
@@ -8152,6 +8160,7 @@ async function spaceDeletePost(tid, btn) {
       const idx = document.getElementById('hubIndex');
       if (idx) idx.innerHTML = '状态：' + (r.fileIndex.enabled ? '已启用' : '已关闭') + '<br>根目录：' + ((r.fileIndex.roots || []).join('、') || '（未配置）');
       renderHubBrain(r.brainRouter, a);
+      hubGatewayDoctor();   // 进页面自动体检，不用手点
       await loadHubIndexStatus();
       await loadHubSecret();
     } catch (e) {
@@ -8238,6 +8247,55 @@ async function spaceDeletePost(tid, btn) {
       body.textContent = r.text + (r.truncated ? '\n…（已截断，可在 qq_memory_read 里要更多）' : '');
     } catch (e) { body.textContent = '读取失败：' + (e && e.message ? e.message : e); }
   }
+  async function hubGatewayDoctor() {
+    const box = document.getElementById('gwDoctorOut');
+    const fixBtn = document.getElementById('gwFix');
+    if (!box) return;
+    box.textContent = '（体检中…）';
+    try {
+      const r = await api('/api/gateway/doctor');
+      if (!r) throw new Error('没有返回');
+      const lines = [];
+      lines.push('配置：<b>' + (r.configuredLabel || r.configured) + '</b>　实际在跑：' + ((r.running || []).length ? r.running.join(' / ') : '（无）'));
+      if (r.login) {
+        lines.push(r.login.ok
+          ? '登录：<span style="color:#9fd6a0">QQ ' + (r.login.userId || '?') + '（' + (r.login.nickname || '') + '）</span>'
+          : '登录：<span style="color:#ffb27a">HTTP ' + r.login.status + ' ' + (r.login.text || '') + '</span>');
+      }
+      const probs = r.problems || [];
+      if (probs.length) {
+        lines.push('<span style="color:#ffb27a">问题：</span>');
+        for (const p of probs) lines.push('· ' + p);
+        const sug = r.suggestions || [];
+        if (sug.length) {
+          lines.push('<span style="color:#8fa3c4">建议：</span>');
+          for (const s of sug) lines.push('· ' + s);
+        }
+      } else {
+        lines.push('<span style="color:#9fd6a0">✓ 没问题：配置与实际运行的网关一致</span>');
+      }
+      box.innerHTML = lines.join('<br>');
+      if (fixBtn) fixBtn.disabled = !r.canAutoFix;
+    } catch (e) {
+      box.textContent = '体检失败：' + (e && e.message ? e.message : e);
+    }
+  }
+  async function hubGatewayFix() {
+    const box = document.getElementById('gwDoctorOut');
+    if (!box) return;
+    if (!confirm('会改 config.json（先自动备份），确定？')) return;
+    box.textContent = '（修复中…）';
+    try {
+      const r = await api('/api/gateway/doctor/fix', 'POST', {});
+      if (!r || r.ok === false) throw new Error((r && r.error) || '修复失败');
+      box.innerHTML = '<span style="color:#9fd6a0">✓ 已修复</span><br>provider=' + r.fixed.provider
+        + '　ws=' + r.fixed.wsUrl + '<br>备份：' + r.backup
+        + '<br><span style="color:#8fa3c4">重启桥接后生效</span>';
+      setTimeout(hubGatewayDoctor, 800);
+    } catch (e) {
+      box.textContent = '修复失败：' + (e && e.message ? e.message : e);
+    }
+  }
   async function hubSearch() {
     const q = (document.getElementById('hubSearchInput') || {}).value || '';
     const out = document.getElementById('hubSearchOut');
@@ -8292,6 +8350,8 @@ async function spaceDeletePost(tid, btn) {
     if (modeBtn) { hubSetMode(modeBtn.getAttribute('data-hub-mode')); return; }
     const delBtn = ev.target.closest('[data-hub-mem-del]');
     if (delBtn) { hubMemDel(delBtn.getAttribute('data-hub-mem-del')); return; }
+    if (ev.target.id === 'gwDoctor') { hubGatewayDoctor(); return; }
+    if (ev.target.id === 'gwFix') { hubGatewayFix(); return; }
     if (ev.target.id === 'hubRefresh') { loadHub(); return; }
     if (ev.target.id === 'hubSearchGo') { hubSearch(); return; }
     if (ev.target.id === 'hubMemLoad') { hubMemLoad(); return; }

@@ -109,7 +109,7 @@ async function main() {
     login = await httpJson(`http://127.0.0.1:${probeHttp.port}/get_login_info`, probeHttp.provider === 'snowluma' ? httpToken : token);
   }
 
-  const snowlumaDir = legacy.homeDir || 'D:\\QQBot\\snowluma';
+  const snowlumaDir = legacy.homeDir || process.env.SNOWLUMA_HOME || '';
   const slTokens = readSnowLumaTokens(snowlumaDir);
 
   const problems = [];
