@@ -12,6 +12,7 @@
 
 import { spawn } from 'node:child_process';
 import net from 'node:net';
+import http from 'node:http';
 
 const CACHE_MS = 20000;
 const cache = new Map(); // key(baseUrl|'') → { at, result }
@@ -101,6 +102,40 @@ export function probeHttpPort(port, { timeoutMs = 1200 } = {}) {
  *          skipSystemPorts?:boolean}} opts
  * @returns {Promise<{baseUrl:string|null, port:number|null, candidates:number[], source:string}>}
  */
+
+/**
+ * 这个端口到底是不是 DSH？
+ *
+ * 只看「有没有 HTTP 响应」不够：真实事故里 9230 端口上有别的服务，对 `/` 返回 404，
+ * 照样被当成 DSH，于是事件流永远 0 帧。DSH 的 `/api/ping` 要么 200、要么 401（需要鉴权），
+ * 别的服务对它只会给 404。
+ */
+/**
+ * 这个端口到底是不是 DSH？三态返回，避免"拿不准就否掉"。
+ *
+ *   'yes'     200 / 401 / 403 —— /api/ping 端点存在（DSH 需要鉴权时给 401）
+ *   'no'      404 —— 端点不存在，多半是别的 HTTP 服务（真实事故：9230 上的其他服务）
+ *   'unknown' 超时 / 连接重置 / 其它状态码 —— 拿不准，交给上层按老逻辑处理
+ *
+ * 为什么要 unknown：实测 DSH 对**未鉴权的连续探测**会超时或直接 RST，
+ * 若把这种情况判成"不是 DSH"，自动发现就会把真正的 DSH 排除掉。
+ */
+export function probeDshSignature(port, { timeoutMs = 1500 } = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => { if (!settled) { settled = true; resolve(value); } };
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/ping', timeout: timeoutMs }, (res) => {
+      const code = res.statusCode || 0;
+      if (code === 200 || code === 401 || code === 403) done('yes');
+      else if (code === 404) done('no');
+      else done('unknown');
+      res.resume();
+    });
+    req.on('timeout', () => { req.destroy(); done('unknown'); });
+    req.on('error', () => done('unknown'));
+  });
+}
+
 export async function discoverDshBaseUrl(opts = {}) {
   const preferred = String(opts.preferred ?? '').trim();
   const cacheKey = preferred;
@@ -122,15 +157,32 @@ export async function discoverDshBaseUrl(opts = {}) {
   if (preferredPort) push(preferredPort);
   // skipSystemPorts 是给**单测/受控环境**用的：真机上系统里那个 DSH 端口会先于测试端口被选中，
   // 断言就永远依赖"本机此刻 DSH 是否在跑"。它也让"只信配置、不问系统"成为一种可选行为。
+  // 系统里属于 DSH 进程的监听端口：这是 OS 给的事实，直接采信。
+  const systemPorts = new Set();
   if (!opts.skipSystemPorts) {
-    for (const p of await listDshListeningPorts({ timeoutMs: opts.timeoutMs })) push(p);
+    for (const p of await listDshListeningPorts({ timeoutMs: opts.timeoutMs })) {
+      push(p);
+      systemPorts.add(String(p));
+    }
   }
   for (const p of opts.extraPorts ?? []) push(p);
   push(3080);
 
   for (const port of candidates) {
     // eslint-disable-next-line no-await-in-loop
-    if (await probeHttpPort(port, { timeoutMs: opts.timeoutMs })) {
+    // eslint-disable-next-line no-await-in-loop
+    // 判定规则（实测出来的）：
+    //   · 签名明确 no（/api/ping 404）→ 一定不是 DSH，哪怕是 DSH 进程开的端口
+    //     （同一个 DSH 可能同时监听多个端口，其中有的只是别的服务，比如 9230）
+    //   · 签名 yes（200/401/403）→ 是 DSH
+    //   · 签名 unknown（裸探测没响应/超时）→ 只有"进程确实属于 DSH"才采信
+    //     因为 DSH 对未鉴权的裸请求可能完全不响应，不能因此把真身排除掉
+    const trusted = systemPorts.has(String(port));
+    // eslint-disable-next-line no-await-in-loop
+    const sig = await probeDshSignature(port, { timeoutMs: opts.timeoutMs });
+    // eslint-disable-next-line no-await-in-loop
+    const alive = sig === 'yes' || (sig === 'unknown' && (trusted || await probeHttpPort(port, { timeoutMs: opts.timeoutMs })));
+    if (alive) {
       const result = {
         baseUrl: `http://127.0.0.1:${port}`,
         port,

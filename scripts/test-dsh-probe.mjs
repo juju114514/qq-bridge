@@ -89,6 +89,54 @@ await check('HTTP 直接炸了 → 不 ok，提示可能不是 DSH', async () =>
   assert.match(r.hints.join(), /不是 DSH|代理/);
 });
 
+
+const streamWatch = await import(new URL('../src/dsh-stream-watch.js', import.meta.url).href);
+const dshPortMod = await import(new URL('../src/dsh-port.js', import.meta.url).href);
+
+await check('stream-watch：前两次 0 帧不提示，第 3 次给出"可能连错端口"的提示', () => {
+  streamWatch.resetStreamWatch();
+  assert.equal(streamWatch.noteStreamEnd(0), '');
+  assert.equal(streamWatch.noteStreamEnd(0), '');
+  const hint = streamWatch.noteStreamEnd(0, { baseUrl: 'http://127.0.0.1:9230' });
+  assert.match(hint, /连续 3 次/);
+  assert.match(hint, /9230/);
+  assert.match(hint, /dsh\.baseUrl/);
+});
+
+await check('stream-watch：有帧就清零，不再提示', () => {
+  streamWatch.resetStreamWatch();
+  streamWatch.noteStreamEnd(0);
+  streamWatch.noteStreamEnd(0);
+  streamWatch.noteStreamEnd(5);      // 收到帧
+  assert.equal(streamWatch.noteStreamEnd(0), '');
+  assert.equal(streamWatch.streamWatchState().zeroStreak, 1);
+});
+
+await check('dsh-port：probeDshSignature 对 404 的端口判 no（真实事故：9230 上的别的服务）', async () => {
+  const httpMod = await import('node:http');
+  const srv = httpMod.createServer((req, res) => { res.statusCode = 404; res.end('not found'); });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  const verdict = await dshPortMod.probeDshSignature(port, { timeoutMs: 1200 });
+  srv.close();
+  assert.equal(verdict, 'no');
+});
+
+await check('dsh-port：probeDshSignature 对 401 的端口判 yes（DSH 未鉴权时的正常响应）', async () => {
+  const httpMod = await import('node:http');
+  const srv = httpMod.createServer((req, res) => { res.statusCode = 401; res.end('unauthorized'); });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  const verdict = await dshPortMod.probeDshSignature(port, { timeoutMs: 1200 });
+  srv.close();
+  assert.equal(verdict, 'yes');
+});
+
+await check('dsh-port：连不上的端口判 unknown（不能拿"没响应"当"不是 DSH"）', async () => {
+  const verdict = await dshPortMod.probeDshSignature(9, { timeoutMs: 400 });
+  assert.equal(verdict, 'unknown');
+});
+
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }

@@ -130,7 +130,7 @@ import { evaluateWakeTrigger } from './domains/wake-trigger.js';
 import { setupSleepTimer } from './domains/sleep-timer.js';
 import { scheduleWake } from './domains/wake-schedule.js';
 import { createRuntime } from './runtime.js';
-import { discoverDshBaseUrl } from './dsh-port.js';
+import { discoverDshBaseUrl } from './dsh-port.js'; import { noteStreamEnd } from './dsh-stream-watch.js';
 import { createOfficialTransport, isOfficialId, stripOfficialId, segmentsToOfficialText } from './official-transport.js';
 import { parseQuietHours, inQuietHours, shouldSilenceWake } from './quiet-hours.js';
 import { emptyDb, touchPerson, levelOf, describePerson, normalizeQQ, markListed, setNote, removeNote, notesInScope, visibleNotes } from './people.js';
@@ -10026,7 +10026,7 @@ function selfCheckSnapshot() {
         }
         // 流正常关闭（服务端主动断开）不会抛错。以前这里什么都不打，日志看起来
         // 就像「连上了、然后又连一次」，完全看不出 DSH 把流关了。
-        log(`DSH 事件流已结束（本次收到 ${framesThisStream} 帧）`);
+        log(`DSH 事件流已结束（本次收到 ${framesThisStream} 帧）${noteStreamEnd(framesThisStream, { baseUrl: cfg.dsh?.baseUrl })}`);
       } catch (error) {
         log('事件流中断:', error?.message ?? error);
       } finally {
