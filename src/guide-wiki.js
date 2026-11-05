@@ -103,14 +103,36 @@ export async function fetchWikiPage(game, topic, opts = {}) {
       log(`[wiki] 全文本搜索失败：${error?.message ?? error}`);
     }
   }
+  if (!titles.length && tokens.length) {
+    try {
+      const data = await getJson(
+        `${API(wiki)}?action=query&list=search&srsearch=${encodeURIComponent(tokens[0])}&format=json&srlimit=6`,
+        opts.timeoutMs,
+      );
+      for (const hit of (data?.query?.search || [])) titles.push(String(hit.title));
+    } catch (error) {
+      log(`[wiki] 兜底搜索失败：${error?.message ?? error}`);
+    }
+  }
   if (!titles.length) return { ok: false, error: 'wiki 里没搜到相关页面', wiki, query: q };
 
   // 标题打分：命中词越多越前；"攻略/机制/打法"这类词加分
   const scoreOf = (title) => {
+    const s0 = String(title);
     let s = 0;
-    for (const tk of tokens) if (String(title).includes(tk)) s += 10;
-    if (/攻略|打法|机制|阵容|配队|通关/.test(title)) s += 6;
-    s -= Math.min(String(title).length, 30) * 0.1;
+    // 命中查询词
+    for (const tk of tokens) if (s0.includes(tk)) s += 10;
+    // 以查询词开头（如「钟离/攻略」）最像具体条目
+    if (tokens.some((tk) => s0.startsWith(tk))) s += 12;
+    // 子页面形态加分
+    if (/\/攻略|\/配队|\/机制|\/打法|\/阵容/.test(s0)) s += 8;
+    if (/攻略|打法|机制|阵容|配队|通关/.test(s0)) s += 4;
+    // 通用模板/规范页大幅降权（「配队规范」「编辑规范」这类不是真攻略）
+    if (/^(配队规范|词条|模板|编辑|分类|帮助)|规范$|模板$/.test(s0)) s -= 25;
+    // 道具/图鉴/勋章这类"条目页"不是攻略，除非查询里就要它
+    if (/勋章|道具|材料|图鉴|成就|立绘|语音/.test(s0) && !/勋章|道具|材料|图鉴/.test(q)) s -= 20;
+    // 标题越长越可能是具体条目，但别让它压过前缀匹配
+    s -= Math.min(s0.length, 30) * 0.1;
     return -s;
   };
   const ordered = [...titles].sort((a, b) => scoreOf(a) - scoreOf(b));
