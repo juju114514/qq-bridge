@@ -3,7 +3,7 @@
 > **自动生成，勿手改**：`node scripts/gen-route-index.mjs --write`
 > 守卫：`scripts/check-route-inventory.mjs`（模块导出 vs 派发链对账 + 内联路由预算）
 
-- 已搬进模块：**180** 条（53 个文件）
+- 已搬进模块：**181** 条（54 个文件）
 - 仍在 bridge 内联：**2** 条（波次 4 目标是 0）
 
 ## src/api/agent-route.js（1 条）
@@ -52,6 +52,12 @@
 | ANY | `/api/auth/mode` | handleDeviceAuthRoute |
 | POST | `/api/auth/pair` | handleDeviceAuthRoute |
 | POST | `/api/auth/pairing-code` | handleDeviceAuthRoute |
+
+## src/api/diag-route.js（1 条）
+
+| 方法 | 路径 | handler |
+|---|---|---|
+| GET | `/api/diag/bundle` | handleDiagRoute |
 
 ## src/api/dsh-probe-route.js（1 条）
 
