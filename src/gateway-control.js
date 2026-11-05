@@ -152,6 +152,15 @@ export async function startGateway(opts = {}) {
     now = () => Date.now()
   } = opts;
 
+  // 【0.5.63】防重复启动：只要 3000/3001 已经有人在听，就当作"已在跑"，直接复用。
+  // 以前只靠 getGatewayStatus 的 running 判定，端口组合一变（比如 5099 没起）就会误判成"没跑"，
+  // 于是每次重启桥接都再拉起一份 SnowLuma，窗口越堆越多（实测堆到 5 组）。
+  const listening = (await probe(3000)) || (await probe(3001));
+  if (listening) {
+    const st = await getGatewayStatus({ ports, probe, task: opts.task, taskExistsImpl: opts.taskExistsImpl });
+    return { ok: true, started: false, reused: true, waited: 0, status: st, error: '' };
+  }
+
   const before = await getGatewayStatus({ ports, probe, task: opts.task, taskExistsImpl: opts.taskExistsImpl });
   if (before.running) {
     return { ok: true, started: false, waited: 0, status: before, error: '' };

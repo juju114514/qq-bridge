@@ -191,3 +191,17 @@ await check('startViaSpawn：spawn 时 stdout/stderr 指向日志文件，不是
 console.log('');
 if (failures === 0) console.log('  全部通过');
 else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
+
+// 0.5.63：端口已在听时，startGateway 必须复用而不是再拉一份
+await check('startGateway：3000/3001 已在听 → 复用，不启动', async () => {
+  let started = 0;
+  const probe = async (port) => (port === 3000 || port === 3001);
+  const r = await m.startGateway({
+    probe,
+    runImpl: async () => { started += 1; return { ok: true }; },
+    taskExistsImpl: async () => true
+  });
+  assert.equal(r.started, false);
+  assert.equal(r.reused, true);
+  assert.equal(started, 0);
+});
