@@ -62,6 +62,10 @@ export function snowlumaDir(env = process.env) {
  * 为什么 detached：这样桥接重启不会把它带走（子进程关系不成立）。
  */
 export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, probe = probePort, ports = DEFAULT_PORTS, now = () => Date.now(), spawnImpl = spawn } = {}) {
+  // 【0.5.63】spawn 分支同样防重复：端口已在听就别再起一份
+  if ((await probe(3000)) || (await probe(3001))) {
+    return { ok: true, started: false, reused: true, waited: 0, ports };
+  }
   if (!dir) return { ok: false, started: false, error: '找不到 SnowLuma 目录（设 QQB_SNOWLUMA_DIR）' };
   const nodeExe = path.join(dir, 'node.exe');
   const entry = path.join(dir, 'index.mjs');
