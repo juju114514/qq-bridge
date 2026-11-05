@@ -9,6 +9,8 @@
 //
 // 依赖全部注入，可离线测（见 scripts/test-incoming-commands.mjs）。
 
+import { readErrors, errorSummary } from './agent/error-code.js';
+
 export function createIncomingCommands(deps = {}) {
   const {
     log = () => {},
@@ -68,6 +70,35 @@ export function createIncomingCommands(deps = {}) {
         });
         await sendToQQ(key, lines.join('\n'));
       }
+      return true;
+    }
+
+    // /诊断 —— 仅号主：一句话出运行状态 + 最近错误统计（不碰服务器、不花 token）
+    if (/^\/?(诊断|自检|diag)$/i.test(cmdText)) {
+      if (!isOwner) {
+        await sendToQQ(key, '这个只有号主能看');
+        return true;
+      }
+      const up = Math.floor(Number(process.uptime?.() || 0));
+      const d = Math.floor(up / 86400);
+      const h = Math.floor((up % 86400) / 3600);
+      const m = Math.floor((up % 3600) / 60);
+      const agentCfg = (cfg.agent || {});
+      const hasKey = Boolean(agentCfg.apiKey || agentCfg.apiKeyEnc);
+      const counts = errorSummary(STATE_DIR, 24 * 3600 * 1000);
+      const recent = readErrors(STATE_DIR, 3);
+      const fmt = (x) => `${String(x).padStart(2, '0')}`;
+      const lines = [
+        `【诊断】版本 ${cfg.version || '?'}`,
+        `运行 ${d}d${fmt(h)}h${fmt(m)}m · agent.mode=${agentCfg.mode || 'local'} · key=${hasKey ? '已配置' : '未配置'}`,
+        `最近 24h 错误：${Object.keys(counts).length ? Object.entries(counts).map(([c, n]) => `${c}×${n}`).join('、') : '无'}`
+      ];
+      for (const e of recent) {
+        const t0 = String(e.at || '').slice(11, 16);
+        lines.push(`· ${t0} ${e.code} ${String(e.detail || '').slice(0, 40)}`);
+      }
+      if (!Object.keys(counts).length) lines.push('状态看起来正常；如果群里报错不带码，说明跑的是老版本。');
+      await sendToQQ(key, lines.join('\n'));
       return true;
     }
 
