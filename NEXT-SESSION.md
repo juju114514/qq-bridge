@@ -1,9 +1,40 @@
-# 下次接手先看这里（更新于 2026-11-05 00:35）
+# 下次接手先看这里（更新于 2026-11-06 01:20）
 
 ## 一句话状态
 
-**0.5.62 已发布**（代码与 Release 都在远端）；桥接线上三路全通（dsh / gateway / official）。
-**下一步只剩手机端 v9 真机验收** —— 验过之后才做「预装版 APK」和挂附件。
+**0.5.63 已推 main**（`a808b24`，未打 tag/Release）；桥接线上三路全通（dsh / gateway / official）；审计 191/191。
+**0.5.63 做什么**：攻略实时抓取（biligame wiki）+ 群里错误码 + 号主 `/诊断` + 诊断包导出 + 网关防重复启动。
+**下一步**：给 0.5.63 打 tag/Release（用户偏好源码-only），以及手机端 v9 真机验收（仍未做）。
+
+### 0.5.63 关键文件
+
+| 文件 | 作用 |
+| --- | --- |
+| `src/guide-fetch.js` | 搜索+抓取+7 天缓存+给模型看的文本 |
+| `src/guide-wiki.js` | biligame MediaWiki：opensearch 找标题 → parse 取正文 |
+| `src/diag-bundle.js` | 诊断包 zip（零依赖写入 + 密钥脱敏） |
+| `src/agent/error-code.js` | 错误归类 `E401/E429/E502/E503/E0` + `state/diag/last-errors.json` |
+| `src/api/guide-route.js` | `GET /api/guide?game=&topic=` |
+| `src/api/diag-route.js` | `GET /api/diag/bundle` |
+| `src/agent/tools.js` | 注册工具 `qq_guide_live` |
+| `src/incoming-commands.js` | 号主 `/诊断` |
+| `public/console.html` | 运维页「导出诊断包」按钮 |
+
+### 0.5.63 的遗留（别重复排查）
+
+| 问题 | 现状 |
+| --- | --- |
+| 游离 SnowLuma 进程 | 清掉还会冒 1 个（外部守护在拉），空转、不占端口，不影响功能 |
+| 攻略“配队”类长尾 | 已调优，仍有误命中；改 `guide-wiki.js` 的 `scoreOf` |
+| Phigros wiki | biligame 没有该子域，自动降级到搜索 |
+| tag/Release | 未打 |
+
+---
+
+## 历史（0.5.62 及以前）
+
+**0.5.62 已发布**（代码与 Release 都在远端）。
+**手机端 v9 真机验收**仍未做 —— 验过之后才做「预装版 APK」和挂附件。
 
 ## 今天（11-04 晚 ~ 11-05 凌晨）做完的
 
