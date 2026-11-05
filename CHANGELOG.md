@@ -2,6 +2,22 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-05 — 0.5.63：攻略实时化 + 远程排查三件套
+
+攻略不再靠本地老库：问「XX 攻略」时改为实时抓 biligame wiki（MediaWiki opensearch 找标题 → parse 取正文），
+拿不到再退回搜索引擎，结果缓存 7 天，并带来源链接与抓取时间；抓不到就说抓不到，不编。
+
+远程部署排错（服务器上、人又不在）新增三层：
+
+| 层 | 能力 |
+| --- | --- |
+| 群里 | 报错带错误码 `E401/E429/E502/E503/E0`，每个码对应一句人话 |
+| 私聊 | 号主发 `/诊断`，回版本、运行时长、agent.mode、key 是否配置、24h 错误统计 |
+| 控制台 | 运维页「导出诊断包」，下载 zip（health / 配置脱敏 / 日志尾 / 最近错误） |
+
+改动：`src/guide-fetch.js`、`src/guide-wiki.js`、`src/diag-bundle.js`、`src/agent/error-code.js`、
+`src/api/guide-route.js`、`src/api/diag-route.js`、`src/incoming-commands.js`、`src/agent/loop.js`、`public/console.html`。
+
 ## 2026-11-02 — 0.4.135：网易云 / QQ音乐 扫码登录 + 登录态检测
 
 点歌页新增「音乐账号」区块，两个平台各自显示状态、可扫码登录/退出。
