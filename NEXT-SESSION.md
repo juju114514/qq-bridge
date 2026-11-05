@@ -28,7 +28,7 @@ main == origin/main            （无未推提交）
 ### 1. 手机 v9 真机验收（唯一阻塞项）
 
 ```
-装 D:\QQBot-open\mobile\dist\qq-bridge-app-v9.apk（245.7 MB）
+装 <repo>\mobile\dist\qq-bridge-app-v9.apk（245.7 MB）
 → 等「容器可用（CONTAINER_OK）」（~60 秒）
 → 点「安装 AstrBot」→ 等 1~2 分钟（离线 wheelhouse，151 个包）
 → 成功标志：按钮变「打开 AstrBot」，屏幕出现绿字
@@ -67,8 +67,8 @@ node 需要 NODE_EXTRA_CA_CERTS（Android 无系统 CA）
 | mobile/dist/qq-bridge-app-v8.apk | 106.2 MB，带「导出镜像」按钮 |
 | mobile/apk | APK 工程（Gradle 布局，Studio 可开） |
 | qq-bridge/mobile-apk | 上面那份的 git 镜像（14 文件 / 147 KB） |
-| D:\QQBot\tools\arm64 | arm64 资产：rootfs（含 nolink 版）、proot、loader、node、cacert |
-| D:\QQBot\tools\astrbot-wheels | 151 个 arm64 wheel + MANIFEST + INSTALL.md（137.8 MB） |
+| <tools>\tools\arm64 | arm64 资产：rootfs（含 nolink 版）、proot、loader、node、cacert |
+| <tools>\tools\astrbot-wheels | 151 个 arm64 wheel + MANIFEST + INSTALL.md（137.8 MB） |
 | research/AstrBot | AstrBot 源码（AGPL-3.0，只借鉴不抄） |
 
 ## 这一轮踩到的坑（复用价值高）
@@ -92,7 +92,7 @@ node scripts/doctor-gateway.mjs --fix
 node scripts/test-audit.mjs
 
 # 构建 APK（PowerShell 执行策略是 Restricted，必须带 Bypass）
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\QQBot-open\mobile\apk\build-apk.ps1 -WithPayload -Out D:\QQBot-open\mobile\dist\qq-bridge-app-vN.apk
+powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\mobile\apk\build-apk.ps1 -WithPayload -Out <repo>\mobile\dist\qq-bridge-app-vN.apk
 
 # 线上桥接
 schtasks /end /tn "qq-bridge" ; schtasks /run /tn "qq-bridge"
@@ -102,4 +102,4 @@ schtasks /end /tn "qq-bridge" ; schtasks /run /tn "qq-bridge"
 
 - DSH 端口每次启动都变，现在能被自动发现并写回 `config.json`
 - SnowLuma 的 HTTP(3000) 与 WS(3001) 是**两个不同 token**，在 `snowluma/config/onebot_<QQ号>.json`
-- 线上目录 `D:\deepseek工作区\qq-bridge` 不是 git 仓库，改完要手动从 dev 仓库 robocopy 过去
+- 线上目录 `<live>\qq-bridge` 不是 git 仓库，改完要手动从 dev 仓库 robocopy 过去

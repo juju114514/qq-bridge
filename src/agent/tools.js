@@ -30,6 +30,8 @@ function summarizeMessage(m) {
  * @param {{stateDir:string, sendToQQ?:Function, log?:Function}} deps
  * @returns {Array<{name:string,description:string,parameters:object,run:Function}>}
  */
+import { fetchGuide, formatGuide } from '../guide-fetch.js';
+
 export function createSocialTools(deps = {}) {
   const { stateDir = 'state', sendToQQ = null, log = () => {}, defaultKey = '' } = deps;
 
@@ -146,6 +148,27 @@ export function createSocialTools(deps = {}) {
       },
       async run(args = {}) {
         return readArchive({ stateDir, ref: String(args.ref || ''), limit: args.limit });
+      }
+    },
+    {
+      name: 'qq_guide_live',
+      description: '查最新游戏攻略（实时抓 biligame wiki，带来源与日期）。被问「XX攻略/怎么打/配队」时用它；结果里没有的内容不要编。',
+      parameters: {
+        type: 'object',
+        properties: {
+          game: { type: 'string', description: '游戏名，如 原神 / 崩铁 / 鸣潮' },
+          topic: { type: 'string', description: '主题，如 深渊12层 / 钟离配队' }
+        },
+        required: ['game']
+      },
+      async run(args = {}) {
+        const payload = await fetchGuide({ game: String(args.game || ''), topic: String(args.topic || ''), stateDir, log, useCache: true });
+        return {
+          ok: Boolean(payload?.ok),
+          text: formatGuide(payload),
+          cached: Boolean(payload?.cached),
+          sources: (payload?.sources || []).map((s) => ({ title: s.title, url: s.url, date: s.date }))
+        };
       }
     }
   ];
