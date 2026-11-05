@@ -104,7 +104,9 @@ await check('loop：模型调用失败 → 返回人话，不抛', async () => {
   const prov = { async textChat() { throw new Error('ECONNREFUSED'); } };
   const loop = loopMod.createAgentLoop({ provider: prov });
   const r = await loop.run({ userText: 'x' });
-  assert.match(r.reply, /模型没连上/);
+  // 0.5.63 起：群里只发错误码（E502=网络/上游），完整信息进 diag
+  assert.match(r.reply, /E5\d{2}|E0|E429/);
+  assert.equal(r.code, 'E502');
   assert.match(r.error, /ECONNREFUSED/);
 });
 

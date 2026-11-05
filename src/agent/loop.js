@@ -7,6 +7,7 @@
 //  · 步数上限是硬闸：模型反复要工具时必须有终点，不能无限烧 token
 //  · 任何异常都转成一段**人能读**的文本返回，绝不把 stack 丢给 QQ 用户
 import { createUsageMeter } from './provider.js';
+import { classifyError, publicMessage, recordError } from './error-code.js';
 
 /**
  * @param {{
@@ -66,11 +67,13 @@ export function createAgentLoop(opts = {}) {
         resp = await provider.textChat({ messages, tools: toolSpecs, maxTokens, temperature, signal });
       } catch (error) {
         const msg = String(error?.message ?? error);
-        const busy = error?.code === 'MODEL_BUSY';
-        log(`[agent] 模型调用失败${busy ? '（上游繁忙，已重试）' : ''}：${msg}`);
+        // 归类成错误码：群里只说人能懂的一句，完整信息写本地 state/diag
+        const cls = classifyError(error);
+        recordError(String(opts.stateDir || 'state'), cls, { where: 'model', key: String(input.key || '') });
+        log(`[agent] 模型调用失败 ${cls.code}：${msg}`);
         return {
-          reply: busy ? '（模型服务正忙，我过一会儿再试）' : `（模型没连上：${msg.slice(0, 160)}）`,
-          steps, toolRuns, usage: meter.snapshot(), error: msg, busy
+          reply: publicMessage(cls),
+          steps, toolRuns, usage: meter.snapshot(), error: msg, busy: cls.code === 'E429', code: cls.code
         };
       }
       meter.add(resp.usage);
