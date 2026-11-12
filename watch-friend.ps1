@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Continue'
+﻿$ErrorActionPreference = 'Continue'
 $base = 'http://127.0.0.1:3000'
 $token = 'eFO8u-qEFYFq6YWDtQshgpoM0y3tLZLE8xj4F4THQEo'
 $h = @{ Authorization = "Bearer $token" }
