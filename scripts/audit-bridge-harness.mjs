@@ -34,6 +34,9 @@ import * as privateAccess from '../src/private-access.js';
 // 抖音 cookies 体检：bridge 里 cookieHealth/describeRemaining 现在在启动时就引用（不再是懒调用），
 // 不注入会直接 ReferenceError（真实踩过：五套审计一起红）。
 import * as douyinResolve from '../src/douyin-resolve.js';
+import * as douyinLink from '../src/douyin-link.js';
+import * as douyinPending from '../src/douyin-pending.js';
+import * as videoSend from '../src/video-send.js';
 // 控制台新拆的模块：bridge 在 startConsoleServer 里**立即**调用工厂，必须注入。
 import { createConsoleDshHandlers } from '../src/api/console-dsh.js';
 import { createSocialV2VideoHandlers } from '../src/api/socialV2-video.js';
@@ -267,7 +270,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...bootReportMod, ...healthStateMod, ...stickerPending, ...privateAccess,
-  ...douyinResolve, ...quietHours, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
+  ...douyinResolve, ...douyinLink, ...douyinPending, ...videoSend, ...quietHours, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
     createRuntime,

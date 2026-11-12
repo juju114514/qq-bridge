@@ -18,7 +18,7 @@ const tests = [
   'test-role-cadence.mjs',
   'test-model-effort-fallback.mjs',
   'test-config-dirty.mjs',
-  'test-audit-bridge.mjs', 'test-audit-protocol.mjs', 'test-audit-protocol-helpers.mjs',
+  'test-douyin-link.mjs', 'test-douyin-pending.mjs', 'test-role-need-tags-isolation.mjs', 'test-video-send.mjs', 'test-audit-bridge.mjs', 'test-audit-protocol.mjs', 'test-audit-protocol-helpers.mjs',
   'test-audit-security.mjs', 'test-audit-security-mcp.mjs',
   'test-audit-setup.mjs', 'test-audit-setup-guards.mjs',
   // DSH 会话队列（inbox 投影）解析：0.2.0 把队列从 control baseline 的
