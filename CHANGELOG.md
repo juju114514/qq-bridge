@@ -2,6 +2,32 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-13 — 0.5.64：抖音链接三件套 + 按需小节串味修复
+
+群里贴抖音链接的处理从「只认两种 URL」扩到「七种形态 + 要视频才下载 + 真把视频发出来」。
+
+| 能力 | 说明 |
+| --- | --- |
+| 链接识别 | 短链 / `video/` / `note/` / `discover?modal_id` / `iesdouyin` 分享页 / 合集页 / 「复制打开抖音」文案里夹的链接都能认 |
+| 卡片文本 | 作者（含作者号）、时长、赞/评/转/藏、视频 id，一次附进对话 |
+| 下载闸门 | 默认只附元数据；群友说「发视频」才把上一条链接交给下载通道（30 分钟内有效） |
+| 发视频到群 | 下载（抖音分享页解析，约 2 秒 / 2MB）→ 发 OneBot `video` 段 |
+| 去重 | 同一条视频 10 分钟只解析一次（官方通道会把群消息镜像一次，按视频 id 去重才对） |
+
+修了个跨会话串味的真 bug：人格卡「按需小节」的标签原来是**模块级单个 Set**，
+任何会话提到「攻略/配队/唱歌」，随后 2 分钟内**所有**会话都会注入对应小节 ——
+现象是别的群问视频，AI 答深渊 12 攻略。现在改成 `key -> Set`，过期按会话清，上限 80 个会话。
+
+改动：`src/douyin-link.js`、`src/douyin-pending.js`、`src/video-send.js`（新增）、
+`src/bridge.js`、`scripts/audit-bridge-harness.mjs`、`scripts/test-audit.mjs`、
+`scripts/test-douyin-link.mjs`、`scripts/test-douyin-pending.mjs`、`scripts/test-video-send.mjs`、
+`scripts/test-role-need-tags-isolation.mjs`（新增）、`scripts/check-privacy.mjs`（锁文件不再误报）、
+`public/console.html`（抖音入口）。
+
+踩过的坑：`downloadVideoLink` 认的是 `cookiesFile` 而不是 `cookiesPath`，传错会跳过抖音专用解析器、
+直接掉到 yt-dlp 的登录墙；另外 `const videoSender = createVideoSender({ bot })` 写在 `bot` 初始化之前会 TDZ，
+必须调用时再建。
+
 ## 2026-11-05 — 0.5.63：攻略实时化 + 远程排查三件套
 
 攻略不再靠本地老库：问「XX 攻略」时改为实时抓 biligame wiki（MediaWiki opensearch 找标题 → parse 取正文），

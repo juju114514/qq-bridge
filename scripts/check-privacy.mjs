@@ -68,7 +68,11 @@ const TOKEN_ALLOW = [
   /^docs\//,
   // preset 的部署产物是**生成文件**：首行是 build-presets.mjs 写入的 source-sha256，
   // 那是哈希不是凭证，且已由 check-preset-fresh.mjs 校验「产物 == 真源」。
-  /^dsh\/agent-presets\/[^/]+\/qq-tool-restrict\.mjs$/
+  /^dsh\/agent-presets\/[^/]+\/qq-tool-restrict\.mjs$/,
+  // 锁文件里的 integrity/哈希是依赖校验值，不是凭证（32+ hex 会误报）
+  /^pnpm-lock\.yaml$/,
+  /^package-lock\.json$/,
+  /^npm-shrinkwrap\.json$/
 ];
 
 const problems = [];

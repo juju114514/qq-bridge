@@ -94,8 +94,11 @@ import { ocrAvailable, ocrImage } from './ocr.js';
 import { asrAvailable, transcribeFile, formatTranscript } from './audio-transcribe.js';
 import { detectVideoLinks, isAllowedVideoUrl, siteLabel } from './video-link.js';
 import { downloadVideoLink, ytDlpAvailable, resolveYtDlp } from './video-download.js';
+import { createVideoSender } from './video-send.js';
 import { cookieHealth, describeRemaining } from './douyin-resolve.js';
 import { resolveDouyinMeta, formatDouyinMeta } from './douyin-meta.js';
+import { extractDouyinLinks, formatDouyinCard, createDouyinLinkDeduper, awemeIdFromLink } from './douyin-link.js';
+import { createDouyinPendingStore, matchDownloadRequest, buildDownloadHint } from './douyin-pending.js';
 import { createLearnerFrameHandler } from './mux-learner.js';
 import { createMuxToolTracker } from './mux-tools.js';
 import { createDecisionTrace } from './decision-trace.js';
@@ -4617,6 +4620,10 @@ async function main() {
   // 旧实现把发送失败吞成一行日志后**照常 resolve**，于是调用方以为发言成功，
   // 更新 lastAiReplyAt / 活跃调度，实际群里什么都没收到，而且只有一行滚动日志能看出问题。
   const lastSendFailed = new Map(); // key -> true（下一次成功即清除）
+  // 抖音链接增强去重：同一个群同一条视频 10 分钟内只解析一次
+  const douyinLinkDeduper = createDouyinLinkDeduper();
+  // 记住每个会话最近一条抖音链接（30 分钟内有效），群友要视频时才拿出来下载
+  const douyinPending = createDouyinPendingStore();
   // key -> 最近一次成功发送的时间：官方会话在 reserved2 下需要判断"模型这轮到底发没发"
   const lastSendAtByKey = new Map();
 
@@ -7388,7 +7395,7 @@ async function main() {
   // 按仿真模式取用：先用标题里的 〔一代〕/〔二代〕 标记筛掉另一模式的专属小节，
   // **再**按上限截断——这样另一模式的内容不会白白占掉本次的注入预算。
   function roleHintForMode(mode, key) {
-    const selected = selectRoleText(roleRawContent(key), mode, [...roleActiveNeedTags]);
+    const selected = selectRoleText(roleRawContent(key), mode, [...(roleNeedTagsByKey.get(key) || [])]);
     if (!selected) return '';
     // 示例对话（0.4.119）：摘出「## 示例对话」节，按样例注入
     const split = splitForPrompt(selected, String(readRoleState()?.name || '').trim());
@@ -7410,24 +7417,50 @@ async function main() {
    * 「按需」小节的开关：人格卡里标了 〔按需：唱歌,说话〕 的大段内容，
    * 只有上下文真的聊到这些话题时才注入，平时不占字符预算。
    */
-  let roleActiveNeedTags = new Set();
-  let roleNeedTagTimer = null;
+  // 按会话分开存：以前是一个全局 Set，任何群聊到「攻略/配队」都会让**所有**会话
+  // 在随后 2 分钟里都注入人格卡的攻略小节（跨会话串味）。现在改成 key -> Set。
+  const roleNeedTagsByKey = new Map();
+  const roleNeedTagTimers = new Map();
+  const ROLE_NEED_TAG_TTL_MS = 120000;
+  const ROLE_NEED_TAG_MAX_KEYS = 80;
   const NEED_TAG_RULES = [
     { tags: ['唱歌', '说话', '语音', '点歌', '来首', '唱一', '唱首', '声音', '喊一句', '念一', '读一'], re: /唱|歌|语音|来首|点歌|声音|说一句|喊|念一段|读一下|母带|无损|整首/ },
     { tags: ['攻略', '副本', '兑换码'], re: /攻略|副本|团本|终焉|绝境|兑换码|怎么打|配队|养成/ },
     { tags: ['空间', '点赞', '评论'], re: /空间|说说|动态|点赞|赞一下|评论/ },
   ];
-  function setRoleNeedTagsFromText(text) {
+  function clearRoleNeedTags(key) {
+    if (key === undefined) {
+      roleNeedTagsByKey.clear();
+      for (const timer of roleNeedTagTimers.values()) clearTimeout(timer);
+      roleNeedTagTimers.clear();
+      return;
+    }
+    roleNeedTagsByKey.delete(key);
+    const timer = roleNeedTagTimers.get(key);
+    if (timer) { clearTimeout(timer); roleNeedTagTimers.delete(key); }
+  }
+  /** 只给「这条消息所在的会话」打标签，别的会话不受影响。 */
+  function setRoleNeedTagsFromText(text, key = '') {
     const s = String(text ?? '');
-    if (!s) return;
+    const k = String(key || '');
+    if (!s || !k) return;
+    let tags = roleNeedTagsByKey.get(k);
     for (const rule of NEED_TAG_RULES) {
       if (rule.re.test(s)) {
-        for (const t of rule.tags) roleActiveNeedTags.add(t);
+        if (!tags) { tags = new Set(); roleNeedTagsByKey.set(k, tags); }
+        for (const tag of rule.tags) tags.add(tag);
       }
     }
-  }
-  function clearRoleNeedTags() {
-    roleActiveNeedTags = new Set();
+    if (!tags) return;
+    if (roleNeedTagsByKey.size > ROLE_NEED_TAG_MAX_KEYS) {
+      const oldest = roleNeedTagsByKey.keys().next().value;
+      if (oldest && oldest !== k) clearRoleNeedTags(oldest);
+    }
+    const prev = roleNeedTagTimers.get(k);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => clearRoleNeedTags(k), ROLE_NEED_TAG_TTL_MS);
+    timer.unref?.();
+    roleNeedTagTimers.set(k, timer);
   }
 
   function currentRoleHint(key) {
@@ -9075,16 +9108,22 @@ function selfCheckSnapshot() {
     // 为什么默认只取元数据：下载视频是风控高危动作，一句"这是谁的什么视频"用不着下整条片。
     if (cfg.socialV2?.media?.video?.links?.autoMeta !== false && /douyin\.com/i.test(String(textContent ?? ''))) {
       try {
-        const linkMatch = String(textContent).match(/https?:\/\/(?:v\.douyin\.com\/[\w-]+|www\.douyin\.com\/video\/\d+)/i);
-        if (linkMatch) {
-          const meta = await resolveDouyinMeta(linkMatch[0], {
+        // 0.x：链接形态更全（短链/视频页/图文/discover?modal_id/iesdouyin 分享页），
+        // 同群同视频 10 分钟只解析一次，避免刷屏与重复请求。
+        const links = extractDouyinLinks(textContent).slice(0, 2);
+        for (const link of links) {
+          const id = awemeIdFromLink(link) || link;
+          // 官方通道会把同一条群消息镜像一次，按「视频 id」去重才不会解析两遍
+          if (!douyinLinkDeduper.hit(id)) continue;
+          const meta = await resolveDouyinMeta(link, {
             cookiesFile: videoLinkConfig().cookiesPath,
-            key: `auto-meta:${key}`,
+            key: `auto-meta:${key}:${id}`,
             timeoutMs: 8000
           });
           if (meta.ok) {
-            const extra = formatDouyinMeta(meta);
+            const extra = formatDouyinCard(meta, link) || formatDouyinMeta(meta);
             if (extra) textContent = `${textContent}\n\n${extra}`;
+            if (meta.ok) douyinPending.remember(key, { url: link, id, title: meta.title || meta.desc || '' });
             log(`[douyin] 已自动附元数据（${key}）：${meta.author || '?'} / ${String(meta.title || meta.desc || '').slice(0, 30)}`);
           } else if (meta.code !== 'cooldown') {
             log(`[douyin] 元数据获取失败（${key}）：${meta.error}`);
@@ -9092,6 +9131,47 @@ function selfCheckSnapshot() {
         }
       } catch (error) {
         log(`[douyin] 自动附元数据异常：${error?.message ?? error}`);
+      }
+    }
+
+    // 群友明说要视频：把上一条链接交给下载通道（默认不下载，见 src/douyin-pending.js）
+    if (!/douyin\.com/i.test(String(plainContent ?? '')) && matchDownloadRequest(plainContent)) {
+      const pendingLink = douyinPending.take(key);
+      if (pendingLink) {
+        textContent = `${textContent}\n\n${buildDownloadHint(pendingLink)}`;
+        log(`[douyin] 群友要视频（${key}）→ 交给下载通道：${pendingLink.url}`);
+        // 真的去下并发出来：不阻塞这一轮消息处理（下载可能几十秒），
+        // 失败只记日志，不影响对话；开关 socialV2.media.video.links.sendVideo === false 可关。
+        const wantSend = cfg.socialV2?.media?.video?.links?.sendVideo !== false;
+        if (wantSend) {
+          void (async () => {
+            try {
+              const dlCfg = videoLinkConfig();
+              const dl = await downloadVideoLink(pendingLink.url, {
+                ytdlpPath: dlCfg.ytdlpPath,
+                maxSeconds: dlCfg.maxSeconds,
+                maxBytes: dlCfg.maxBytes,
+                timeoutMs: dlCfg.timeoutMs,
+                maxHeight: dlCfg.maxHeight,
+                // ⚠️ downloadVideoLink 认的是 cookiesFile（cookiesPath 是 config 里的名字），
+                // 只传 cookiesPath 会跳过抖音专用解析器，直接掉到 yt-dlp 的登录墙
+                cookiesFile: dlCfg.cookiesPath,
+                cookiesPath: dlCfg.cookiesPath,
+                sites: dlCfg.sites
+              });
+              if (!dl.ok) {
+                log(`[douyin] 下载失败（${key}）：${String(dl.error || '').slice(0, 120)}`);
+                return;
+              }
+              const sent = await createVideoSender({ bot, withTimeout, log }).sendVideo(key, dl.file);
+              if (!sent.ok) log(`[douyin] 视频发送失败（${key}）：${sent.error || ''}`);
+              else appendActivity(`${key} 抖音视频已发送（${(dl.bytes / 1024 / 1024).toFixed(1)}MB）`);
+              dl.cleanup?.();
+            } catch (error) {
+              log(`[douyin] 下载/发送异常（${key}）：${String(error?.message ?? error).slice(0, 120)}`);
+            }
+          })();
+        }
       }
     }
 
@@ -9279,11 +9359,8 @@ function selfCheckSnapshot() {
     // 二代仿真模式（reserved2）：唤醒调度
     // 社交阶段已拆到 src/incoming-social.js（波次 3）：先入库 → 暂停判定 → bootstrap/触发器 → 排唤醒
     if (currentMode === 'reserved2') {
-      setRoleNeedTagsFromText(`${textContent ?? ''}\n${plainContent ?? ''}`);
-      // 话题标签只在这轮用：2 分钟后自动清掉，避免一次聊到唱歌就永久多注入 3000 字
-      clearTimeout(roleNeedTagTimer);
-      roleNeedTagTimer = setTimeout(() => clearRoleNeedTags(), 120000);
-      roleNeedTagTimer.unref?.();
+      // 话题标签按会话隔离：只影响本会话，2 分钟后该会话自动过期（见 setRoleNeedTagsFromText）
+      setRoleNeedTagsFromText(`${textContent ?? ''}\n${plainContent ?? ''}`, key);
       runSocialIncomingStage(
         { key, kind, event, textContent, plainContent, quoteTargetIsSelf, isOwner, traceRec },
         {
