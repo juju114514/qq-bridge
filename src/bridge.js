@@ -53,6 +53,7 @@ import { readBuildInfo as buildInfo, fingerprintLine } from './build-info.js';
 import { StaleEpochError } from './domains/channel-mode.js';
 import { createHealthState } from './health-state.js';
 import { createBootReport } from './boot-report.js';
+import { createBoardBridge } from './board-bridge.js';
 import { startEventLoopMonitor, createCpuSampler, readSystemSnapshot } from './system-metrics.js';
 // QQ ↔ DeepSeek Harness 桥接主程序。
 //
@@ -1724,6 +1725,9 @@ async function main() {
   }
 
   const cfg = loadConfig();
+// 桌面看板（room-pet）：收到消息/说话/待机时推事件；初始化失败就降级成空实现，不影响桥接
+let board = { thinking() {}, speaking() {}, idle() {}, post() {} };
+try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { log('⚠️ 桌面看板初始化失败（降级为空实现）：' + String(e?.message ?? e)); }
   fs.mkdirSync(STATE_DIR, { recursive: true });
   // 运行时：共享状态的唯一来源（先于任何状态容器创建）
   const rt = createRuntime({ cfg, log, fs, path });
@@ -4642,6 +4646,8 @@ async function main() {
     }
     const assertSendAllowed = captureSendGuard(key);
     const safeMsg = redactKnownTokensOnly(msg);
+    // 让看板先「说话」再按文本长度「待机」（和本地线一致）
+    try { board.speaking(safeMsg); board.idle(Math.min(30000, 4000 + safeMsg.length * 160)); } catch {}
     const [kind, id] = key.split(':');
     // 官方通道：不走 OneBot，也**不分条**（官方被动回复每条消息最多 5 次，分条会撞上限）。
     if (isOfficialId(id)) {
