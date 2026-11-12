@@ -13,10 +13,13 @@
 //   names           被叫的名字（命中算 mention）
 
 import fs from 'node:fs';
+import path from 'node:path';
 import http from 'node:http';
 import { URL } from 'node:url';
 
-const DEBUG_LOG = 'D:/QQBot-open/tools/room-pet/bridge-side.log';
+// 调试日志：默认落在仓库 state/ 下（可执行目录即仓库根），可用 QQB_BOARD_LOG 覆盖；
+// 原来写死成作者本机的 D:/QQBot-open/... —— 公开仓库里不该出现别人的绝对路径
+const DEBUG_LOG = process.env.QQB_BOARD_LOG || path.resolve('state', 'board-side.log');
 const IDLE_DELAY_MS = 6000;
 
 function dbg(line) {
