@@ -6,13 +6,13 @@
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1
-#   powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1 -To "D:\QQBot-open\tools\room-pet"
+#   powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1 -To "<运行目录>"
 #   powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1 -DryRun
 #
 # 退出码：0 = 同步成功（或无需同步）；1 = 目标目录不存在
 
 param(
-  [string]$To = $(if ($env:ROOM_PET_RUNTIME) { $env:ROOM_PET_RUNTIME } else { "D:\QQBot-open\tools\room-pet" }),
+  [string]$To = $env:ROOM_PET_RUNTIME,
   [switch]$DryRun
 )
 
@@ -20,6 +20,11 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root 'room-pet'
 
+if (-not $To) {
+  Write-Host "[错误] 没指定运行目录：用 -To 或设环境变量 ROOM_PET_RUNTIME" -ForegroundColor Red
+  Write-Host "       例：`$env:ROOM_PET_RUNTIME='<运行目录>'; .\scripts\sync-room-pet.ps1" -ForegroundColor Yellow
+  exit 1
+}
 if (-not (Test-Path $To)) {
   Write-Host "[错误] 运行目录不存在：$To" -ForegroundColor Red
   Write-Host "       用 -To 指定，或设环境变量 ROOM_PET_RUNTIME" -ForegroundColor Yellow

@@ -28,6 +28,8 @@
 | --- | --- | --- |
 | `tools/doctor-tools.mjs` | **工具链体检**：Node/依赖/config/SnowLuma/DSH/yt-dlp/ffmpeg/cookies/控制台，逐项 OK-WARN-FAIL + 修复命令 | `node tools/doctor-tools.mjs` |
 | `tools/doctor-tools.mjs --url <抖音链接>` | 顺带实测链接识别 | `node tools/doctor-tools.mjs --url https://v.douyin.com/xxxx/` |
+| `tools/pixiv-auth.mjs` | Pixiv 登录（PKCE）→ 把 refresh_token 存 `state/pixiv.json` | `node tools/pixiv-auth.mjs --login`（浏览器登录后把回调地址/ code 粘回来） |
+| `tools/pixiv-cli.mjs` | 按 tag 搜 Pixiv / 按 id 取详情 / 下载（输出带作者+链接） | `node tools/pixiv-cli.mjs --tag 蓝鲸 --limit 5 [--r18] [--download 2]` |
 | `tools/export-cookies.py` | 从已登录的调试浏览器导出抖音 cookies（Netscape 格式），写到桥接要用的路径 | `python tools/export-cookies.py --port 9237 --out state/cookies/site-cookies.txt` |
 | `scripts/preflight.mjs` | 新机器第一次的全量体检（环境/仓库/依赖/config/端口/DSH/SnowLuma/人格卡） | `node scripts/preflight.mjs` |
 | `scripts/test-audit.mjs` | 离线审计（改完代码跑一遍，只许增不许减） | `node scripts/test-audit.mjs` |
