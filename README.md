@@ -312,6 +312,17 @@ node tools/doctor-tools.mjs --url https://v.douyin.com/xxxx/
 
 开关在 `config.json`：`socialV2.media.video.links.{autoMeta,sendVideo,maxSeconds,ytdlpPath,cookiesPath}`。
 
+## 仓库里有两套栈
+
+| 目录 | 语言 | 干什么 |
+| --- | --- | --- |
+| `src/` + `scripts/` | Node.js | QQ 侧桥接（OneBot / 官方 Bot）、控制台、记忆、插件 |
+| `room-pet/` | Python | 抖音侧：自动回私信/评论、登录、导出 cookies；给看板提供状态 |
+
+两边唯一的硬契约是**安全词语义**（`off / reset|skip / pause`）和看板接口，所以放同一个仓库维护。
+抖音侧的说明见 [room-pet/INTEGRATION.md](room-pet/INTEGRATION.md)；
+素材（Live2D/立绘）**不在仓库里**，见 [room-pet/NOTICE.md](room-pet/NOTICE.md)。
+
 ## 它现在能干什么
 
 | 类别 | 能力 |

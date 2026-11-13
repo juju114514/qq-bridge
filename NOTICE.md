@@ -152,3 +152,8 @@ SnowLuma 采用「源码可见非商业许可」（[LICENSE](https://github.com/
 
 **结论**：本项目的 MIT 许可只覆盖本项目自己的代码，**不对 SnowLuma 授予任何权利，也不替使用者承担其许可义务**。
 使用者需自行取得 SnowLuma 并遵守其许可。
+
+## room-pet/（抖音侧）的素材
+
+`room-pet/` 目录只包含代码与文档。角色立绘、Live2D 模型、PSD、预览图等素材**没有**进入本仓库，
+也不适用 MIT 许可（权利归各自的画师/模型作者）。详见 [room-pet/NOTICE.md](room-pet/NOTICE.md)。

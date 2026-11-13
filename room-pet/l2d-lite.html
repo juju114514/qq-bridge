@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>深夜书房 · 伪 L2D</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  /* 伪 L2D：整图 + 头部切片，靠两张同源图层做出"转头/呼吸"的错觉 */
+  .lite-stage{position:fixed;inset:0;overflow:hidden;cursor:default}
+  .lite-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .lite-char{
+    position:absolute;left:50%;bottom:4%;transform:translateX(-50%);
+    height:66vh;will-change:transform;transform-origin:50% 96%;
+  }
+  .lite-body{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);
+    height:66vh;will-change:transform;transform-origin:50% 96%}
+  .lite-head{
+    position:absolute;left:50%;bottom:4%;transform:translateX(-50%);
+    height:66vh;will-change:transform;transform-origin:50% 100%;
+    /* 只显示头顶 34%，边缘用渐变羽化，避免出现硬接缝 */
+    -webkit-mask-image:linear-gradient(to bottom, #000 0%, #000 26%, rgba(0,0,0,.85) 31%, transparent 34%);
+    mask-image:linear-gradient(to bottom, #000 0%, #000 26%, rgba(0,0,0,.85) 31%, transparent 34%);
+  }
+  .lite-shadow{
+    position:absolute;left:50%;bottom:1.5%;transform:translateX(-50%);
+    width:34vh;height:5vh;border-radius:50%;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.45), transparent 70%);
+    filter:blur(2px);
+  }
+  .lite-bubble{
+    position:absolute;left:50%;bottom:72vh;transform:translateX(-50%) translateY(6px);
+    background:rgba(12,18,30,.9);color:#eaf1ff;padding:8px 14px;border-radius:14px;
+    font-size:15px;line-height:1.4;max-width:60vw;opacity:0;transition:opacity .25s, transform .25s;
+    border:1px solid rgba(120,160,255,.25);white-space:pre-wrap;pointer-events:none;
+  }
+  .lite-bubble.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .lite-hud{position:absolute;left:18px;top:16px;color:#dbe6ff;font-size:13px;line-height:1.7;
+    background:rgba(8,12,22,.55);padding:8px 12px;border-radius:10px;border:1px solid rgba(120,160,255,.18)}
+  .lite-hud b{color:#7fd7ff}
+  .lite-tip{position:absolute;right:16px;bottom:14px;color:#8fa0bd;font-size:12px;
+    background:rgba(8,12,22,.5);padding:6px 10px;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="lite-stage" id="stage">
+  <img class="lite-bg" src="assets/background.png" alt="" draggable="false" />
+  <div class="lite-shadow" id="shadow"></div>
+  <img id="body" class="lite-body" src="assets/character/idle.png" alt="" draggable="false" />
+  <img id="head" class="lite-head" src="assets/character/idle.png" alt="" draggable="false" />
+  <div id="bubble" class="lite-bubble"><span id="bubbleText"></span></div>
+  <div class="lite-hud">
+    <div>伪 L2D · <b id="stateText">idle</b></div>
+    <div>鼠标移动 → 她跟着转头</div>
+    <div>点她 → 弹一下</div>
+  </div>
+  <div class="lite-tip">需要真 L2D 请用 l2d.html（Hiyori 占位模型）</div>
+</div>
+<script src="l2d-lite.js"></script>
+</body>
+</html>

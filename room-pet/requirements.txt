@@ -1,0 +1,11 @@
+# room-pet（抖音侧）运行依赖 —— 按最新版本装即可，未钉死
+websockets        # 抖音私信 WS / CDP
+curl_cffi         # 带浏览器指纹的请求（登录、评论接口）
+Pillow            # 截图裁剪（验证码）
+numpy             # 图像处理
+opencv-python     # 二维码/滑块定位
+psd-tools         # 拆 Live2D 图层（可选，只有做素材时需要）
+edge-tts          # 语音合成（可选）
+pywebview         # 桌面壳（可选）
+comtypes          # Windows COM（可选，桌面控制）
+winocr            # 本地 OCR（可选，验证码兜底）

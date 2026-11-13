@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>记忆管理 · 图鲸鲸</title>
+<style>
+  :root{--bg:#0d1220;--panel:rgba(10,15,26,.82);--line:rgba(120,160,255,.22);--fg:#dbe6ff;--dim:#8ea0bd}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100%;background:var(--bg);color:var(--fg);
+    font-family:system-ui,"Microsoft YaHei",sans-serif;padding:24px}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--dim);margin-bottom:18px}
+  .score{display:inline-flex;align-items:baseline;gap:8px;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:10px 16px;margin-bottom:18px}
+  .score b{font-size:22px;color:#7fd7ff}
+  .row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  input,textarea{background:rgba(12,20,34,.9);border:1px solid #24344f;border-radius:8px;
+    color:var(--fg);padding:8px 10px;font-size:13px;font-family:inherit}
+  input.q{flex:1;min-width:220px}
+  button{background:rgba(40,90,160,.7);border:1px solid var(--line);color:var(--fg);
+    border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+  button.ghost{background:transparent}
+  button.danger{background:rgba(150,40,40,.55);border-color:rgba(255,120,120,.3)}
+  .list{display:flex;flex-direction:column;gap:10px;max-width:900px}
+  .item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .item .meta{font-size:11px;color:var(--dim);margin-bottom:6px;display:flex;gap:10px;flex-wrap:wrap}
+  .item .text{font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+  .item .ops{display:flex;gap:8px;margin-top:10px}
+  .item textarea{width:100%;min-height:64px}
+  .empty{color:var(--dim);font-size:13px;padding:20px 0}
+  .hint{font-size:11px;color:var(--dim);margin-top:18px;line-height:1.8}
+</style>
+</head>
+<body>
+  <h1>记忆管理</h1>
+  <div class="sub">她在小屋里记住的事 · 可以查看、编辑、删除、手动添加</div>
+
+  <div class="score">了解度 <b id="scoreVal">--</b><span id="scoreNote" style="font-size:12px;color:var(--dim)"></span></div>
+
+  <div class="row">
+    <input class="q" id="q" placeholder="搜索记忆（语义检索，不是关键词）" />
+    <button id="btnSearch">搜索</button>
+    <button class="ghost" id="btnAll">全部</button>
+  </div>
+
+  <div class="row">
+    <input class="q" id="newText" placeholder="手动记一条…" />
+    <input id="newTag" placeholder="标签" style="width:110px" />
+    <button id="btnAdd">添加</button>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <div class="hint">
+    · 检索走本地向量（nomic-embed-text），不是关键词匹配<br>
+    · 删除只影响这里的记忆，不动 qq-bridge 的对话历史<br>
+    · 了解度 = 按去重记忆条数估算，不代表准确率
+  </div>
+
+<script>
+const api = (p, opt) => fetch(p, opt).then(r => r.json());
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function loadScore() {
+  const d = await api('/memory/score');
+  document.getElementById('scoreVal').textContent = d.ok ? d.score : '--';
+  document.getElementById('scoreNote').textContent = d.ok ? `（${d.memories} 条记忆 · 话题 ${d.tags.join('、') || '无'}）` : '';
+}
+
+function render(items, withScore) {
+  const box = document.getElementById('list');
+  if (!items || !items.length) {
+    box.innerHTML = '<div class="empty">还没有记忆。在小屋里聊几句，或者上面手动加一条。</div>';
+    return;
+  }
+  box.innerHTML = items.map(it => `
+    <div class="item" data-id="${esc(it.id)}">
+      <div class="meta">
+        ${it.tag ? '<span>#' + esc(it.tag) + '</span>' : ''}
+        <span>${esc(it.at || '')}</span>
+        ${withScore && it.score != null ? '<span>相似度 ' + it.score + '</span>' : ''}
+      </div>
+      <div class="text">${esc(it.text)}</div>
+      <div class="ops">
+        <button class="ghost edit">编辑</button>
+        <button class="danger del">删除</button>
+      </div>
+    </div>`).join('');
+
+  box.querySelectorAll('.item').forEach(el => {
+    const id = el.dataset.id;
+    el.querySelector('.edit').onclick = () => startEdit(el, id);
+    el.querySelector('.del').onclick = async () => {
+      if (!confirm('删掉这条记忆？')) return;
+      await api('/memory?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      refresh();
+    };
+  });
+}
+
+function startEdit(el, id) {
+  const textEl = el.querySelector('.text');
+  const ops = el.querySelector('.ops');
+  const original = textEl.textContent;
+  textEl.innerHTML = `<textarea>${esc(original)}</textarea>`;
+  ops.innerHTML = `<button class="save">保存</button><button class="ghost cancel">取消</button>`;
+  ops.querySelector('.cancel').onclick = () => { textEl.textContent = original; resetOps(ops, el, id); };
+  ops.querySelector('.save').onclick = async () => {
+    const v = textEl.querySelector('textarea').value.trim();
+    if (!v) return;
+    await api('/memory', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, text: v })
+    });
+    refresh();
+  };
+}
+
+function resetOps(ops, el, id) {
+  ops.innerHTML = `<button class="ghost edit">编辑</button><button class="danger del">删除</button>`;
+  ops.querySelector('.edit').onclick = () => startEdit(el, id);
+  ops.querySelector('.del').onclick = async () => {
+    if (!confirm('删掉这条记忆？')) return;
+    await api('/memory?id=' + encodeURIComponent(id), { method: 'DELETE' });
+    refresh();
+  };
+}
+
+async function refresh() {
+  const d = await api('/memory');
+  render(d.items || [], false);
+  loadScore();
+}
+
+document.getElementById('btnSearch').onclick = async () => {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return refresh();
+  const d = await api('/memory/search?q=' + encodeURIComponent(q) + '&k=20');
+  if (!d.ok) { alert(d.error || '搜索失败'); return; }
+  render(d.items || [], true);
+};
+
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnSearch').click();
+});
+
+document.getElementById('btnAll').onclick = refresh;
+
+document.getElementById('btnAdd').onclick = async () => {
+  const text = document.getElementById('newText').value.trim();
+  if (!text) return;
+  await api('/memory', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, tag: document.getElementById('newTag').value.trim() })
+  });
+  document.getElementById('newText').value = '';
+  document.getElementById('newTag').value = '';
+  refresh();
+};
+
+refresh();
+</script>
+</body>
+</html>

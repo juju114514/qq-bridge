@@ -1,0 +1,31 @@
+/* 数值条 */
+.stats {
+  position: absolute;
+  left: 22px;
+  top: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 7;
+  font-size: 12px;
+  color: #cfe3f8;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, .6);
+}
+.stat { display: flex; align-items: center; gap: 8px; }
+.stat span { width: 28px; opacity: .85; }
+.stat i {
+  display: block;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .14);
+  overflow: hidden;
+}
+.stat b {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #6fd3ff, #9ef0c8);
+  transition: width .4s ease;
+}
+.stats[data-low="1"] .stat b { background: linear-gradient(90deg, #ff9b6f, #ffd06f); }

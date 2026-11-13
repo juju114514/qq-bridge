@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>分层预览 · 图鲸鲸</title>
+<style>
+  html,body{margin:0;height:100%;background:#0d1220;color:#dbe6ff;
+    font-family:system-ui,"Microsoft YaHei",sans-serif;overflow:hidden}
+  .wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+  /* 舞台按 1254x1254 画布等比缩放；图层用百分比定位，贴片不会被拉伸 */
+  .stage{position:relative;height:min(92vh, 92vw);aspect-ratio:1/1}
+  .stage img{position:absolute;display:block;pointer-events:none;-webkit-user-drag:none}
+  .hud{position:absolute;left:16px;top:14px;font-size:13px;line-height:1.9;background:rgba(8,12,22,.62);
+    padding:10px 14px;border-radius:10px;border:1px solid rgba(120,160,255,.2);z-index:5}
+  .hud b{color:#7fd7ff}
+  .saybar{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:8px;
+    background:rgba(8,12,22,.75);padding:10px;border-radius:12px;border:1px solid rgba(120,160,255,.22);z-index:6}
+  .saybar input{width:min(340px,50vw);background:rgba(12,20,34,.9);border:1px solid #24344f;
+    border-radius:8px;color:#e6eeff;padding:7px 10px;font-size:13px}
+  .saybar button{background:rgba(40,90,160,.7);border:1px solid rgba(120,160,255,.35);color:#e6eeff;
+    border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+  #sayState{font-size:12px;color:#8ea0bd;align-self:center;min-width:56px}
+  .subtitle{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);max-width:70vw;
+    font-size:16px;color:#eaf1ff;background:rgba(8,12,22,.75);padding:8px 14px;border-radius:12px;
+    border:1px solid rgba(120,160,255,.2);opacity:0;transition:opacity .2s;z-index:6}
+  .subtitle.show{opacity:1}
+  .bar{position:absolute;right:16px;bottom:20px;display:flex;gap:10px;font-size:12px;color:#9fb0cf;z-index:6}
+  .bar label{display:flex;align-items:center;gap:6px;background:rgba(8,12,22,.65);padding:6px 10px;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage" id="stage">
+    <img id="layer-face" src="assets/layers/face.png" alt="" style="left:0;top:0;width:100%;height:100%" />
+  </div>
+
+  <div class="hud">
+    分层预览（Cubism 同款参数）<br>
+    眨眼 <b id="blinkVal">0.00</b> · 张嘴 <b id="mouthVal">0.00</b> · 转头 <b id="angleVal">0.0</b>
+  </div>
+
+  <div class="saybar">
+    <input id="sayInput" placeholder="让她说一句…（回车）" />
+    <button id="sayBtn">说</button>
+    <span id="sayState"></span>
+  </div>
+  <div id="subtitle" class="subtitle"></div>
+
+  <div class="bar">
+    <label><input type="checkbox" id="blinkOn" checked> 自动眨眼</label>
+    <label><input type="checkbox" id="talkOn"> 说话口型</label>
+  </div>
+</div>
+
+<script>
+const stage = document.getElementById('stage');
+const CANVAS = 1254;
+
+let eyeLopen, eyeRopen, eyeLclosed, eyeRclosed, mouthClosed, mouthOpen;
+
+function mk(src) { const im = new Image(); im.src = src; return im; }
+
+function place(img, box) {
+  // 羽化边缘：贴片是矩形裁切，硬边会和底图对不上，看起来像闪
+  const feather = 'radial-gradient(ellipse 78% 78% at 50% 50%, #000 62%, transparent 100%)';
+  img.style.webkitMaskImage = feather;
+  img.style.maskImage = feather;
+  img.style.left = (box[0] / CANVAS * 100) + '%';
+  img.style.top = (box[1] / CANVAS * 100) + '%';
+  img.style.width = (box[2] / CANVAS * 100) + '%';
+  img.style.height = (box[3] / CANVAS * 100) + '%';
+  stage.appendChild(img);
+}
+
+async function initLayers() {
+  let meta;
+  try {
+    meta = await (await fetch('assets/layers/layers.json')).json();
+  } catch (e) {
+    meta = { eyes: [[450,470,185,165],[665,470,185,165]], mouth: [630,620,95,62] };
+  }
+  const [e1, e2] = meta.eyes;
+  const m = meta.mouth;
+
+  eyeLclosed = mk('assets/layers/eye1_closed.png');
+  eyeRclosed = mk('assets/layers/eye2_closed.png');
+  eyeLopen = mk('assets/layers/eye1_open.png');
+  eyeRopen = mk('assets/layers/eye2_open.png');
+  mouthClosed = mk('assets/layers/mouth_closed.png');
+  mouthOpen = mk('assets/layers/mouth_open.png');
+
+  place(eyeLclosed, e1); place(eyeRclosed, e2);
+  place(eyeLopen, e1);  place(eyeRopen, e2);
+  place(mouthClosed, m); place(mouthOpen, m);
+
+  eyeLclosed.style.opacity = 0; eyeRclosed.style.opacity = 0; mouthOpen.style.opacity = 0;
+}
+
+const blinkVal = document.getElementById('blinkVal');
+const mouthVal = document.getElementById('mouthVal');
+const angleVal = document.getElementById('angleVal');
+
+let blinkT = 0, mouthT = 0, angleX = 0, nextBlink = 2000;
+let mouthEnv = 0, silentSince = 0;   // 嘴型包络：快起慢落，避免闪烁
+let ctx = null, analyser = null, audioEl = null, speaking = false;
+
+document.addEventListener('mousemove', (e) => {
+  angleX = (e.clientX / window.innerWidth - 0.5) * 2;
+});
+
+function ensureAudio() {
+  if (ctx) return;
+  audioEl = new Audio();
+  audioEl.crossOrigin = 'anonymous';
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  const src = ctx.createMediaElementSource(audioEl);
+  src.connect(analyser);
+  analyser.connect(ctx.destination);
+}
+
+async function ttsSpeak(text) {
+  if (!text) return;
+  const stateEl = document.getElementById('sayState');
+  const sub = document.getElementById('subtitle');
+  ensureAudio();
+  stateEl.textContent = '合成中…';
+  sub.textContent = text;
+  sub.classList.add('show');
+  try {
+    // 打断上一句
+    try { audioEl.pause(); audioEl.currentTime = 0; } catch (_) {}
+    const r = await fetch('/tts?stream=1&text=' + encodeURIComponent(text));
+    if (!r.ok) { stateEl.textContent = '合成失败'; return; }
+    audioEl.src = URL.createObjectURL(await r.blob());
+    await ctx.resume();
+    speaking = true;
+    stateEl.textContent = '说话中';
+    audioEl.onended = () => {
+      speaking = false;
+      stateEl.textContent = '';
+      setTimeout(() => sub.classList.remove('show'), 1000);
+    };
+    await audioEl.play();
+  } catch (e) {
+    stateEl.textContent = '播放失败';
+    speaking = false;
+  }
+}
+
+// 鲸伴的嘴型公式：clamp((rms - 0.008) * 7, 0, 1)
+function sampleMouth() {
+  if (!speaking || !analyser) return null;
+  const buf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (const v of buf) sum += v * v;
+  const rms = Math.sqrt(sum / buf.length);
+  return Math.min(1, Math.max(0, (rms - 0.008) * 7));
+}
+
+function loop(now) {
+  if (!eyeLopen) { requestAnimationFrame(loop); return; }
+
+  if (document.getElementById('blinkOn').checked) {
+    if (now > nextBlink) {
+      const t = (now - nextBlink) / 200;
+      if (t < 0.5) blinkT = t * 2;
+      else if (t < 1) blinkT = 1 - (t - 0.5) * 2;
+      else { blinkT = 0; nextBlink = now + 2200 + Math.random() * 3500; }
+    }
+  } else blinkT = 0;
+
+  const talk = document.getElementById('talkOn').checked;
+  let target = 0;
+
+  if (speaking) {
+    const real = sampleMouth();          // null 表示没在说话
+    if (real !== null && real > 0.02) {
+      mouthEnv = real;
+      silentSince = 0;
+    } else {
+      // 连续 400ms 读不到音量才认为是"真的没声音"，期间保持上一个包络
+      if (!silentSince) silentSince = now;
+      if (now - silentSince > 400) mouthEnv *= 0.85;
+    }
+    target = Math.max(mouthEnv, 0.04);
+  } else if (talk) {
+    target = 0.5 + 0.5 * Math.sin(now / 90);   // 手动试口型
+  } else {
+    target = 0;
+  }
+
+  // 快起慢落：上升 0.6、下降 0.12 —— 这是消除闪烁的关键
+  const k = target > mouthT ? 0.6 : 0.12;
+  mouthT += (target - mouthT) * k;
+  if (mouthT < 0.02) mouthT = 0;
+
+  eyeLopen.style.opacity = String(1 - blinkT);
+  eyeRopen.style.opacity = String(1 - blinkT);
+  eyeLclosed.style.opacity = String(blinkT);
+  eyeRclosed.style.opacity = String(blinkT);
+  mouthClosed.style.opacity = String(1 - mouthT);
+  mouthOpen.style.opacity = String(Math.min(1, mouthT * 1.4));
+
+  stage.style.transform = `translateX(${angleX * 8}px) rotate(${angleX * 1.6}deg)`;
+
+  blinkVal.textContent = blinkT.toFixed(2);
+  mouthVal.textContent = mouthT.toFixed(2);
+  angleVal.textContent = (angleX * 30).toFixed(1);
+
+  requestAnimationFrame(loop);
+}
+
+initLayers().then(() => requestAnimationFrame(loop));
+
+document.getElementById('sayBtn')?.addEventListener('click', () => {
+  ttsSpeak(document.getElementById('sayInput').value.trim());
+});
+document.getElementById('sayInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') ttsSpeak(e.target.value.trim());
+});
+</script>
+</body>
+</html>

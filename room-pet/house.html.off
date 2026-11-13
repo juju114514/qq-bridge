@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大肥鱼的小屋</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b0f18;
+    font-family:system-ui,"Microsoft YaHei",sans-serif;color:#e6eeff}
+  #app{position:fixed;inset:0}
+  .hud{position:absolute;left:16px;top:14px;font-size:12px;line-height:1.8;
+    background:rgba(8,12,22,.62);padding:10px 14px;border-radius:10px;
+    border:1px solid rgba(120,160,255,.2)}
+  .hud b{color:#7fd7ff}
+  .hud button{margin-top:6px;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid rgba(120,160,255,.3);background:rgba(40,60,100,.5);color:#dbe6ff;cursor:pointer}
+  .chat{position:absolute;left:16px;bottom:16px;width:min(420px,46vw);
+    background:rgba(8,12,22,.72);border:1px solid rgba(120,160,255,.22);
+    border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+  .chat .log{max-height:150px;overflow:auto;font-size:12px;line-height:1.7;color:#c9d6ee}
+  .chat .log .me{color:#8fd7ff}
+  .chat .log .her{color:#ffd9a8}
+  .chat .row{display:flex;gap:8px}
+  .chat input{flex:1;min-width:0;background:rgba(12,20,34,.9);border:1px solid #24344f;
+    border-radius:8px;color:#e6eeff;padding:7px 10px;font-size:13px}
+  .chat button{background:rgba(40,90,160,.7);border:1px solid rgba(120,160,255,.35);
+    color:#e6eeff;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+  .bubble{position:absolute;left:50%;top:14%;transform:translateX(-50%);
+    background:rgba(12,18,30,.92);border:1px solid rgba(120,160,255,.28);
+    padding:10px 16px;border-radius:14px;font-size:14px;max-width:60vw;
+    opacity:0;transition:opacity .25s;pointer-events:none}
+  .bubble.show{opacity:1}
+  .hint{position:absolute;right:16px;bottom:14px;font-size:11px;color:#8ea0bd;
+    background:rgba(8,12,22,.55);padding:6px 10px;border-radius:8px}
+  #visionThumb{position:absolute;left:16px;bottom:230px;max-width:180px;border-radius:10px;
+    border:1px solid rgba(120,160,255,.35);z-index:7}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="hud">
+  大肥鱼的小屋 · <b id="stateText">idle</b><br>
+  了解度 <b id="famVal">--</b> / 100<br>
+  左键拖动旋转 · 滚轮缩放 · 右键平移<br><button id="resetCam">回到原位</button>
+</div>
+<div id="bubble" class="bubble"><span id="bubbleText"></span></div>
+<div class="chat">
+  <div class="log" id="log"></div>
+  <div class="row">
+    <input id="input" placeholder="在小屋里跟她说句话…（回车发送）" />
+    <button id="send">发送</button>
+    <button id="camBtn" title="打开摄像头">📷</button>
+    <button id="screenBtn" title="截取屏幕">🖥</button>
+  </div>
+</div>
+<div class="hint">记忆与 QQ 里的她共用（走 qq-bridge）</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script src="house.js"></script>
+</body>
+</html>

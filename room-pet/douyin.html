@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>刷抖音 · 只读</title>
+<style>
+  :root { --bg:#0a0912; --panel:#131020; --line:#282140; --fg:#e8ecff; --dim:#8f97b8; --accent:#c9b6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px 24px 40px; background:var(--bg); color:var(--fg);
+    font-family: system-ui, "Microsoft YaHei", sans-serif; }
+  h1 { font-size:20px; margin:0 0 6px; }
+  .sub { color:var(--dim); font-size:12px; margin-bottom:16px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .bar input[type=text] { width:70px; background:#0d0b18; color:var(--fg);
+    border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  button { background:#241d40; color:var(--fg); border:1px solid #3a2f63; border-radius:8px;
+    padding:8px 14px; font-size:13px; cursor:pointer; }
+  button:hover { background:#2e2452; }
+  button.primary { background:#4b3aa0; border-color:#5c48c4; }
+  button.on { background:#5c48c4; border-color:#7a63e8; }
+  .state { color:var(--dim); font-size:12px; margin-bottom:12px; white-space:pre-wrap; }
+  .list { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:12px; }
+  .item { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .item h3 { font-size:14px; margin:0 0 6px; line-height:1.5; font-weight:600; }
+  .item h3 a { color:var(--fg); text-decoration:none; }
+  .item h3 a:hover { color:var(--accent); }
+  .meta { color:var(--dim); font-size:12px; }
+  .meta b { color:#ffb86b; font-weight:600; }
+  .cmts { margin-top:8px; border-top:1px dashed var(--line); padding-top:8px; }
+  .cmt { color:#a9b3cc; font-size:12px; line-height:1.6; }
+  .tag { display:inline-block; padding:1px 7px; border-radius:6px; background:#241d40;
+    color:var(--accent); font-size:11px; margin-right:6px; }
+  pre { background:#0d0b18; border:1px solid var(--line); border-radius:10px; padding:12px;
+    color:#cfd6ea; font-size:12px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>刷抖音 <span class="tag">只读</span></h1>
+  <div class="sub">扫推荐流 → 按赞数排序 → 挑出值得看的 → 分享给管理员。不点赞、不评论、不私信。</div>
+
+  <div class="bar">
+    <span class="meta">来源</span>
+    <button id="srcWeb" class="on">网页版</button>
+    <button id="srcDesktop">电脑版</button>
+    <span class="meta">刷几页</span>
+    <input type="text" id="pages" value="2" />
+    <button class="primary" id="run">开始刷</button>
+    <button id="reload">看结果</button>
+    <button id="dyEnrich">补互动数据</button>
+    <button id="dyPipe" class="primary">一键刷（刷+补数据+判断）</button>
+    <button id="cmtToggle" class="on" style="background:#3a2f63">允许评论：关</button>
+    <button id="share">分享给管理员</button>
+    <button id="toggleCmt">显示评论</button>
+  </div>
+
+  <div class="bar" id="ocrRow" style="display:none">
+    <span class="meta">识别引擎</span>
+    <button id="ocrWin" class="on">Windows OCR（0.4 秒）</button>
+    <button id="ocrVision">本地视觉 qwen2.5vl（约 100 秒）</button>
+    <span class="meta" id="ocrHint">快，纯文字，适合连续抓</span>
+  </div>
+
+  <div class="bar" style="margin-top:6px;padding:8px 10px;border:1px solid #2a2340;border-radius:10px">
+    <span class="meta">抖音登录</span>
+    <button id="loginRefresh">刷新状态</button>
+    <button id="loginQr">显示二维码</button>
+    <button id="loginOpen">打开抖音网页</button>
+    <button id="loginInfo">抓取页面信息</button>
+    <button id="loginSync" class="primary">同步 cookies 到桥接</button>
+    <button id="loginLogout">退出登录（换号用）</button>
+    <span class="meta" id="loginStatus">—</span>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input id="loginAccount" placeholder="手机号/账号" style="width:140px" />
+      <input id="loginPassword" type="password" placeholder="密码" style="width:130px" />
+      <button id="loginByPwd">密码登录</button>
+      <input id="loginSms" placeholder="短信验证码" style="width:110px" />
+      <button id="loginSmsBtn">提交验证码</button>
+    </div>
+    <pre id="loginInfoBox" style="margin-top:8px;display:none;max-height:180px;overflow:auto;white-space:pre-wrap;font-size:12px;color:#9fb0cf;background:#12101c;padding:8px;border-radius:8px"></pre>
+    <div style="margin-top:8px;display:flex;gap:12px;align-items:flex-start">
+      <div><div class="meta">扫码（手机抖音扫）</div><img id="loginQrImg" style="width:180px;display:none;border-radius:8px" /></div>
+      <div><div class="meta">验证码 / 页面（点图 = 在页面同位置点一下）</div>
+           <img id="loginShot" style="width:420px;display:none;border-radius:8px;cursor:crosshair" /></div>
+    </div>
+  </div>
+
+  <div class="bar" style="margin-top:6px;padding:8px 10px;border:1px solid #2a2340;border-radius:10px">
+    <span class="meta">自动模式</span>
+    <button id="autoToggle">总开关：关</button>
+    <button id="autoLike" class="autoSub">点赞：关</button>
+    <button id="autoCollect" class="autoSub">收藏：关</button>
+    <button id="autoComment" class="autoSub">评论：关</button>
+    <button id="autoAt" class="autoSub">@管理员：关</button>
+    <button id="autoDmReply" class="autoSub">回私信：关</button>
+    <button id="autoReplyCmt" class="autoSub">回评论：关</button>
+    <button id="autoRun" class="primary">跑一轮</button>
+    <span class="meta" id="autoState">—</span>
+  </div>
+  <div id="autoMem" style="margin:6px 0 12px;font-size:12px;color:#9fb0cf"></div>
+
+  <div class="bar" style="margin-top:4px">
+    <span class="meta">通知</span>
+    <button id="ntRefresh">刷新通知</button>
+    <span class="meta" id="ntState">还没拉过</span>
+  </div>
+  <div id="ntList" style="margin:6px 0 14px;font-size:13px"></div>
+
+  <div class="bar" style="margin-top:0">
+    <span class="meta">私信</span>
+    <button id="dmRefresh">刷新私信</button>
+    <button id="dmPollBtn">轮询：关</button>
+    <button id="dmAnnBtn">播报：关</button>
+    <button id="dmSendToggle">发送：关</button>
+    <input type="text" id="dmTo" placeholder="发给谁（会话名）" style="width:120px" />
+    <input type="text" id="dmText" placeholder="私信内容" style="width:180px" />
+    <button id="dmSendBtn">发私信</button>
+    <span class="meta" id="dmState">还没拉过</span>
+  </div>
+  <div id="dmNewList" style="margin:6px 0 4px;font-size:12px"></div>
+  <div id="dmList" style="margin:6px 0 10px;font-size:13px"></div>
+
+  <div class="bar" style="margin-top:0">
+    <span class="meta">定时</span>
+    <button id="schedToggle">定时：关</button>
+    <input type="text" id="schedTime" value="09:00" style="width:70px" />
+    <span class="meta">页数</span><input type="text" id="schedPages" value="2" style="width:50px" />
+    <span class="meta">判断条数</span><input type="text" id="schedTop" value="5" style="width:50px" />
+    <button id="schedSave">保存</button>
+    <span class="meta" id="schedState">—</span>
+  </div>
+
+  <div class="state" id="state">未开始</div>
+  <div class="list" id="list"></div>
+  <pre id="digest" style="display:none;margin-top:16px"></pre>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let showComments = false;
+
+$('#run').onclick = async () => {
+  const pages = parseInt($('#pages').value || '2', 10);
+  const r = await (await fetch('/douyin/run?pages=' + pages)).json();
+  $('#state').textContent = r.ok ? ('开始刷 ' + pages + ' 页…') : ('开刷失败：' + (r.error || ''));
+  poll();
+};
+
+$('#reload').onclick = () => load();
+$('#dyPipe').onclick = async () => {
+  const pages = parseInt($('#pages').value || '2', 10);
+  const r = await (await fetch('/douyin/pipeline?pages=' + pages + '&top=5')).json();
+  $('#state').textContent = r.ok ? '流水线跑起来了（刷取 → 补数据 → 判断，约 2~3 分钟）…' : ('失败：' + (r.error || ''));
+  if (r.ok) poll();
+};
+
+$('#dyEnrich').onclick = async () => {
+  const r = await (await fetch('/douyin/enrich?top=10')).json();
+  $('#state').textContent = r.ok ? '正在补互动数据（约 10 秒/条）…' : ('失败：' + (r.error || ''));
+  if (r.ok) setTimeout(load, 8000);
+};
+
+// ── 抓取来源 ──
+async function syncSource() {
+  try {
+    const d = await (await fetch('/douyin/source')).json();
+    const src = (d.source || {}).douyin || 'web';
+    $('#srcWeb').classList.toggle('on', src === 'web');
+    $('#srcDesktop').classList.toggle('on', src === 'desktop');
+    syncOcrUI(src, (d.source || {}).ocr);
+  } catch (e) {}
+}
+async function setSource(src) {
+  await fetch('/douyin/source', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ which: 'douyin', source: src })
+  });
+  $('#srcWeb').classList.toggle('on', src === 'web');
+  $('#srcDesktop').classList.toggle('on', src === 'desktop');
+  const d2 = await (await fetch('/douyin/source')).json();
+  syncOcrUI(src, (d2.source || {}).ocr);
+  $('#state').textContent = src === 'web' ? '来源：网页版（CDP 读页面）' : '来源：电脑版（截图 + OCR）';
+}
+function syncOcrUI(src, ocr) {
+  $('#ocrRow').style.display = src === 'desktop' ? 'flex' : 'none';
+  $('#ocrWin').classList.toggle('on', ocr !== 'vision');
+  $('#ocrVision').classList.toggle('on', ocr === 'vision');
+  $('#ocrHint').textContent = ocr === 'vision'
+    ? '准一点，但一帧要 100 秒，只适合单次'
+    : '快（0.4 秒/帧），纯文字，适合连续抓';
+}
+async function setOcr(engine) {
+  await fetch('/douyin/source', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ which: 'ocr', source: engine })
+  });
+  const d = await (await fetch('/douyin/source')).json();
+  syncOcrUI((d.source || {}).douyin, (d.source || {}).ocr);
+  $('#state').textContent = '识别引擎：' + (engine === 'vision' ? '本地视觉模型' : 'Windows OCR');
+}
+$('#ocrWin').onclick = () => setOcr('winocr');
+$('#ocrVision').onclick = () => setOcr('vision');
+
+$('#srcWeb').onclick = () => setSource('web');
+$('#srcDesktop').onclick = () => setSource('desktop');
+
+// ── 允许评论（开关）──
+let commentOn = false;
+async function syncComment() {
+  try {
+    const d = await (await fetch('/douyin/source')).json();
+    commentOn = ((d.source || {}).comment || 'off') === 'on';
+    const b = $('#cmtToggle');
+    b.textContent = '允许评论：' + (commentOn ? '开' : '关');
+    b.style.background = commentOn ? '#4a7a4a' : '#3a2f63';
+    b.style.borderColor = commentOn ? '#5f9a5f' : '#3a2f63';
+  } catch (e) {}
+}
+async function setComment(on) {
+  await fetch('/douyin/source', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ which: 'comment', source: on ? 'on' : 'off' })
+  });
+  await syncComment();
+  $('#state').textContent = on
+    ? '已允许评论 —— 点卡片上的「评论这条」会真的发出去（公开可见）'
+    : '评论已关闭';
+}
+$('#cmtToggle').onclick = () => setComment(!commentOn);
+
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.cmtBtn');
+  if (!btn) return;
+  if (!commentOn) { $('#state').textContent = '先把「允许评论」打开'; return; }
+  const id = btn.dataset.id;
+  if (!/^\d{10,}$/.test(id)) { $('#state').textContent = '这条没有视频 id，只能走网页版'; return; }
+  const text = prompt('要发的评论（会公开显示）：', '');
+  if (!text) return;
+  const r = await (await fetch('/douyin/comment', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, text })
+  })).json();
+  $('#state').textContent = r.ok ? '已提交发送，看 douyin/comment.log 的结果' : ('没发出去：' + (r.error || ''));
+});
+
+// ── 通知（谁 @ 我 / 谁回复我）──
+async function loadNotices(refresh) {
+  if (refresh) {
+    $('#ntState').textContent = '拉取中…';
+    await fetch('/douyin/notices?refresh=1');
+    await new Promise((r) => setTimeout(r, 12000));
+  }
+  try {
+    const d = await (await fetch('/douyin/notices')).json();
+    const items = d.items || [];
+    if (!items.length) {
+      $('#ntList').innerHTML = '<span class="meta">' + (d.note || '没有 @ / 回复 / 点赞通知') + '</span>';
+      $('#ntState').textContent = '0 条';
+      return;
+    }
+    $('#ntList').innerHTML = items.slice(0, 20).map((it) => `
+      <div class="item" style="margin-bottom:8px">
+        <div><b>${it.user || '某人'}</b> <span class="meta">${it.when || ''}</span></div>
+        <div style="margin:4px 0">${(it.text || '').slice(0, 80)}</div>
+        <button class="replyBtn" data-aweme="${it.aweme_id}" data-cid="${it.cid}">回复</button>
+      </div>`).join('');
+    $('#ntState').textContent = items.length + ' 条';
+  } catch (e) { $('#ntState').textContent = '读取失败'; }
+}
+$('#ntRefresh').onclick = () => loadNotices(true);
+
+document.addEventListener('click', async (e) => {
+  const sb = e.target.closest('.shareBtn');
+  if (sb) {
+    const to = prompt('发给谁（会话名）：', $('#dmTo').value || '');
+    if (!to) return;
+    const r = await (await fetch('/douyin/share', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ aweme: sb.dataset.id, to, note: '分享一个视频' }) })).json();
+    $('#state').textContent = r.ok ? ('已提交分享：' + r.text.slice(0, 50)) : ('失败：' + (r.error || ''));
+    return;
+  }
+  const b = e.target.closest('.replyBtn');
+  if (!b) return;
+  if (!commentOn) { $('#state').textContent = '先把「允许评论」打开'; return; }
+  const text = prompt('回复内容（公开可见）：', '');
+  if (!text) return;
+  const r = await (await fetch('/douyin/reply', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aweme: b.dataset.aweme, cid: b.dataset.cid, text })
+  })).json();
+  $('#state').textContent = r.ok ? '已提交回复，看 douyin/comment.log' : ('失败：' + (r.error || ''));
+});
+
+// ── 抖音登录 ──
+async function loginStatus() {
+  try {
+    const d = await (await fetch('/douyin/login/status')).json();
+    $('#loginStatus').textContent = d.ok ? `已登录：${d.nick || '?'}（${d.uid}）` : '未登录';
+  } catch (e) { $('#loginStatus').textContent = '状态未知'; }
+}
+async function loginPost(act, body) {
+  const r = await (await fetch('/douyin/login/' + act, { method: 'POST',
+    headers: {'Content-Type':'application/json'}, body: JSON.stringify(body || {}) })).json();
+  return r;
+}
+$('#loginRefresh').onclick = loginStatus;
+$('#loginQr').onclick = async () => {
+  $('#loginStatus').textContent = '正在打开登录…';
+  const r = await loginPost('qr');
+  const img = $('#loginQrImg');
+  if (r.ok) { img.src = '/douyin/login/qr.png?t=' + Date.now(); img.style.display = 'block'; }
+  else { img.style.display = 'none'; img.removeAttribute('src'); }
+  $('#loginStatus').textContent = r.ok ? '二维码已刷新（扫完点「刷新状态」）' : ('失败：' + (r.error || ''));
+};
+$('#loginSync').onclick = async () => {
+  $('#loginStatus').textContent = '同步中…';
+  const r = await loginPost('sync');
+  $('#loginStatus').textContent = r.ok ? 'cookies 已同步到桥接' : ('同步失败：' + (r.error || ''));
+};
+$('#loginLogout').onclick = async () => {
+  if (!confirm('退出登录会让自动化会话掉线，桥接靠已导出的 cookies 撑着。继续？')) return;
+  const r = await loginPost('logout');
+  $('#loginStatus').textContent = r.ok ? '已退出登录，现在可以扫二维码' : ('退出失败：' + (r.error || r.item || ''));
+};
+$('#loginOpen').onclick = async () => {
+  $('#loginStatus').textContent = '正在打开抖音网页…';
+  const r = await loginPost('open');
+  $('#loginStatus').textContent = r.ok ? ('已打开：' + ((r.page || {}).title || r.page?.url || '')) : ('失败：' + (r.error || ''));
+};
+$('#loginInfo').onclick = async () => {
+  $('#loginStatus').textContent = '抓取中…';
+  const r = await loginPost('info');
+  const box = $('#loginInfoBox');
+  if (r.ok) {
+    box.style.display = 'block';
+    box.textContent = [
+      '网址：' + (r.url || ''),
+      '标题：' + (r.title || ''),
+      '登录：' + (r.loggedIn ? ('是 · ' + (r.nick || '') + '（' + r.uid + '）') : '否'),
+      '页面上二维码元素：' + (r.qr ?? 0) + ' 个',
+      '正文片段：',
+      (r.text || '').slice(0, 400)
+    ].join('\n');
+    $('#loginStatus').textContent = '已抓取（' + (r.port || '') + '）';
+  } else {
+    $('#loginStatus').textContent = '抓取失败：' + (r.error || '');
+  }
+};
+$('#loginByPwd').onclick = async () => {
+  const account = $('#loginAccount').value.trim(), password = $('#loginPassword').value;
+  if (!account || !password) { $('#loginStatus').textContent = '账号和密码都要填'; return; }
+  $('#loginStatus').textContent = '登录中…';
+  const r = await loginPost('password', { account, password });
+  const shot = $('#loginShot'); shot.src = '/douyin/login/shot.png?t=' + Date.now(); shot.style.display = 'block';
+  $('#loginStatus').textContent = r.ok ? '已提交（有验证码就点截图）' : ('失败：' + (r.error || ''));
+};
+$('#loginSmsBtn').onclick = async () => {
+  const code = $('#loginSms').value.trim();
+  if (!code) return;
+  const r = await loginPost('sms', { code });
+  $('#loginStatus').textContent = r.ok ? '验证码已填' : ('提交失败：' + (r.error || ''));
+};
+$('#loginShot').onclick = async (e) => {
+  const img = e.target;
+  const rect = img.getBoundingClientRect();
+  // 截图是视口 1:1，所以图上坐标就是页面坐标
+  const x = Math.round((e.clientX - rect.left) * (img.naturalWidth / rect.width));
+  const y = Math.round((e.clientY - rect.top) * (img.naturalHeight / rect.height));
+  const r = await loginPost('click', { x, y });
+  img.src = '/douyin/login/shot.png?t=' + Date.now();
+  $('#loginStatus').textContent = `已点击 (${x}, ${y})`;
+};
+function loginShotRefresh() {
+  const shot = $('#loginShot');
+  shot.src = '/douyin/login/shot.png?t=' + Date.now(); shot.style.display = 'block';
+}
+loginStatus();
+
+// ── 自动模式 ──
+let autoCfg = {};
+async function loadAuto() {
+  try {
+    const d = await (await fetch('/douyin/auto')).json();
+    autoCfg = d.cfg || {};
+    $('#autoToggle').textContent = '总开关：' + (autoCfg.enabled ? '开' : '关');
+    $('#autoToggle').classList.toggle('on', !!autoCfg.enabled);
+    const map = [['autoLike','auto_like','点赞'],['autoCollect','auto_collect','收藏'],
+                 ['autoComment','auto_comment','评论'],['autoAt','admin_at','@管理员'],
+                 ['autoDmReply','dm_reply','回私信'],['autoReplyCmt','reply_comments','回评论']];
+    for (const [id, key, label] of map) {
+      $(`#${id}`).textContent = label + '：' + (autoCfg[key] ? '开' : '关');
+      $(`#${id}`).classList.toggle('on', !!autoCfg[key]);
+    }
+    const m = await (await fetch('/douyin/auto/memory')).json();
+    const vids = (m.videos || []).length, memes = (m.memes || []).length;
+    $('#autoMem').textContent = `记忆：${vids} 条视频总结 · ${memes} 个热梗`;
+  } catch (e) {}
+}
+async function setAuto(patch) {
+  await fetch('/douyin/auto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(patch) });
+  loadAuto();
+}
+$('#autoToggle').onclick = () => setAuto({ enabled: !autoCfg.enabled });
+$('#autoLike').onclick = () => setAuto({ auto_like: !autoCfg.auto_like });
+$('#autoCollect').onclick = () => setAuto({ auto_collect: !autoCfg.auto_collect });
+$('#autoComment').onclick = () => setAuto({ auto_comment: !autoCfg.auto_comment });
+$('#autoAt').onclick = () => setAuto({ admin_at: !autoCfg.admin_at });
+$('#autoDmReply').onclick = () => setAuto({ dm_reply: !autoCfg.dm_reply });
+$('#autoReplyCmt').onclick = () => setAuto({ reply_comments: !autoCfg.reply_comments });
+$('#autoRun').onclick = async () => {
+  const r = await (await fetch('/douyin/auto/run?pages=1&top=3')).json();
+  $('#autoState').textContent = r.ok ? '自动模式跑起来了（约 1~2 分钟）' : ('失败：' + (r.error || ''));
+};
+
+// ── 私信（只读）──
+async function loadDm(refresh) {
+  if (refresh) {
+    $('#dmState').textContent = '拉取中…';
+    await fetch('/douyin/dm?refresh=1');
+    await new Promise((r) => setTimeout(r, 8000));
+  }
+  try {
+    const d = await (await fetch('/douyin/dm')).json();
+    const cs = d.conversations || [];
+    if (!cs.length) {
+      $('#dmList').innerHTML = '<span class="meta">' + (d.note || '还没有私信会话') + '</span>';
+      $('#dmState').textContent = '0 个会话';
+      return;
+    }
+    $('#dmList').innerHTML = cs.slice(0, 15).map((c) => {
+      const m = c.last || {};
+      return `<div style="padding:5px 0;border-bottom:1px solid #221d38">
+        <span class="tag">${c.type === 1 ? '私聊' : '群聊'}</span>
+        <span class="meta">${c.message_count} 条</span>
+        <div style="margin-top:2px">${(m.from === 'me' ? '我：' : '对方：')}${(m.text || '').slice(0, 60)}</div>
+        <div class="meta">${m.at || ''}</div>
+      </div>`;
+    }).join('');
+    $('#dmState').textContent = cs.length + ' 个会话（只读）';
+  } catch (e) { $('#dmState').textContent = '读取失败'; }
+}
+$('#dmRefresh').onclick = () => loadDm(true);
+
+// 轮询 / 播报开关
+let dmPoll = { enabled: false, every: 30, announce: false };
+async function loadDmPoll() {
+  try {
+    const d = await (await fetch('/douyin/dm/poll')).json();
+    dmPoll = d.poll || dmPoll;
+    $('#dmPollBtn').textContent = '轮询：' + (dmPoll.enabled ? '开' : '关');
+    $('#dmAnnBtn').textContent = '播报：' + (dmPoll.announce ? '开' : '关');
+    $('#dmPollBtn').classList.toggle('on', !!dmPoll.enabled);
+    $('#dmAnnBtn').classList.toggle('on', !!dmPoll.announce);
+  } catch (e) {}
+}
+async function setDmPoll(body) {
+  await fetch('/douyin/dm/poll', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  loadDmPoll();
+}
+async function syncDmSend() {
+  try {
+    const src = await (await fetch('/douyin/source')).json();
+    const on = ((src.source || {}).dm_send || 'off') === 'on';
+    $('#dmSendToggle').textContent = '发送：' + (on ? '开' : '关');
+    $('#dmSendToggle').classList.toggle('on', on);
+  } catch (e) {}
+}
+syncDmSend();
+
+$('#dmSendToggle').onclick = async () => {
+  const src = await (await fetch('/douyin/source')).json();
+  const on = ((src.source || {}).dm_send || 'off') === 'on';
+  await fetch('/douyin/source', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ which: 'dm_send', source: on ? 'off' : 'on' }) });
+  $('#dmSendToggle').textContent = '发送：' + (on ? '关' : '开');
+  $('#dmSendToggle').classList.toggle('on', !on);
+};
+$('#dmSendBtn').onclick = async () => {
+  const to = $('#dmTo').value.trim();
+  const text = $('#dmText').value.trim();
+  if (!to || !text) { $('#dmState').textContent = '会话名和内容都要填'; return; }
+  const r = await (await fetch('/douyin/dm/send', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ to, text }) })).json();
+  $('#dmState').textContent = r.ok ? '已提交发送（看 douyin/dm_send.log）' : ('失败：' + (r.error || ''));
+  if (r.ok) $('#dmText').value = '';
+};
+
+$('#dmPollBtn').onclick = () => setDmPoll({ enabled: !dmPoll.enabled });
+$('#dmAnnBtn').onclick = () => setDmPoll({ announce: !dmPoll.announce });
+
+const dmSeenKeys = new Set();
+async function loadDmNew() {
+  try {
+    const d = await (await fetch('/douyin/dm/new')).json();
+    const items = (d.items || []).filter((it) => it.key && !dmSeenKeys.has(it.key)).slice(-5);
+    if (items.length && dmPoll.enabled) {
+      for (const it of items) dmSeenKeys.add(it.key);
+      $('#dmNewList').insertAdjacentHTML('afterbegin', items.reverse().map((it) =>
+        `<div class="meta" style="color:#ffb86b">新私信 · ${it.at || ''} · ${(it.text || '').slice(0, 50)}</div>`).join(''));
+    }
+  } catch (e) {}
+  setTimeout(loadDmNew, 8000);
+}
+loadDmPoll();
+loadDmNew();
+
+// ── 定时 ──
+let sched = { enabled: false, time: '09:00', pages: 2, top: 5, last: '' };
+async function loadSched() {
+  try {
+    const d = await (await fetch('/douyin/schedule')).json();
+    sched = d.schedule || sched;
+    $('#schedToggle').textContent = '定时：' + (sched.enabled ? '开' : '关');
+    $('#schedToggle').classList.toggle('on', !!sched.enabled);
+    $('#schedTime').value = sched.time || '09:00';
+    $('#schedPages').value = sched.pages || 2;
+    $('#schedTop').value = sched.top || 5;
+    $('#schedState').textContent = sched.last ? ('上次自动跑：' + sched.last) : '还没自动跑过';
+  } catch (e) {}
+}
+$('#schedToggle').onclick = async () => {
+  sched.enabled = !sched.enabled;
+  await fetch('/douyin/schedule', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ enabled: sched.enabled }) });
+  loadSched();
+};
+$('#schedSave').onclick = async () => {
+  const body = {
+    time: $('#schedTime').value || '09:00',
+    pages: parseInt($('#schedPages').value || '2', 10),
+    top: parseInt($('#schedTop').value || '5', 10)
+  };
+  await fetch('/douyin/schedule', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body) });
+  $('#state').textContent = '定时已保存：每天 ' + body.time + ' 自动刷 ' + body.pages + ' 页 + 判断 ' + body.top + ' 条';
+  loadSched();
+};
+
+loadAuto();
+loadDm();
+loadSched();
+loadNotices();
+syncComment();
+syncSource();
+load();
+
+$('#toggleCmt').onclick = () => {
+  showComments = !showComments;
+  $('#toggleCmt').classList.toggle('on', showComments);
+  load();
+};
+
+$('#share').onclick = async () => {
+  const d = await (await fetch('/douyin/digest?limit=10')).json();
+  if (!d.ok) { $('#state').textContent = '分享失败：' + (d.error || ''); return; }
+  const pre = $('#digest');
+  pre.style.display = 'block';
+  pre.textContent = d.text;
+  try { await navigator.clipboard.writeText(d.text); $('#state').textContent = '已复制分享文案（' + d.count + ' 条）'; }
+  catch (e) { $('#state').textContent = '已生成分享文案，复制失败请手动选中'; }
+};
+
+async function load() {
+  try {
+    const d = await (await fetch('/douyin/latest')).json();
+    if (d.source === 'desktop') {
+      const lines = d.lines || [];
+      if (!lines.length) {
+        $('#list').innerHTML = '';
+        $('#state').textContent = '电脑版还没抓到内容 —— 点「开始刷」会截一次客户端画面并用 Windows OCR 读字（约 0.4 秒）';
+        return;
+      }
+      $('#list').innerHTML = lines.map((t, i) =>
+        `<div class="item"><h3>${i + 1}. ${t}</h3><div class="meta">电脑版 · Windows OCR</div></div>`).join('');
+      $('#state').textContent = '电脑版：识别到 ' + lines.length + ' 行文字 · ' +
+        new Date((d.at || 0) * 1000).toLocaleString('zh-CN');
+      return;
+    }
+    const items = d.items || [];
+    if (!items.length) {
+      $('#list').innerHTML = '';
+      $('#state').textContent = '还没有结果，先点「开始刷」';
+      return;
+    }
+    $('#list').innerHTML = items.slice(0, 60).map((it, i) => {
+      const cm = (it.comments || []).slice(0, 5).map((c) => `<div class="cmt">· ${c.slice(0, 90)}</div>`).join('');
+      return `<div class="item">
+        <h3><a href="${it.href}" target="_blank">${i + 1}. ${(it.title || '').slice(0, 60)}</a></h3>
+        <div class="meta">@${it.author || '?'} · 赞 <b>${it.likes || '?'}</b> · ${it.duration || ''} · ${it.when || ''}</div>
+        ${it.judge ? `<div class="meta" style="margin-top:4px"><span class="tag" style="background:${it.judge.verdict === '值得看' ? '#3d6b3d' : it.judge.verdict === '顺带一看' ? '#4a3f6b' : '#3a3448'}">${it.judge.verdict}</span> ${it.judge.reason}</div>` : ''}
+        ${it.ratios ? `<div class="meta">藏 ${(it.ratios.collect * 100).toFixed(1)}% · 转 ${(it.ratios.share * 100).toFixed(1)}% · 评 ${(it.ratios.comment * 100).toFixed(1)}% · <span style="color:#ffb86b">结构分 ${it.rank_score}</span></div>` : ''}
+        ${showComments && cm ? `<div class="cmts">${cm}</div>` : ''}
+        <div style="margin-top:8px"><button class="shareBtn" data-id="${(it.href || '').split('/').pop()}">分享给好友</button>
+        <button class="cmtBtn" data-id="${(it.href || '').split('/').pop()}" data-title="${(it.title || '').replace(/"/g, '')}">评论这条</button></div>
+      </div>`;
+    }).join('');
+    $('#state').textContent = '共 ' + d.count + ' 条（按赞数排序）· ' + new Date((d.at || 0) * 1000).toLocaleString('zh-CN');
+  } catch (e) { $('#state').textContent = '读取失败：' + e.message; }
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch('/douyin/status')).json();
+    $('#state').textContent = s.running
+      ? '刷取中…（' + (s.tail ? s.tail.split('\n').pop() : '') + '）'
+      : (s.tail ? s.tail.split('\n').slice(-3).join('\n') : '空闲');
+    if (!s.running) load();
+    else setTimeout(poll, 2500);
+  } catch (e) { setTimeout(poll, 3000); }
+}
+
+load();
+</script>
+</body>
+</html>

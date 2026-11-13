@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大肥鱼 · 直播中控</title>
+<style>
+  :root { --bg:#0c0a16; --panel:#141124; --line:#2a2440; --fg:#e8ecff; --dim:#8f97b8; --ok:#6ee7a8; --bad:#ff8f8f; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:18px; background:var(--bg); color:var(--fg);
+    font-family: system-ui, "Microsoft YaHei", sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { font-size:12px; color:var(--dim); margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns: 1.1fr 1fr; gap:14px; max-width:1180px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card h2 { font-size:14px; margin:0 0 10px; color:#c9b6ff; font-weight:600; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  button { background:#2a2350; color:var(--fg); border:1px solid #3b3266; border-radius:8px;
+    padding:8px 14px; font-size:13px; cursor:pointer; }
+  button:hover { background:#342b62; }
+  button.primary { background:#4b3aa0; border-color:#5c48c4; }
+  button.danger { background:#4a2030; border-color:#7a3348; }
+  input[type=text] { flex:1; min-width:180px; background:#0e0b1c; color:var(--fg);
+    border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:13px; }
+  input[type=range] { width:100%; }
+  .svc { display:flex; align-items:center; justify-content:space-between;
+    padding:8px 10px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; font-size:13px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; background:#555; }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); }
+  .meta { font-size:11px; color:var(--dim); }
+  .log { font-size:12px; color:var(--dim); max-height:120px; overflow:auto; line-height:1.7; }
+  .mode button.active { background:#5c48c4; border-color:#7a63e8; }
+  .now { font-size:13px; color:#c9b6ff; margin-bottom:8px; }
+</style>
+</head>
+<body>
+  <h1>大肥鱼直播中控</h1>
+  <div class="sub">画面页：<code>http://127.0.0.1:8796/stream.html</code>（OBS 加「浏览器」源，1080×1920 或 1920×1080）</div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>语音</h2>
+        <div class="row">
+          <input type="text" id="sayText" placeholder="让她说一句（会同时念出来 + 上字幕 + 画面气泡）" />
+          <button class="primary" id="sayBtn">说</button>
+        </div>
+        <div class="row">
+          <button id="greetBtn">进场欢迎</button>
+          <button id="thanksBtn">礼物感谢</button>
+          <button id="songAskBtn">房管点歌</button>
+        </div>
+        <div class="log" id="log">（还没有操作）</div>
+      </div>
+
+
+
+      <div class="card" style="margin-top:14px">
+        <h2>刷抖音（只读）<a href="/douyin.html" target="_blank" style="margin-left:8px;font-size:11px;color:#c9b6ff">单独页面 →</a><span style="margin-left:8px;padding:1px 6px;border-radius:6px;background:#3b2a7a;color:#c9b6ff;font-size:10px">NEW</span></h2>
+        <div class="row">
+          <span class="meta">刷几页</span>
+          <input type="text" id="dyPages" value="2" style="min-width:60px;flex:0 0 70px" />
+          <button class="primary" id="dyRun">开始刷</button>
+          <button id="dyRefresh">看结果</button>
+          <button id="dyShare">分享给管理员</button>
+        </div>
+        <div class="meta" id="dyState">未开始</div>
+        <div id="dyList" style="margin-top:8px;max-height:320px;overflow:auto;font-size:13px"></div>
+        <pre id="dyDigest" style="display:none"></pre>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h2>抖音直播<span style="margin-left:8px;padding:1px 6px;border-radius:6px;background:#3b2a7a;color:#c9b6ff;font-size:10px">NEW</span></h2>
+        <div class="row">
+          <input type="text" id="roomUrl" placeholder="https://live.douyin.com/123456789" />
+          <button class="primary" id="watchBtn">开始监听</button>
+          <button class="danger" id="stopBtn">停止</button>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <span class="meta">来源</span>
+          <button id="liveSrcWeb" class="primary">网页版</button>
+          <button id="liveSrcDesktop">电脑版</button>
+        </div>
+        <div class="meta" id="watchState">未监听</div>
+        <div class="row" style="margin-top:10px">
+          <label class="meta"><input type="checkbox" id="ruleGreet" /> 进场欢迎</label>
+          <label class="meta"><input type="checkbox" id="ruleThanks" /> 礼物感谢</label>
+          <label class="meta"><input type="checkbox" id="ruleRead" /> 朗读弹幕</label>
+        </div>
+        <div class="log" id="liveLog" style="max-height:170px; margin-top:8px">（还没有弹幕）</div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h2>背景音乐</h2>
+        <div class="now" id="nowBox">未播放</div>
+        <div class="row">
+          <button id="playBtn">播放</button>
+          <button id="pauseBtn">暂停</button>
+          <button id="prevBtn">上一首</button>
+          <button id="nextBtn">下一首</button>
+        </div>
+        <div class="row mode">
+          <span class="meta">播放方式</span>
+          <button data-mode="seq" class="modeBtn">顺序</button>
+          <button data-mode="random" class="modeBtn">随机</button>
+          <button data-mode="one" class="modeBtn">循环</button>
+        </div>
+        <div class="row"><span class="meta" style="width:64px">歌曲音量</span><input type="range" id="vol" min="0" max="100" value="55" /></div>
+        <div class="meta" id="songCount">歌单：加载中…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>服务</h2>
+      <div id="svcList"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="refreshBtn">刷新状态</button>
+        <span class="meta" id="svcHint">每 5 秒自动刷新</span>
+      </div>
+      <div class="meta" style="margin-top:12px; line-height:1.9">
+        闪避规则：她开口时音乐 0.3 秒压到 25%，说完 0.8 秒缓回 100%<br>
+        画面页读的是同一份状态，中控点一下，OBS 里的画面立刻跟着变
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const BASE = '';
+const logEl = $('#log');
+function log(t) {
+  const d = document.createElement('div');
+  d.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false }) + '  ' + t;
+  logEl.prepend(d);
+}
+
+async function state() { return (await fetch('/stream/state')).json(); }
+async function cmd(body) {
+  return (await fetch('/stream/cmd', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  })).json();
+}
+async function say(text) {
+  const r = await (await fetch('/stream/say', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+  })).json();
+  log(r.ok ? ('已播报：' + text.slice(0, 30)) : ('失败：' + r.error));
+}
+
+$('#sayBtn').onclick = () => { const t = $('#sayText').value.trim(); if (t) { say(t); $('#sayText').value = ''; } };
+$('#sayText').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#sayBtn').click(); });
+
+$('#greetBtn').onclick = () => say('欢迎来到直播间，随便坐，别拘束。');
+$('#thanksBtn').onclick = () => say('谢谢礼物，破费了，我会好好收着的。');
+$('#songAskBtn').onclick = () => say('收到点歌，这首我记下了，等下就放。');
+
+$('#playBtn').onclick = async () => { await cmd({ playing: true }); log('音乐：播放'); refresh(); };
+$('#pauseBtn').onclick = async () => { await cmd({ playing: false }); log('音乐：暂停'); refresh(); };
+$('#prevBtn').onclick = () => log('上一首（在画面页点一下也可切）');
+$('#nextBtn').onclick = () => log('下一首（歌单播完会自动切）');
+
+document.querySelectorAll('.modeBtn').forEach((b) => {
+  b.onclick = async () => {
+    await cmd({ mode: b.dataset.mode });
+    document.querySelectorAll('.modeBtn').forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    log('播放方式：' + b.textContent);
+  };
+});
+
+$('#vol').oninput = async (e) => { await cmd({ volume: Number(e.target.value) / 100 }); };
+$('#refreshBtn').onclick = refresh;
+
+async function refreshServices() {
+  const list = $('#svcList');
+  const defs = [
+    { name: '房间服务', url: 'http://127.0.0.1:8796/health' },
+    { name: '语音识别', url: 'http://127.0.0.1:5111/health' },
+    { name: '本地视觉', url: 'http://127.0.0.1:11434/api/tags' },
+    { name: '桥接控制台', url: 'http://127.0.0.1:3100/api/svc-status' }
+  ];
+  const rows = [];
+  for (const d of defs) {
+    let ok = false, extra = '';
+    try {
+      const r = await fetch(d.url, { cache: 'no-store' });
+      ok = r.ok;
+      if (d.name === '本地视觉') { const j = await r.json(); extra = (j.models || []).length + ' 个模型'; }
+      else if (d.name === '房间服务') { const j = await r.json(); extra = j.state || ''; }
+      else if (d.name === '语音识别') { const j = await r.json(); extra = j.model || ''; }
+      else { extra = ok ? '在线' : ''; }
+    } catch (e) { ok = false; extra = '连不上'; }
+    rows.push(`<div class="svc"><span><span class="dot ${ok ? 'ok' : 'bad'}"></span>${d.name}</span>
+      <span class="meta">${extra}</span></div>`);
+  }
+  list.innerHTML = rows.join('');
+}
+
+async function refresh() {
+  try {
+    const s = await state();
+    $('#songCount').textContent = '歌单：' + (s.songs.length ? s.songs.length + ' 首 · ' + s.songs.slice(0, 3).join(' / ') : '空（放 mp3 到 room-pet/music）');
+    $('#nowBox').textContent = s.playing ? '正在播放' : '未播放';
+    $('#vol').value = Math.round((s.volume ?? 0.55) * 100);
+    document.querySelectorAll('.modeBtn').forEach((b) => b.classList.toggle('active', b.dataset.mode === (s.mode || 'seq')));
+    refreshServices();
+  } catch (e) {}
+}
+
+refresh();
+setInterval(refresh, 5000);
+
+// ---------- 刷抖音 ----------
+$('#dyRun').onclick = async () => {
+  const pages = parseInt($('#dyPages').value || '2', 10);
+  const r = await (await fetch('/douyin/run?pages=' + pages)).json();
+  log(r.ok ? ('开始刷 ' + pages + ' 页') : ('开刷失败：' + (r.error || '')));
+  dyPoll();
+};
+
+$('#dyRefresh').onclick = () => loadDouyin();
+
+$('#dyShare').onclick = async () => {
+  const d = await (await fetch('/douyin/digest?limit=10')).json();
+  if (!d.ok) { log('分享失败：' + (d.error || '')); return; }
+  const pre = $('#dyDigest');
+  pre.style.display = 'block';
+  pre.textContent = d.text;
+  try { await navigator.clipboard.writeText(d.text); log('已复制分享文案（' + d.count + ' 条）'); }
+  catch (e) { log('已生成分享文案，复制失败请手动选中'); }
+};
+
+async function loadDouyin() {
+  try {
+    const d = await (await fetch('/douyin/latest')).json();
+    const list = $('#dyList');
+    if (!d.items || !d.items.length) { list.innerHTML = '<div class="meta">还没有结果，先点「开始刷」</div>'; return; }
+    list.innerHTML = d.items.slice(0, 20).map((it, i) => `
+      <div style="padding:6px 0;border-bottom:1px solid #221d38">
+        <a href="${it.href}" target="_blank" style="color:#c9b6ff;text-decoration:none">${(i + 1) + '. ' + (it.title || '').slice(0, 34)}</a>
+        <div class="meta">@${it.author || '?'} · 赞 ${it.likes || '?'} · ${it.duration || ''} · ${it.when || ''}</div>
+      </div>`).join('');
+    $('#dyState').textContent = '共 ' + d.count + ' 条（按赞数排序）';
+  } catch (e) {}
+}
+
+async function dyPoll() {
+  try {
+    const s = await (await fetch('/douyin/status')).json();
+    $('#dyState').textContent = s.running ? '刷取中…' : ('空闲' + (s.tail ? ' · ' + s.tail.split('\n').pop() : ''));
+    if (!s.running) loadDouyin();
+    else setTimeout(dyPoll, 2500);
+  } catch (e) { setTimeout(dyPoll, 3000); }
+}
+
+loadDouyin();
+
+setInterval(refreshWatch, 5000);
+
+// ---------- 抖音直播 ----------
+let lastLiveSeq = 0;
+let lastGreet = 0, lastThanks = 0;
+
+$('#watchBtn').onclick = async () => {
+  const url = $('#roomUrl').value.trim();
+  if (!url) { log('先填直播间地址'); return; }
+  const r = await (await fetch('/live/watch/start?url=' + encodeURIComponent(url))).json();
+  log(r.ok ? '开始监听：' + url : '启动失败：' + (r.error || ''));
+  refreshWatch();
+};
+$('#stopBtn').onclick = async () => {
+  await fetch('/live/watch/stop');
+  log('已停止监听');
+  refreshWatch();
+};
+
+async function refreshWatch() {
+  try {
+    const s = await (await fetch('/live/watch/status')).json();
+    $('#watchState').textContent = s.running ? ('监听中 · ' + s.url) : '未监听';
+    $('#watchState').style.color = s.running ? '#6ee7a8' : '#8f97b8';
+  } catch (e) {}
+}
+
+async function pollLive() {
+  try {
+    const d = await (await fetch('/live/recent?limit=50')).json();
+    const items = (d.items || []).filter((x) => x.seq > lastLiveSeq);
+    if (items.length) {
+      lastLiveSeq = items[items.length - 1].seq;
+      for (const it of items) {
+        const div = document.createElement('div');
+        div.textContent = it.user + '：' + it.text;
+        $('#liveLog').prepend(div);
+        react(it);
+      }
+    }
+  } catch (e) {}
+  setTimeout(pollLive, 2000);
+}
+
+let sayQueue = [];
+let saying = false;
+function enqueueSay(text) {
+  if (!text) return;
+  sayQueue.push(text);
+  if (sayQueue.length > 6) sayQueue.shift();
+  drainSay();
+}
+async function drainSay() {
+  if (saying || !sayQueue.length) return;
+  saying = true;
+  try { await say(sayQueue.shift()); } catch (e) {}
+  saying = false;
+  setTimeout(drainSay, 800);
+}
+
+function react(it) {
+  const now = Date.now();
+  const t = it.text || '';
+  const u = it.user || '观众';
+  if ($('#ruleGreet').checked && /来了|进入直播间|关注了/.test(t) && now - lastGreet > 8000) {
+    lastGreet = now;
+    enqueueSay('欢迎' + u + '，找个位置坐。');
+    return;
+  }
+  if ($('#ruleThanks').checked && /送出|礼物|小心心|灯牌/.test(t) && now - lastThanks > 8000) {
+    lastThanks = now;
+    enqueueSay('谢谢' + u + '的礼物。');
+    return;
+  }
+  if ($('#ruleRead').checked && t.length >= 2) {
+    enqueueSay(u + '说，' + t.replace(/^(来了|为主播点赞了)$/, '来啦'));
+  }
+}
+
+// ── 直播来源 ──
+async function syncLiveSource() {
+  try {
+    const d = await (await fetch('/douyin/source')).json();
+    const src = (d.source || {}).live || 'web';
+    $('#liveSrcWeb').classList.toggle('primary', src === 'web');
+    $('#liveSrcDesktop').classList.toggle('primary', src === 'desktop');
+    $('#watchState').textContent = src === 'web' ? '来源：网页版' : '来源：电脑版（弹幕抓取暂只支持网页版）';
+  } catch (e) {}
+}
+async function setLiveSource(src) {
+  await fetch('/douyin/source', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ which: 'live', source: src })
+  });
+  syncLiveSource();
+}
+$('#liveSrcWeb').onclick = () => setLiveSource('web');
+$('#liveSrcDesktop').onclick = () => setLiveSource('desktop');
+
+refreshWatch();
+syncLiveSource();
+pollLive();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>深夜房间 · 互动版</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="stats.css" />
+</head>
+<body>
+<div id="stage" class="stage">
+  <img id="bg" class="bg" src="assets/background.png" alt="" draggable="false" />
+
+  <div id="petWrap" class="pet-wrap">
+    <img id="pet" class="pet" src="assets/character/idle.png" alt="" draggable="false" />
+    <div id="hearts" class="hearts"></div>
+  </div>
+
+  <div id="bubble" class="bubble"><span id="bubbleText"></span></div>
+
+  <div id="friends" class="friends">
+    <div class="friends-head">
+      <span>在线朋友</span>
+      <span id="friendsCount" class="friends-count">0</span>
+    </div>
+    <div id="friendsList" class="friends-list"><div class="friends-empty">搜索中…</div></div>
+    <div class="friends-add">
+      <input id="friendAddr" type="text" placeholder="手动添加：100.x.y.z:8796" />
+      <button id="friendAdd">添加</button>
+    </div>
+    <div class="friends-punch">
+      <div id="netBanner" class="net-banner hidden">
+        <div id="netTitle" class="net-title"></div>
+        <div id="netDetail" class="net-detail"></div>
+        <div class="net-actions">
+          <button id="netCopy" class="hidden">复制地址</button>
+          <button id="netToggle" class="hidden">仍然尝试打洞</button>
+        </div>
+      </div>
+      <div id="punchBody">
+      <div class="pair-box">
+        <div class="pair-head">
+          <span>配对码</span>
+          <span id="pairMode" class="pair-mode">局域网</span>
+        </div>
+        <div class="pair-row">
+          <input id="pairCode" type="text" readonly placeholder="读取中…" />
+          <button id="pairCopy">复制</button>
+        </div>
+        <div class="pair-row">
+          <button id="pairRotate">换一个</button>
+          <button id="pairSet">用对方的码</button>
+        </div>
+        <div class="pair-row hidden" id="pairSetRow">
+          <input id="pairInput" type="text" placeholder="粘贴对方的配对码" />
+          <button id="pairApply">确定</button>
+        </div>
+      </div>
+      <div class="friends-punch-head">
+        <span>公网直连（跨网络）</span>
+        <span id="punchState" class="punch-state">未连接</span>
+      </div>
+      <div class="friends-add">
+        <button id="punchInvite">生成邀请码</button>
+        <button id="punchCopy">复制</button>
+      </div>
+      <input id="punchCode" type="text" readonly placeholder="点「生成邀请码」" />
+      <div class="friends-add">
+        <input id="punchPeer" type="text" placeholder="粘贴对方邀请码" />
+        <button id="punchConnect">连接</button>
+      </div>
+    </div>
+      <div id="punchAdvice" class="punch-advice hidden">
+        <div id="punchAdviceTitle" class="punch-advice-title"></div>
+        <ol id="punchAdviceSteps" class="punch-advice-steps"></ol>
+        <button id="punchCopyTs" class="hidden">复制我的 Tailscale 地址</button>
+      </div>
+    </div>
+    <div class="friends-send">
+      <input id="friendInput" type="text" placeholder="对朋友说一句…" />
+      <button id="friendSend">发送</button>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div id="clock" class="clock">--:--</div>
+    <div id="mood" class="mood">心情 <b>6</b>/10</div>
+  </div>
+
+  <div class="actions">
+    <button data-act="hug">抱抱</button>
+    <button data-act="feed">喂饭</button>
+    <button data-act="study">陪看书</button>
+    <button data-act="chat">聊天</button>
+    <a class="lite-link" href="l2d-lite.html">伪 L2D</a>
+  </div>
+
+  <div id="chatBox" class="chat-box hidden">
+    <input id="chatInput" type="text" placeholder="说点什么…（回车发送）" />
+    <button id="chatSend">发送</button>
+    <button id="micBtn" title="按住说话">🎤</button>
+    <button id="visionCam" title="看摄像头">📷</button>
+    <button id="visionScreen" title="看屏幕">🖥</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="stats.js"></script>
+  <img id="visionThumb" style="display:none;position:fixed;left:16px;bottom:96px;max-width:160px;border-radius:10px;border:1px solid rgba(120,160,255,.35);z-index:9" />
+
+  <button id="memToggle" title="记忆">🧠</button>
+  <div id="memDrawer" class="mem-drawer">
+    <div class="mem-head">
+      <span>记忆 <b id="memScore">--</b></span>
+      <button id="memClose">×</button>
+    </div>
+    <div class="mem-add">
+      <input id="memInput" placeholder="记一条…" />
+      <button id="memAdd">加</button>
+    </div>
+    <div id="memList" class="mem-list"></div>
+  </div>
+</body>
+</html>

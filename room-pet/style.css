@@ -1,0 +1,265 @@
+:root {
+  --ink: #dbe7f5;
+  --bubble-bg: rgba(250, 252, 255, .94);
+  --bubble-ink: #22303f;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #06080f;
+  font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 背景：铺满，保留比例 */
+.bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(.96) saturate(1.05);
+  pointer-events: none;
+}
+
+/* 角色 */
+.pet-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: min(58vh, 46vw);
+  aspect-ratio: 1 / 1;
+  transform: translateX(-50%);
+  transition: transform .18s ease-out;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.pet {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, .45));
+  transition: opacity .12s linear;
+}
+
+/* 交互热区（透明） */
+.pet-wrap .hit {
+  position: absolute;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.hit.head  { left: 22%; top: 2%;  width: 56%; height: 34%; border-radius: 50% 50% 42% 42%; z-index: 3; }
+.hit.cheek-left  { left: 12%; top: 30%; width: 26%; height: 26%; border-radius: 50%; z-index: 2; }
+.hit.cheek-right { left: 62%; top: 30%; width: 26%; height: 26%; border-radius: 50%; z-index: 2; }
+
+/* 气泡 */
+.bubble {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  transform: translate(-50%, 8px) scale(.96);
+  max-width: min(46vw, 520px);
+  padding: 12px 16px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--bubble-bg);
+  color: var(--bubble-ink);
+  font-size: 15px;
+  line-height: 1.55;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .38);
+  opacity: 0;
+  transition: opacity .22s, transform .22s;
+  pointer-events: none;
+  z-index: 5;
+}
+.bubble.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+
+/* HUD */
+.hud {
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  color: var(--ink);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .6);
+  z-index: 4;
+}
+.clock { font-size: 30px; font-weight: 600; letter-spacing: .04em; }
+.mood  { font-size: 13px; opacity: .8; }
+.mood b { color: #9fe0ff; }
+
+/* 按钮 */
+.actions {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 6;
+}
+.actions button {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 190, 235, .35);
+  background: rgba(16, 26, 44, .6);
+  color: #cfe4f8;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background .18s, transform .08s;
+}
+.actions button:hover { background: rgba(40, 66, 104, .8); }
+.actions button:active { transform: translateY(1px); }
+
+/* 聊天框 */
+.chat-box {
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 7;
+}
+.chat-box.hidden { display: none; }
+.chat-box input {
+  width: min(52vw, 460px);
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 190, 235, .35);
+  background: rgba(10, 18, 32, .85);
+  color: #e6f1ff;
+  font-size: 14px;
+  outline: none;
+}
+.chat-box button {
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 190, 235, .35);
+  background: rgba(40, 80, 130, .75);
+  color: #e6f1ff;
+  cursor: pointer;
+}
+
+/* 爱心粒子 */
+.hearts { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.heart {
+  position: absolute;
+  font-size: 18px;
+  color: #ff9ec4;
+  opacity: 0;
+  animation: heartUp 1.1s ease-out forwards;
+}
+@keyframes heartUp {
+  0%   { opacity: 0; transform: translateY(0) scale(.6); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-70px) scale(1.15); }
+}
+
+/* 状态微调 */
+.stage[data-state="sleepy"] .pet { filter: brightness(.9) drop-shadow(0 18px 28px rgba(0,0,0,.45)); }
+.stage[data-state="crying"] .pet { filter: saturate(.9) brightness(.95) drop-shadow(0 18px 28px rgba(0,0,0,.45)); }
+
+
+/* debug */
+.stage.debug .hit {
+  outline: 2px dashed rgba(255, 80, 80, .9);
+  background: rgba(255, 60, 60, .10);
+}
+
+/* 在线朋友 */
+.friends{position:absolute;right:18px;top:52px;width:250px;max-height:46vh;display:flex;flex-direction:column;
+  background:rgba(8,12,22,.66);border:1px solid rgba(120,160,255,.18);border-radius:12px;
+  padding:10px;backdrop-filter:blur(6px);z-index:6;transition:opacity .3s}
+.friends-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;
+  color:#cfe0ff;letter-spacing:.05em;margin-bottom:8px}
+.friends-count{color:#7fd7ff}
+.friends-list{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.friends-empty{font-size:12px;color:#7f8aa3;padding:6px 2px}
+.friend{background:rgba(20,30,50,.6);border:1px solid rgba(120,160,255,.14);border-radius:8px;
+  padding:8px;font-size:12px;color:#dbe6ff}
+.friend-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.friend-name{font-weight:600}
+.friend-state{font-size:10px;color:#7f8aa3}
+.friend-state.ok{color:#6ee7a8}
+.friend-state.wait{color:#ffcf6e}
+.friend-actions{display:flex;gap:6px;margin-top:6px}
+.friend-actions button,.friends-send button{flex:1;font-size:11px;padding:4px 6px;border-radius:6px;
+  border:1px solid rgba(120,160,255,.3);background:rgba(40,60,100,.5);color:#dbe6ff;cursor:pointer}
+.friend-actions button:hover,.friends-send button:hover{background:rgba(60,90,150,.6)}
+.friends-send{display:flex;gap:6px;margin-top:8px}
+.friends-send input{flex:1;min-width:0;font-size:12px;padding:5px 8px;border-radius:6px;
+  border:1px solid rgba(120,160,255,.22);background:rgba(10,16,28,.8);color:#dbe6ff}
+.friend-msg{display:none;margin-top:6px;gap:6px}
+.friend.open .friend-msg{display:flex}
+
+/* 对端说话：角色"转头看过去" */
+.stage.peer-look #petWrap{animation:peerTurn .9s ease-in-out}
+@keyframes peerTurn{
+  0%{transform:translateX(0) rotate(0)}
+  30%{transform:translateX(14px) rotate(2.5deg)}
+  60%{transform:translateX(10px) rotate(-1.5deg)}
+  100%{transform:translateX(0) rotate(0)}
+}
+
+.friends-add{display:flex;gap:6px;margin-top:8px}
+.friends-add input{flex:1;min-width:0;font-size:12px;padding:5px 8px;border-radius:6px;
+  border:1px solid rgba(120,160,255,.22);background:rgba(10,16,28,.8);color:#dbe6ff}
+.friends-add button{font-size:11px;padding:4px 8px;border-radius:6px;
+  border:1px solid rgba(120,160,255,.3);background:rgba(40,60,100,.5);color:#dbe6ff;cursor:pointer}
+
+.friends-punch{margin-top:10px;padding-top:8px;border-top:1px dashed rgba(120,160,255,.2);display:flex;flex-direction:column;gap:6px}
+.friends-punch-head{display:flex;justify-content:space-between;font-size:11px;color:#98a6c0}
+.punch-state{color:#7f8aa3}
+.punch-state.ok{color:#6ee7a8}
+.friends-punch input{font-size:11px;padding:5px 8px;border-radius:6px;border:1px solid rgba(120,160,255,.22);
+  background:rgba(10,16,28,.8);color:#dbe6ff}
+
+.punch-advice{margin-top:8px;padding:8px;border:1px solid rgba(255,180,90,.35);border-radius:8px;
+  background:rgba(60,40,10,.35);font-size:11px;color:#ffe2b8}
+.punch-advice.hidden{display:none}
+.punch-advice-title{font-weight:600;margin-bottom:4px;color:#ffcf6e}
+.punch-advice-steps{margin:0;padding-left:16px;line-height:1.6}
+.punch-advice button{margin-top:6px;font-size:11px;padding:3px 8px;border-radius:6px;
+  border:1px solid rgba(255,180,90,.4);background:rgba(80,50,10,.5);color:#ffe2b8;cursor:pointer}
+.punch-advice button.hidden{display:none}
+
+.net-banner{margin-bottom:8px;padding:8px;border:1px solid rgba(110,231,168,.35);border-radius:8px;
+  background:rgba(16,50,30,.35);font-size:11px;color:#c9f7dd}
+.net-banner.hidden{display:none}
+.net-title{font-weight:600;color:#6ee7a8;margin-bottom:3px}
+.net-detail{line-height:1.5;color:#a9d8c0}
+.net-actions{display:flex;gap:6px;margin-top:6px}
+.net-actions button{font-size:11px;padding:3px 8px;border-radius:6px;
+  border:1px solid rgba(110,231,168,.4);background:rgba(20,70,45,.5);color:#c9f7dd;cursor:pointer}
+.net-actions button.hidden{display:none}
+
+.pair-box{margin:8px 0;padding:8px;border:1px solid rgba(120,160,255,.18);border-radius:8px;background:rgba(12,18,30,.5)}
+.pair-head{display:flex;justify-content:space-between;font-size:11px;color:#98a6c0;margin-bottom:6px}
+.pair-mode{color:#7fd7ff}
+.pair-row{display:flex;gap:6px;margin-top:6px}
+.pair-row.hidden{display:none}
+.pair-row input{flex:1;min-width:0;font-size:12px;padding:5px 8px;border-radius:6px;
+  border:1px solid rgba(120,160,255,.22);background:rgba(10,16,28,.8);color:#dbe6ff;letter-spacing:.06em}
+.pair-row button{font-size:11px;padding:4px 8px;border-radius:6px;
+  border:1px solid rgba(120,160,255,.3);background:rgba(40,60,100,.5);color:#dbe6ff;cursor:pointer}
+.friend-state.away{color:#9aa7bd}
+.lite-link{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;
+  border-radius:8px;border:1px solid rgba(120,160,255,.28);background:rgba(20,30,50,.55);
+  color:#cfe0ff;font-size:13px;text-decoration:none}
+.lite-link:hover{background:rgba(40,60,100,.65)}

@@ -1,0 +1,380 @@
+// 大肥鱼的小屋：three.js 场景 + 角色 billboard + 聊天（记忆走 qq-bridge）
+const app = document.getElementById('app');
+const bubble = document.getElementById('bubble');
+const bubbleText = document.getElementById('bubbleText');
+const stateText = document.getElementById('stateText');
+const logEl = document.getElementById('log');
+const inputEl = document.getElementById('input');
+
+// ── 场景 ─────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f18);
+scene.fog = new THREE.Fog(0x0b0f18, 26, 46);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(2.5, 5.2, 16);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.6, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 6;
+controls.maxDistance = 26;
+controls.maxPolarAngle = Math.PI * 0.49;
+
+// ── 灯光 ─────────────────────────────────────────────
+scene.add(new THREE.HemisphereLight(0x9fb8ff, 0x3a2e22, 0.85));
+
+const key = new THREE.DirectionalLight(0xffd9a8, 1.15);
+key.position.set(6, 12, 8);
+key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.left = -14;
+key.shadow.camera.right = 14;
+key.shadow.camera.top = 14;
+key.shadow.camera.bottom = -14;
+scene.add(key);
+
+const windowLight = new THREE.PointLight(0xffd0a0, 1.4, 26, 2);
+windowLight.position.set(-8, 6, -6);
+scene.add(windowLight);
+
+// ── 房间 ─────────────────────────────────────────────
+const ROOM = { w: 22, d: 18, h: 8 };
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.85 });
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x2b3346, roughness: 0.95 });
+const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.8 });
+const clothMat = new THREE.MeshStandardMaterial({ color: 0x2f4d6e, roughness: 0.9 });
+const warmMat = new THREE.MeshStandardMaterial({ color: 0xd8b98a, roughness: 0.7 });
+
+function box(w, h, d, mat, x, y, z, ry = 0, shadow = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.rotation.y = ry;
+  m.castShadow = shadow;
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+
+// 地板
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// 三面墙（背面 + 左 + 右）
+box(ROOM.w, ROOM.h, 0.4, wallMat, 0, ROOM.h / 2, -ROOM.d / 2);
+box(0.4, ROOM.h, ROOM.d, wallMat, -ROOM.w / 2, ROOM.h / 2, 0);
+box(0.4, ROOM.h, ROOM.d, wallMat, ROOM.w / 2, ROOM.h / 2, 0);
+
+// 窗（背面墙上的暖光块 + 窗框）
+const winGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(4.4, 3.2),
+  new THREE.MeshBasicMaterial({ color: 0xffd9a8, transparent: true, opacity: 0.75 })
+);
+winGlow.position.set(-6, 4.2, -ROOM.d / 2 + 0.25);
+scene.add(winGlow);
+box(4.9, 3.7, 0.18, woodMat, -6, 4.2, -ROOM.d / 2 + 0.12);
+box(0.16, 3.2, 0.22, woodMat, -6, 4.2, -ROOM.d / 2 + 0.3);
+box(4.4, 0.16, 0.22, woodMat, -6, 4.2, -ROOM.d / 2 + 0.3);
+
+// 床
+box(7, 0.5, 4, woodMat, 6.5, 0.45, -5);
+box(6.6, 0.45, 3.6, clothMat, 6.5, 0.95, -5);
+box(7, 1.6, 0.4, woodMat, 6.5, 1.2, -7);
+box(1.6, 0.5, 2.6, warmMat, 8.6, 1.35, -5);
+
+// 书桌 + 椅子
+box(4.2, 0.2, 2.2, woodMat, -7, 1.5, -4);
+box(0.18, 1.5, 0.18, woodMat, -8.8, 0.75, -4.9);
+box(0.18, 1.5, 0.18, woodMat, -5.2, 0.75, -4.9);
+box(0.18, 1.5, 0.18, woodMat, -8.8, 0.75, -3.1);
+box(0.18, 1.5, 0.18, woodMat, -5.2, 0.75, -3.1);
+box(1.4, 0.18, 1.4, woodMat, -7, 0.85, -1.6);
+box(1.4, 1.2, 0.18, woodMat, -7, 1.45, -2.2);
+
+// 书架
+box(0.5, 4.6, 5.4, woodMat, 10.2, 2.3, 2);
+for (let i = 0; i < 4; i++) {
+  box(0.42, 0.12, 5.1, warmMat, 10.2, 1.0 + i * 1.05, 2);
+}
+
+// 地毯
+const rug = new THREE.Mesh(new THREE.PlaneGeometry(10, 7),
+  new THREE.MeshStandardMaterial({ color: 0x5b4a63, roughness: 1 }));
+rug.rotation.x = -Math.PI / 2;
+rug.position.set(0, 0.02, 1.2);
+rug.receiveShadow = true;
+scene.add(rug);
+
+// 吊灯
+const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16),
+  new THREE.MeshStandardMaterial({ color: 0xfff0d0, emissive: 0xffcc88, emissiveIntensity: 1.2 }));
+lamp.position.set(0, 6.4, 0);
+scene.add(lamp);
+const lampLight = new THREE.PointLight(0xffd9a8, 1.1, 20, 2);
+lampLight.position.set(0, 6.2, 0);
+scene.add(lampLight);
+
+// ── 角色（billboard）────────────────────────────────
+const texLoader = new THREE.TextureLoader();
+const charTex = texLoader.load('assets/character/idle.png');
+charTex.magFilter = THREE.LinearFilter;
+const charMat = new THREE.SpriteMaterial({ map: charTex, transparent: true, depthWrite: false });
+const character = new THREE.Sprite(charMat);
+character.scale.set(3.6, 3.6, 1);
+character.position.set(0, 1.85, 1.2);
+scene.add(character);
+
+// 脚下影子
+const shadow = new THREE.Mesh(
+  new THREE.CircleGeometry(1.35, 32),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 })
+);
+shadow.rotation.x = -Math.PI / 2;
+shadow.position.set(0, 0.03, 1.2);
+scene.add(shadow);
+
+
+// ── 真 3D 模型（有 models/pet/pet.glb 就用它，否则保留 billboard）──
+let mixer = null;
+function tryLoad3DModel() {
+  if (typeof THREE.GLTFLoader !== 'function') return;
+  const loader = new THREE.GLTFLoader();
+  loader.load('models/pet/pet.glb', (gltf) => {
+    const root = gltf.scene;
+    root.scale.setScalar(1);
+    // 按包围盒把模型缩到约 3.4 米高，脚踩地面
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3(); box.getSize(size);
+    const s = 3.4 / (size.y || 1);
+    root.scale.setScalar(s);
+    const box2 = new THREE.Box3().setFromObject(root);
+    root.position.set(0, -box2.min.y, 1.2);
+    root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+
+    character.visible = false;         // 关掉 billboard
+    scene.add(root);
+
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(root);
+      const clip = gltf.animations.find(a => /idle/i.test(a.name)) || gltf.animations[0];
+      mixer.clipAction(clip).play();
+      console.log('[3D] 播放动画:', clip.name);
+    }
+    console.log('[3D] 模型加载成功');
+  }, undefined, (err) => {
+    console.log('[3D] 没找到 models/pet/pet.glb，继续用立绘 billboard', err && err.message);
+  });
+}
+tryLoad3DModel();
+
+// ── 动画 ─────────────────────────────────────────────
+let t0 = performance.now();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = (performance.now() - t0) / 1000;
+  const breath = Math.sin(t * (Math.PI * 2 / 3.6));
+  character.scale.set(3.6 + breath * 0.02, 3.6 - breath * 0.035, 1);
+  character.position.y = 1.85 + breath * 0.04;
+  lampLight.intensity = 1.05 + Math.sin(t * 1.7) * 0.06;
+  if (mixer) mixer.update(0.016);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── 气泡 / 状态 ──────────────────────────────────────
+let bubbleTimer = null;
+function say(text, ms = 4000) {
+  if (!text) return;
+  bubbleText.textContent = text;
+  bubble.classList.add('show');
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => bubble.classList.remove('show'), ms);
+}
+
+function setState(st) {
+  stateText.textContent = st;
+}
+
+function logLine(who, text) {
+  const d = document.createElement('div');
+  d.className = who === 'me' ? 'me' : 'her';
+  d.textContent = (who === 'me' ? '我：' : '她：') + text;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+
+// 外部 TTS：说这句话（失败静默，不影响画面）
+let __ttsAudio = null;
+function speak(text) {
+if (!text) return;
+try {
+if (!__ttsAudio) __ttsAudio = new Audio();
+fetch('/tts?text=' + encodeURIComponent(text))
+.then(r => r.ok ? r.blob() : Promise.reject(new Error('tts ' + r.status)))
+.then(b => { __ttsAudio.src = URL.createObjectURL(b); __ttsAudio.play().catch(() => {}); })
+.catch(() => {});
+} catch (_) {}
+}
+window.roomPetSpeak = speak;
+
+
+// ── 视觉：摄像头 / 屏幕 → 一帧 → 交给多模态模型 ──
+let camStream = null, pendingImage = null;
+
+async function openCamera() {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    const v = document.getElementById('camPreview');
+    v.srcObject = camStream;
+    await v.play();
+    say('摄像头开了，正在取一帧…', 1800);
+    setTimeout(captureFrame, 800);
+  } catch (e) {
+    say('摄像头打不开：' + (e.message || e), 3000);
+  }
+}
+
+async function captureScreen() {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    const v = document.createElement('video');
+    v.srcObject = stream;
+    await v.play();
+    await new Promise(r => setTimeout(r, 500));
+    grabToCanvas(v);
+    stream.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    say('截屏被取消或失败', 2500);
+  }
+}
+
+function grabToCanvas(video) {
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth || 640;
+  c.height = video.videoHeight || 480;
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  pendingImage = c.toDataURL('image/jpeg', 0.75);
+  const thumb = document.getElementById('visionThumb');
+  thumb.src = pendingImage;
+  thumb.style.display = 'block';
+  say('画面已附加，发送时会一起交给她看', 2600);
+}
+
+function captureFrame() {
+  const v = document.getElementById('camPreview');
+  if (v && v.videoWidth) grabToCanvas(v);
+}
+
+async function describeImage(dataUrl) {
+  try {
+    const r = await fetch('/vision/describe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: '视觉接口请求失败' };
+  }
+}
+
+document.getElementById('camBtn')?.addEventListener('click', openCamera);
+document.getElementById('screenBtn')?.addEventListener('click', captureScreen);
+
+// ── 聊天（记忆走 qq-bridge）───────────────────────────
+async function send() {
+  const text = (inputEl.value || '').trim();
+  if (!text) return;
+  inputEl.value = '';
+  logLine('me', text);
+  say('……', 1500);
+  setState('thinking');
+  try {
+    if (pendingImage) {
+      say('先看看画面…', 2000);
+      const v = await describeImage(pendingImage);
+      if (v.ok && v.text) {
+        text = '【我看到画面】' + v.text + '\n' + text;
+        logLine('her', '（看到：' + v.text.slice(0, 60) + '…）');
+      } else {
+        logLine('her', '（' + (v.error || '没看清画面') + '）');
+      }
+      pendingImage = null;
+      const thumb = document.getElementById('visionThumb');
+      if (thumb) thumb.style.display = 'none';
+    }
+    const r = await fetch('/house/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const d = await r.json();
+    if (d.ok && d.reply) {
+      logLine('her', d.reply);
+      say(d.reply, 6000);
+      speak(d.reply);
+      setState('idle');
+    } else {
+      const msg = d.error || '没接上（看看 qq-bridge 的 agent 配置）';
+      logLine('her', '（' + msg + '）');
+      say('……我这边没接上', 3000);
+      setState('idle');
+    }
+  } catch (e) {
+    logLine('her', '（连接失败）');
+    setState('idle');
+  }
+}
+
+document.getElementById('send').addEventListener('click', send);
+inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+
+// ── 了解度 ──
+async function refreshFamiliarity() {
+  try {
+    const r = await fetch('/memory/score');
+    const d = await r.json();
+    const el = document.getElementById('famVal');
+    if (el && d.ok) el.textContent = d.score + '（' + d.memories + ' 条记忆）';
+  } catch (_) {}
+}
+refreshFamiliarity();
+setInterval(refreshFamiliarity, 30000);
+
+// ── SSE：QQ 那边的状态同步过来 ───────────────────────
+function connectState() {
+  if (!window.EventSource || location.protocol !== 'http:') return;
+  const es = new EventSource('http://127.0.0.1:8796/events');
+  es.onmessage = (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch (_) { return; }
+    if (d.state === 'speaking' && d.text) { say(d.text, 5000); setState('speaking'); }
+    else if (d.state === 'thinking') setState('thinking');
+    else if (d.state === 'idle') setState('idle');
+  };
+  es.onerror = () => { es.close(); setTimeout(connectState, 2000); };
+}
+document.getElementById('resetCam')?.addEventListener('click', () => {
+  camera.position.set(2.5, 5.2, 16);
+  controls.target.set(0, 1.6, 0);
+  controls.update();
+});
+
+connectState();

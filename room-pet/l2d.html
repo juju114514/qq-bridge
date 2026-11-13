@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>深夜书房 · Live2D</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="stats.css" />
+<style>
+  #l2dCanvas { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; }
+  #l2dCanvas canvas { display: block; }
+  .badge { position: absolute; right: 18px; top: 18px; font-size: 12px; color: #9fc6ea; opacity: .75; z-index: 8; }
+</style>
+</head>
+<body>
+<div id="stage" class="stage">
+  <img id="bg" class="bg" src="assets/background.png" alt="" draggable="false" />
+
+  <div id="l2dCanvas"></div>
+  <div id="fallback" class="pet-wrap hidden"></div>
+
+  <div class="badge">Live2D · Hiyori（占位模型）</div>
+
+  <div id="bubble" class="bubble"><span id="bubbleText"></span></div>
+
+  <div class="hud">
+    <div id="clock" class="clock">--:--</div>
+    <div id="mood" class="mood">心情 <b>6</b>/10</div>
+  </div>
+
+  <div class="actions">
+    <button data-act="hug">抱抱</button>
+    <button data-act="feed">喂饭</button>
+    <button data-act="study">陪看书</button>
+    <button data-act="chat">聊天</button>
+  </div>
+
+  <div id="chatBox" class="chat-box hidden">
+    <input id="chatInput" type="text" placeholder="说点什么…（回车发送）" />
+    <button id="chatSend">发送</button>
+  </div>
+</div>
+
+<script src="vendor/pixi.min.js"></script>
+<script src="vendor/live2dcubismcore.min.js"></script>
+<script src="vendor/pixi-live2d-display.min.js"></script>
+<script src="vendor/cubism4.min.js"></script>
+<script src="l2d.js"></script>
+<script src="stats.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "contentrating": "Everyone",
+  "description": "深夜书房 · 互动版\n\n把图鲸鲸请回桌面：摸摸头、捏捏脸、喂口饭、陪你看书，还能和她说话。\n\n交互说明：\n· 鼠标移动时她会跟着看\n· 点击头部 → 摸头（会脸红、冒爱心）\n· 点击左右脸 → 捏脸，捏多了会生气甚至哭\n· 底部按钮：抱抱 / 喂饭 / 陪看书 / 聊天\n· 深夜（1-6 点）会有额外的小声碎碎念\n\n素材来自 Wallpaper Engine 创意工坊，仅限个人使用，请勿二次分发。",
+  "file": "index.html",
+  "general": {
+    "properties": {
+      "schemecolor": {
+        "order": 0,
+        "text": "ui_browse_properties_scheme_color",
+        "type": "color",
+        "value": "0.09 0.13 0.25"
+      }
+    }
+  },
+  "preview": "preview.jpg",
+  "ratingsex": "none",
+  "ratingviolence": "none",
+  "tags": ["Anime"],
+  "title": "深夜书房 · 互动版",
+  "type": "web",
+  "version": 0
+}

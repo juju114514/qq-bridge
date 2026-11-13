@@ -1,0 +1,20 @@
+# 本目录只跟踪代码/文档：素材、抓取数据、日志、运行时状态一律不进仓库
+assets/
+unity/
+screenshots/
+music/
+tts-cache/
+asr-tmp/
+vendor/
+__pycache__/
+*.pyc
+
+*.log
+douyin/
+dy_safety_pause.json
+settings.json
+preview.gif
+*.mp3
+*.psd
+# 运行时数据（含聊天记忆/时间戳，不进仓库）
+memory.json
