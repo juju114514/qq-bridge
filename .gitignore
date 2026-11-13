@@ -38,3 +38,7 @@ config/
 
 # 构建产物（下载页里含 APK 哈希，每次构建都变）
 dist/
+
+# Python 缓存（tools/export-cookies.py 跑过会生成）
+__pycache__/
+*.pyc
