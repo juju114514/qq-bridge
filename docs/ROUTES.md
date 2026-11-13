@@ -469,5 +469,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4500 |
-| ANY | `/api/tokens/` | L4500 |
+| ANY | `/api/tokens/summary` | L4502 |
+| ANY | `/api/tokens/` | L4502 |

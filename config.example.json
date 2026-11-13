@@ -435,5 +435,16 @@
     "cfg": 7,
     "negative": "",
     "_说明": "生图走本机 ComfyUI：启动它（默认 :8188）后，控制台「人格与角色 → 生图」或 POST /api/image/generate 即可"
+  },
+  "personaPolicy": {
+    "profanity": "off",
+    "nsfw": "off",
+    "requireAdultConfirm": true,
+    "perGroup": {
+      "group:123456789": {
+        "profanity": "mild"
+      }
+    },
+    "_说明": "语气/内容许可：off|mild|strong（骂人）、off|suggestive|explicit（成人内容）。explicit 需把群号写进 state/persona-adult.json；硬底线（未成年/真人/违法/隐私）不受配置影响"
   }
 }

@@ -154,6 +154,7 @@ import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { draftRoleCard } from './role-draft.js';
+import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList } from './persona-policy.js';
 import { createImageHandler } from './api/image-route.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
@@ -239,6 +240,7 @@ const ROOT = path.resolve(__dirname, '..');
 const STATE_DIR = path.join(ROOT, 'state');
 const STATE_FILE = path.join(STATE_DIR, 'sessions.json');
 const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
+const PERSONA_ADULT_FILE = path.join(STATE_DIR, 'persona-adult.json');
 const QZONE_DRAFT_FILE = path.join(STATE_DIR, 'qzone-draft.json');
 // 断电/崩溃检测（0.4.84）：心跳 + 运行标记 + 异常事件
 const HEARTBEAT_FILE = path.join(STATE_DIR, 'heartbeat.json');
@@ -9450,12 +9452,25 @@ function selfCheckSnapshot() {
       feedSlangWindow(key, event.sender?.card || event.sender?.nickname || String(event.user_id), plainContent);
     }
 
-    // 角色扮演提示注入（仅注入给 agent，不影响群友之间的正常对话语义）
+    // 语气/内容许可（personaPolicy）：按群解析，拼在角色卡之后，永不被注入上限截断
+  function personaPolicyBlockText(key) {
+    try {
+      const gid = key.startsWith('group:') ? key.slice(6) : '';
+      const adultOk = !!gid && readPersonaAdultList(fs, PERSONA_ADULT_FILE).has(gid);
+      const p = resolvePersonaPolicy({ cfg, key, adultOk });
+      if (p.downgraded) log(`[persona-policy] ${key}: ${p.downgraded}`);
+      return personaPolicyBlock(p);
+    } catch { return ''; }
+  }
+
+  // 角色扮演提示注入（仅注入给 agent，不影响群友之间的正常对话语义）
     const roleHint = currentRoleHint(key);
 
     // 群聊里带发送者信息，私聊不用；角色提示注入到消息开头（agent 可见）；
     // 管理员消息带身份标记（供 agent 识别，但其权限仍受工具面硬限制）
+    const toneBlock = personaPolicyBlockText(key);
     const promptText = (roleHint ? roleHint + '\n\n' : '')
+      + (toneBlock ? toneBlock + '\n\n' : '')
       + (isOwner ? '【管理员】' : '')
       + (kind === 'group'
         ? `${event.sender?.card || event.sender?.nickname || String(event.user_id)}：${textContent}`
