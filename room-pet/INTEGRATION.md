@@ -85,3 +85,20 @@ python auto_reply_comments.py --dry
 ```
 
 详细操作（含验证码怎么过、cookies 怎么导出）见 [使用说明.md](使用说明.md)。
+
+## 七、两份代码怎么同步（重要）
+
+仓库里只有代码；**实际运行的那份**在你自己机器上（带 `assets/` 和抓下来的数据）。
+改了仓库不同步，跑起来还是旧的。所以有一个单向同步脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1            # 仓库 → 运行目录
+powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1 -DryRun    # 只看会改哪几个
+powershell -ExecutionPolicy Bypass -File .\scripts\sync-room-pet.ps1 -To "<运行目录>"
+```
+
+- **只覆盖代码/文档**（`*.py *.js *.html *.css *.md *.txt *.bat *.ps1`），不碰素材与数据
+- 不删除运行目录里多出来的文件（`settings.json`、`douyin/`、`assets/` 都安全）
+- 用 SHA256 比对，只拷变化的文件；连跑两次第二次会显示「已是最新」
+
+> 运行目录默认是本机 `tools/room-pet`（脚本里写的是占位默认值），用 `-To` 或环境变量 `ROOM_PET_RUNTIME` 指定最稳。

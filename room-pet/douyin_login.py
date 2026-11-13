@@ -275,7 +275,7 @@ async def run(action, args):
                     await _send(lws, lmid, "Page.navigate", {"url": "https://www.douyin.com/"})
                     await asyncio.sleep(8)
                 info = await ev(lws, """JSON.stringify({url: location.href, title: document.title,
-                  text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 300)})""", lmid + 1)
+                  text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 300)})""", lmid + 1)
                 print(json.dumps({"ok": True, "page": json.loads(info or "{}"), "port": LOGIN_PORT}, ensure_ascii=False))
                 return
 
@@ -304,7 +304,7 @@ async def run(action, args):
                     loggedIn: !!me.uid,
                     nick: me.nickname || '',
                     uid: String(me.uid || ''),
-                    text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 400),
+                    text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 400),
                     qr: [...document.querySelectorAll('canvas,img')].filter(e => {
                       const r = e.getBoundingClientRect();
                       return r.width >= 90 && r.width <= 420 && Math.abs(r.width - r.height) <= 40;

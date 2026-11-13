@@ -78,3 +78,24 @@ jobs:
             bad=1
           fi
           exit $bad
+
+  python-syntax:
+    name: 语法检查（room-pet 的 Python）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 逐个文件编译（compileall，不装依赖）
+        run: |
+          set -e
+          python -m compileall -q room-pet
+          # compileall 会把 .pyc 写进 __pycache__，删掉避免污染工作区
+          find room-pet -name '__pycache__' -type d -prune -exec rm -rf {} +
+          echo "room-pet 编译通过"
+
+      - name: 安全词自测（不联网、不依赖第三方库）
+        run: python -c "import sys; sys.path.insert(0,'room-pet'); import safety_words as s; assert s.resolve_config({'safetyAction':'off'})['enabled'] is False; assert s.resolve_config({})['action']=='skip'; assert s.is_safety('嗯 安全词！'); print('safety_words 自测通过')"
