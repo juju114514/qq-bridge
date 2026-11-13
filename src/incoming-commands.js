@@ -122,6 +122,7 @@ export function createIncomingCommands(deps = {}) {
         '· 看图 —— 直接发图，我能说出图里是什么',
         '· 搜索 —— 问实时/网上的事，我会联网查',
         '· 查梗 —— /梗 丝竹，查群里黑话的意思',
+        '· 要图 —— /pixiv 蓝鲸 搜 Pixiv（回标题/作者/链接）；/pixiv 发 1 发那张图',
         '· 潜水 —— 不理我就自己潜，@我立刻醒',
       ];
       {
@@ -135,7 +136,8 @@ export function createIncomingCommands(deps = {}) {
           );
         }
       }
-      if (isOwner && kind === 'private') {
+      // 管理员在群里发「指令」也应当看到管理命令（以前只给私聊看）
+      if (isOwner) {
         helpLines.push(
           '———',
           '/指令  这个列表',
@@ -144,6 +146,9 @@ export function createIncomingCommands(deps = {}) {
           '/active /quiet /silent  活跃度',
           '/like QQ号 [次数]  给某人点赞',
           '/song 歌名[|母带|无损][|整首]  直接点歌',
+          '/pixiv <标签>  搜图（分级按本群设置；图库超上限按最久没用过的删）',
+          '/pixiv 发 <序号>  发上一次搜索里的第 N 张',
+          '/pixiv 清  清掉本会话的搜索缓存',
         );
       }
       await sendToQQ(key, helpLines.join('\n'));
