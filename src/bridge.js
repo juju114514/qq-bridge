@@ -156,6 +156,7 @@ import { createRolesHandler } from './api/roles.js';
 import { draftRoleCard } from './role-draft.js';
 import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList } from './persona-policy.js';
 import { createImageHandler } from './api/image-route.js';
+import { createPersonaPolicyHandler } from './api/persona-policy-route.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
 import { createConfigLoader } from './config.js';
@@ -3970,7 +3971,12 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             roleName,
             socialV2BusySnapshot,
           });
-          const handleImage = createImageHandler({
+          const handlePersonaPolicy = createPersonaPolicyHandler({
+    sendJson, readBody, log, fs, ROOT, STATE_DIR,
+    getCfg: () => cfg, atomicWriteJson
+  });
+
+  const handleImage = createImageHandler({
     sendJson, readBody, log, fs, ROOT, STATE_DIR,
     getCfg: () => cfg
   });
@@ -4353,7 +4359,7 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
           }
         }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
-        .chain(handleRoles).chain(handleImage).chain(handleSlang).chain(handleSessions).chain(handleSocial)
+        .chain(handleRoles).chain(handleImage).chain(handlePersonaPolicy).chain(handleSlang).chain(handleSessions).chain(handleSocial)
         .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay).chain(handleDeadLetter)
         .chain(handleStickers).chain(handleTokens);
       // 注意：handleV2Wait / handleImages / handleSend **不进链**。

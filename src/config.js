@@ -165,6 +165,8 @@ export function createConfigLoader(deps = {}) {
     consoleToken: file.consoleToken ?? '',
     // 价目表覆盖项（可选）。留空即用 src/model-prices.js 的官方默认价。
     pricing: file.pricing ?? null,
+    // 语气/内容许可：写入端已校验档位，这里原样透传（缺省 = 全 off）
+    personaPolicy: file.personaPolicy ?? null,
     security: {
       interceptNotify: true,
       ...(file.security ?? {})

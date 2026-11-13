@@ -2042,6 +2042,72 @@ button:active:not(:disabled) {
         </div>
       </details>
 
+      <details class="settings-group" id="ppGroup">
+        <summary>语气与内容（personaPolicy）</summary>
+        <div class="settings-content">
+          <div class="meta" style="margin-top:8px">放开的是「表达方式」，不是安全边界：未成年人性内容 / 真人 / 违法 / 隐私 仍然一律拒绝。改完立即生效。</div>
+          <div class="row" style="margin-top:10px;gap:10px;align-items:center">
+            <label style="min-width:96px">全局骂人</label>
+            <select id="ppGlobalProfanity" style="width:140px">
+              <option value="off">off（不放开）</option>
+              <option value="mild">mild（吐槽损人）</option>
+              <option value="strong">strong（可以骂）</option>
+            </select>
+            <label style="min-width:96px;margin-left:10px">全局成人</label>
+            <select id="ppGlobalNsfw" style="width:170px">
+              <option value="off">off</option>
+              <option value="suggestive">suggestive（黄腔/暗示）</option>
+              <option value="explicit">explicit（成人内容）</option>
+            </select>
+          </div>
+          <div class="row" style="margin-top:8px;gap:10px;align-items:center">
+            <label style="min-width:96px">成年确认</label>
+            <label class="meta"><input type="checkbox" id="ppRequireAdult" checked> explicit 需要群号在「成年确认」名单里</label>
+          </div>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+            <label style="min-width:96px">备注</label>
+            <input type="text" id="ppNote" style="flex:1;min-width:220px" placeholder="可选，比如：这群是熟人局，可以嘴臭">
+          </div>
+
+          <div style="margin-top:14px">
+            <div class="meta">按群覆盖（其他群保持全局设置）</div>
+            <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+              <input type="text" id="ppGroupId" style="width:200px" placeholder="群号（纯数字）">
+              <select id="ppGroupProfanity" style="width:130px">
+                <option value="">（不覆盖）</option>
+                <option value="off">off</option>
+                <option value="mild">mild</option>
+                <option value="strong">strong</option>
+              </select>
+              <select id="ppGroupNsfw" style="width:160px">
+                <option value="">（不覆盖）</option>
+                <option value="off">off</option>
+                <option value="suggestive">suggestive</option>
+                <option value="explicit">explicit</option>
+              </select>
+              <button id="ppAddGroup">添加/更新</button>
+            </div>
+            <div id="ppGroupList" class="meta" style="margin-top:8px">（暂无覆盖）</div>
+          </div>
+
+          <div style="margin-top:14px">
+            <div class="meta">成年确认名单（explicit 只对这些群生效）</div>
+            <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+              <input type="text" id="ppAdultId" style="width:200px" placeholder="群号（纯数字）">
+              <button id="ppAdultAdd">确认成年</button>
+              <button id="ppAdultRemove" class="danger">撤销</button>
+              <span class="meta" id="ppAdultList">（空）</span>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:14px;gap:10px;align-items:center">
+            <button id="ppSave">保存</button>
+            <button id="ppReload">重新读取</button>
+            <span class="meta" id="ppMsg"></span>
+          </div>
+        </div>
+      </details>
+
       <details class="settings-group">
         <summary>切换当前启用的人格</summary>
         <div class="settings-content">
@@ -3592,6 +3658,106 @@ async function imageGenerate() {
   } finally { btn.disabled = false; }
 }
 document.getElementById('imgGenBtn').addEventListener('click', imageGenerate);
+
+// ── 语气与内容（personaPolicy）────────────────────────────────────────────
+let ppPerGroup = {};
+
+function ppMsg(text, ok) {
+  const el = document.getElementById('ppMsg');
+  el.className = ok === undefined ? 'meta' : (ok ? 'meta ok' : 'meta err');
+  el.textContent = text || '';
+}
+
+function ppRender() {
+  const keys = Object.keys(ppPerGroup || {}).sort();
+  const box = document.getElementById('ppGroupList');
+  if (!keys.length) { box.textContent = '（暂无覆盖）'; return; }
+  box.replaceChildren();
+  for (const key of keys) {
+    const v = ppPerGroup[key] || {};
+    const line = document.createElement('div');
+    line.style.margin = '4px 0';
+    line.textContent = `${key}  →  骂人 ${v.profanity || '(继承)'} / 成人 ${v.nsfw || '(继承)'}  `;
+    const del = document.createElement('button');
+    del.textContent = '删除';
+    del.className = 'danger';
+    del.style.marginLeft = '8px';
+    del.onclick = () => { delete ppPerGroup[key]; ppRender(); };
+    line.appendChild(del);
+    box.appendChild(line);
+  }
+}
+
+async function ppLoad() {
+  try {
+    const r = await api('/api/persona-policy');
+    if (!r.ok) { ppMsg(r.error || '读取失败', false); return; }
+    document.getElementById('ppGlobalProfanity').value = r.policy.profanity || 'off';
+    document.getElementById('ppGlobalNsfw').value = r.policy.nsfw || 'off';
+    document.getElementById('ppRequireAdult').checked = r.policy.requireAdultConfirm !== false;
+    document.getElementById('ppNote').value = r.policy.note || '';
+    ppPerGroup = { ...(r.policy.perGroup || {}) };
+    ppRender();
+    const adult = r.adult || [];
+    document.getElementById('ppAdultList').textContent = adult.length ? adult.join('、') : '（空）';
+    ppMsg('');
+  } catch (e) { ppMsg('读取失败：' + (e && e.message ? e.message : e), false); }
+}
+
+async function ppSave() {
+  const perGroup = { ...ppPerGroup };
+  // 校验键格式（服务端也会挡，这里先给即时反馈）
+  for (const key of Object.keys(perGroup)) {
+    if (!/^group:\d+$/.test(key) && key !== '*') { ppMsg('群号必须是 group:<纯数字>：' + key, false); return; }
+  }
+  ppMsg('保存中…');
+  try {
+    const r = await api('/api/persona-policy', 'POST', {
+      profanity: document.getElementById('ppGlobalProfanity').value,
+      nsfw: document.getElementById('ppGlobalNsfw').value,
+      requireAdultConfirm: document.getElementById('ppRequireAdult').checked,
+      note: document.getElementById('ppNote').value,
+      perGroup
+    });
+    if (!r.ok) { ppMsg(r.error || '保存失败', false); return; }
+    ppPerGroup = { ...(r.policy.perGroup || {}) };
+    ppRender();
+    ppMsg('已保存，立即生效（当前会话下一条消息就用新策略）', true);
+  } catch (e) { ppMsg('保存失败：' + (e && e.message ? e.message : e), false); }
+}
+
+async function ppAdult(action) {
+  const gid = (document.getElementById('ppAdultId').value || '').replace(/\D/g, '');
+  if (!gid) { ppMsg('先填群号', false); return; }
+  try {
+    const r = await api('/api/persona-policy/adult', 'POST', { gid, action });
+    if (!r.ok) { ppMsg(r.error || '操作失败', false); return; }
+    const adult = r.adult || [];
+    document.getElementById('ppAdultList').textContent = adult.length ? adult.join('、') : '（空）';
+    ppMsg(action === 'revoke' ? '已撤销 ' + gid : '已确认 ' + gid, true);
+  } catch (e) { ppMsg('操作失败：' + (e && e.message ? e.message : e), false); }
+}
+
+document.getElementById('ppAddGroup').addEventListener('click', () => {
+  const gid = (document.getElementById('ppGroupId').value || '').replace(/\D/g, '');
+  if (!gid) { ppMsg('先填群号', false); return; }
+  const key = 'group:' + gid;
+  const entry = { ...(ppPerGroup[key] || {}) };
+  const p = document.getElementById('ppGroupProfanity').value;
+  const n = document.getElementById('ppGroupNsfw').value;
+  if (p) entry.profanity = p;
+  if (n) entry.nsfw = n;
+  if (!p && !n) { ppMsg('至少选一个覆盖项', false); return; }
+  ppPerGroup[key] = entry;
+  ppRender();
+  ppMsg('已加入待保存列表，点「保存」生效');
+});
+document.getElementById('ppSave').addEventListener('click', ppSave);
+document.getElementById('ppReload').addEventListener('click', ppLoad);
+document.getElementById('ppAdultAdd').addEventListener('click', () => ppAdult('confirm'));
+document.getElementById('ppAdultRemove').addEventListener('click', () => ppAdult('revoke'));
+// 进页面就读一次
+setTimeout(() => { try { ppLoad(); } catch {} }, 300);
 
 // ── 人格管理 ────────────────────────────────────────────────────────────────
 // 人格提示词 = roles/<名称>.md，桥接每条消息注入，保存即生效。

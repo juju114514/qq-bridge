@@ -19,6 +19,8 @@
  * 这些不受配置影响：即使 profanity=strong、nsfw=explicit 也照样拒绝。
  */
 
+import path from 'node:path';
+
 /** 语气档位 */
 export const PROFANITY_LEVELS = ['off', 'mild', 'strong'];
 /** 成人内容档位 */
@@ -131,6 +133,6 @@ export function readAdultList(fs, file) {
 }
 
 export function writeAdultList(fs, file, set) {
-  fs.mkdirSync(require('node:path').dirname(file), { recursive: true });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ confirmed: [...set], updatedAt: new Date().toISOString() }, null, 2));
 }
