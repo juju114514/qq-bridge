@@ -1,6 +1,6 @@
 // 人格语气策略（personaPolicy）：默认不放开、按群覆盖、成人确认、硬底线不可绕过
 import assert from 'node:assert/strict';
-import { isNeutral, policyBlock, resolvePolicy, hardLimitsBlock, isSafetyWordText, resolveSafetyWords, DEFAULT_SAFETY_WORDS, resolveSafetyConfig, safetyGate, withPause, pauseRemainingSeconds } from '../src/persona-policy.js';
+import { isNeutral, policyBlock, resolvePolicy, hardLimitsBlock, isSafetyWordText, resolveSafetyWords, DEFAULT_SAFETY_WORDS, resolveSafetyConfig, safetyGate, withPause, pauseRemainingSeconds, desiredRoleFor } from '../src/persona-policy.js';
 
 let failures = 0;
 const check = (name, fn) => {
@@ -109,6 +109,25 @@ check('静默期内：普通消息也被跳过（left > 0）', () => {
 check('静默过期后恢复', () => {
   const paused = { 'group:1': Date.now() - 1000 };
   assert.equal(pauseRemainingSeconds(paused, 'group:1'), 0);
+});
+
+
+check('不开时用基础卡，开了切「放开版」（两张卡，避免示例串台）', () => {
+  const cfg = { personaPolicy: { baseRole: '基础卡', intenseRole: '放开版' } };
+  assert.equal(desiredRoleFor(resolvePolicy({ cfg: {}, key: 'group:1' }), cfg), '基础卡');
+  assert.equal(desiredRoleFor({ profanity: 'strong', nsfw: 'off' }, cfg), '放开版');
+  assert.equal(desiredRoleFor({ profanity: 'off', nsfw: 'suggestive' }, cfg), '放开版');
+});
+
+check('autoSwitchRole=false 时不切卡', () => {
+  const cfg = { personaPolicy: { autoSwitchRole: false, baseRole: '基础卡', intenseRole: '放开版' } };
+  assert.equal(desiredRoleFor({ profanity: 'strong' }, cfg), '');
+});
+
+check('没配 intenseRole 时不开也回基础卡', () => {
+  const cfg = { personaPolicy: { baseRole: '基础卡' } };
+  assert.equal(desiredRoleFor({ profanity: 'strong' }, cfg), '');
+  assert.equal(desiredRoleFor({ profanity: 'off' }, cfg), '基础卡');
 });
 
 console.log(`\n结果：${failures === 0 ? '全部通过' : failures + ' 项失败'}`);

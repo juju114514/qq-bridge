@@ -232,3 +232,19 @@ export function safetyGate({ cfg, key, text, paused }) {
     left: 0
   };
 }
+
+/**
+ * 策略 → 该用哪张人格卡。
+ * 默认：不放开用 baseRole，放开用 intenseRole（两张卡分开，避免"卡里带脏话示例、
+ * 平时聊天也照抄"的串台）。autoSwitchRole=false 时返回 ''（调用方不切）。
+ */
+export function desiredRoleFor(policy, cfg) {
+  const raw = cfg?.personaPolicy || {};
+  if (raw.autoSwitchRole === false) return '';
+  const base = String(raw.baseRole || '').trim();
+  const intense = String(raw.intenseRole || '').trim();
+  // 缺字段按 off 算，否则 {profanity:'off'} 会因为 nsfw=undefined 被误判成「放开」
+  const open = String(policy?.profanity || 'off') !== 'off' || String(policy?.nsfw || 'off') !== 'off';
+  const want = open ? intense : base;
+  return want || '';
+}

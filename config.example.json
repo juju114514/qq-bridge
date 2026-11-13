@@ -452,6 +452,9 @@
       "打住"
     ],
     "safetyAction": "pause",
-    "safetyPauseMinutes": 30
+    "safetyPauseMinutes": 30,
+    "autoSwitchRole": true,
+    "baseRole": "小鲸鱼（已测试）",
+    "intenseRole": "小鲸鱼（放开版）"
   }
 }

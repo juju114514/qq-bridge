@@ -154,7 +154,7 @@ import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { draftRoleCard } from './role-draft.js';
-import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList, isSafetyWordText, resolveSafetyWords, disablePolicyForGroup, blockTextFor, safetyGate, withPause } from './persona-policy.js';
+import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList, isSafetyWordText, resolveSafetyWords, disablePolicyForGroup, blockTextFor, safetyGate, withPause, desiredRoleFor } from './persona-policy.js';
 import { createImageHandler } from './api/image-route.js';
 import { createPersonaPolicyHandler } from './api/persona-policy-route.js';
 import { createDialogueDraftsHandler } from './api/dialogue-drafts-route.js';
@@ -9485,6 +9485,19 @@ function selfCheckSnapshot() {
     log(`[safety] ${key} 安全词${pauseMinutes > 0 ? ` + 静默 ${pauseMinutes} 分钟` : ''}`);
   }
 
+  // 按策略自动切卡：放开用「放开版」，关掉切回基础卡（两张卡分开，避免示例串台）
+  function maybeSwitchRoleForPolicy(key) {
+    try {
+      const gid = key.startsWith('group:') ? key.slice(6) : '';
+      const r = blockTextFor(cfg, key, { adultOk: !!gid && readPersonaAdultList(fs, PERSONA_ADULT_FILE).has(gid) });
+      const want = desiredRoleFor(r.policy, cfg);
+      const entry = want ? roleEntry(want) : null;
+      const cur = readRoleStateForKey(key);
+      if (!entry || cur.role === entry.id) return;
+      writeRoleStateForKey(key, entry.id, cur.mode);
+      log(`[persona-policy] ${key} 角色切到「${want}」`);
+    } catch {}
+  }
   // 角色扮演提示注入（仅注入给 agent，不影响群友之间的正常对话语义）
     const roleHint = currentRoleHint(key);
 
@@ -9500,6 +9513,7 @@ function selfCheckSnapshot() {
         return;
       }
     }
+    maybeSwitchRoleForPolicy(key);
     const toneBlock = personaPolicyBlockText(key);
     const promptText = (roleHint ? roleHint + '\n\n' : '')
       + (toneBlock ? toneBlock + '\n\n' : '')

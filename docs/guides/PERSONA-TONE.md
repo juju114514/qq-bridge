@@ -103,4 +103,25 @@ node scripts/test-persona-policy.mjs     # 8 条：默认关闭 / 按群覆盖 /
 
 实现：`src/persona-policy.js` 的 `isSafetyWordText()` / `resolveSafetyWords()`；
 QQ 侧在 `bridge.js` 的 `handleSafetyWord()`，抖音侧 `safety_words.py` + 两个 auto_* 脚本。
+## 七、两张卡：默认卡不带脏话，放开时自动切
+
+「把嘴臭示例写进默认卡」会串台 —— 平时聊天也会照着学。所以拆成两张：
+
+| 卡 | 内容 | 什么时候用 |
+| --- | --- | --- |
+| `roles/小鲸鱼（已测试）.md` | 正常版，**没有任何脏话/荤示例** | `personaPolicy` 全 off（默认） |
+| `roles/小鲸鱼（放开版）.md` | 同一人设 + 6 组嘴臭/荤示例（`id: xiaojingyu-intense`） | 该群 profanity/nsfw 任一非 off |
+
+配置：
+
+```json
+"personaPolicy": {
+  "autoSwitchRole": true,
+  "baseRole": "小鲸鱼（已测试）",
+  "intenseRole": "小鲸鱼（放开版）"
+}
+```
+
+桥接每条消息按该群的策略决定用哪张卡（`desiredRoleFor()`）：开了切到放开版，关掉（含安全词）切回基础卡。
+`autoSwitchRole: false` 就完全不切，由人手动 `/role` 指定。
 
