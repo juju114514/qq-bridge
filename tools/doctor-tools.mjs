@@ -96,11 +96,25 @@ else add('FAIL', 'SnowLuma 端口', `${p3000 ? '' : ':3000 不通'}${p3001 ? '' 
 
 // ── 5. DSH ───────────────────────────────────────────────────────────
 const dshBase = String(cfg?.dsh?.baseUrl || '').trim();
-if (!dshBase) add('WARN', 'DSH baseUrl', 'config 里没填', '控制台「设置」里点自动探测，或手填 DSH 的 http 地址');
-else {
-  const port = Number(new URL(dshBase).port || 80);
-  if (await portOpen(port)) add('OK', 'DSH', dshBase);
-  else add('FAIL', 'DSH', `${dshBase} 连不上`, 'DSH 每次重启端口会变：跑 `node scripts/probe-dsh.mjs`（或控制台自动探测）');
+let dshOk = false;
+if (dshBase) {
+  try {
+    const port = Number(new URL(dshBase).port || 80);
+    dshOk = await portOpen(port);
+    if (dshOk) add('OK', 'DSH', dshBase);
+  } catch { /* baseUrl 不是合法 URL */ }
+}
+if (!dshOk) {
+  // 配置里的 baseUrl 经常是上次开机的端口（DSH 每次重启都会变）——
+  // 这里用仓库自带的发现逻辑再找一次，而不是直接判 FAIL
+  let discovered = '';
+  try {
+    const mod = await import(new URL('../src/dsh-port.js', import.meta.url).href);
+    const r = await mod.discoverDshBaseUrl({});
+    discovered = r?.baseUrl || '';
+  } catch { /* 发现失败就按没找到处理 */ }
+  if (discovered) add('WARN', 'DSH', `配置里是 ${dshBase || '(空)'}（连不上），自动探测到 ${discovered}`, `把 config.json 的 dsh.baseUrl 改成 ${discovered} 后重启桥接`);
+  else add('FAIL', 'DSH', `${dshBase || '(没配)'} 连不上，自动探测也没找到`, '先启动 DSH 并登录；启动后跑 `node tools/doctor-tools.mjs` 让它自动探测');
 }
 
 // ── 6. yt-dlp（视频下载）─────────────────────────────────────────────
