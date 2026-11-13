@@ -1822,3 +1822,114 @@ $env:QQB_INSTANCE = 'bot-a'; $env:QQB_LOCK_PORT = '31281'
 
 端口被别的程序占用时，日志会明确写「端口已被占用（可能是另一个实例，也可能是别的程序）」，
 并按 `EADDRINUSE / EACCES / EADDRNOTAVAIL / timeout` 分类报错。
+
+## SnowLuma 窗口越堆越多（每 1~2 分钟多一套，WebUI 端口一路 5099→5110→5112…）
+
+**现象**
+
+- 任务栏里一排 `D:\...\snowluma\node.exe` 黑窗口，越开越多
+- SnowLuma 日志里反复 `[App] SnowLuma starting`，`[WebUI] port 5099 is in use, using 511x instead`
+- `:3000/:3001` 其实只有**一个**进程在听（其它都是白起的）
+
+**原因**
+
+`gateway-control.startViaSpawn()` 里引用了不存在的变量 `opts`，ReferenceError 被 `try/catch` 吞掉
+→「先清理残留进程」这段**从来没执行**→ 端口没通就直接再 spawn 一份，堆成 13 套 / 38 个进程。
+
+**排查**
+
+```powershell
+# 数一数有几套
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'snowluma' } | Measure-Object
+# 只有这个 pid 是真正在听 3000/3001 的
+Get-NetTCPConnection -LocalPort 3000 -State Listen | Select-Object OwningProcess
+```
+
+**解决**
+
+0.5.64 起有三层限制，正常不会再堆：
+
+1. **单飞**：并发调用共享同一个 Promise
+2. **已有进程就等**：检测到任何 SnowLuma 进程就等端口（最多 8 秒），绝不起第二份
+3. **冷却窗口**：同一进程 5 分钟只尝试一次（`QQB_GATEWAY_SPAWN_COOLDOWN_MS` 可调）
+
+手工清理（保留在听 3000 的那个 pid）：
+
+```powershell
+$keep = (Get-NetTCPConnection -LocalPort 3000 -State Listen | Select-Object -First 1).OwningProcess
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -match 'snowluma' -and $_.ProcessId -ne $keep } |
+  ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }
+```
+
+## 抖音下载报「需要登录态」
+
+**现象**：群里说「发视频」后，日志出现
+
+```
+[douyin] 下载失败（group:xxx）：需要登录态（可在 socialV2.media.video.links.cookiesFromBrowser 填 edge/chrome）
+```
+
+**原因**：桥接用的 `state/cookies/site-cookies.txt` 过期（抖音 cookies 通常几天就失效），
+或者调用时只传了 `cookiesPath` 而 `downloadVideoLink` 认的是 `cookiesFile`（0.5.64 已修）。
+
+**排查**
+
+```powershell
+node tools/doctor-tools.mjs        # 看「抖音 cookies」这一项
+python tools/export-cookies.py --port 9237 --check   # 看 sessionid/ttwid 在不在、几个 24h 内过期
+```
+
+**解决**：控制台「抖音登录」→ 显示二维码 → 手机扫码 → **同步 cookies 到桥接**；
+或者 `python tools/export-cookies.py --port 9237 --out state/cookies/site-cookies.txt`。
+不需要重启桥接（每次下载现读文件）。
+
+## 抖音二维码出不来 / 出的是「下载 APP」广告图
+
+**现象**：控制台二维码区域显示「抖音精选 · 手机随时看更方便 · 下载 APP」。
+
+**原因**：已经登录时页面上没有「登录」按钮，脚本硬截就把推广图截下来了。
+
+**解决**：0.5.64 起会先判登录态 —— 已登录直接返回
+`当前已登录（昵称），要扫码请先点「退出登录（换号用）」`，不再产生假图。
+扫码一律在**独立浏览器**（9238 / `loginprofile`）里做，不影响正在跑自动化的 9237。
+
+## 评论发出去了，但别人看不到（status=2）
+
+**现象**：接口返回 `status_code: 0` 且有 cid，自己也查得到，但群友/作者看不到。
+
+**原因**：抖音评论有可见性状态：
+
+| status | 含义 |
+| --- | --- |
+| 1 | 正常展示（别人能看见） |
+| 2 | 仅自己可见 / 待审核（新号、频繁评论常见） |
+| 3 | 另一种折叠/待审状态 |
+
+**排查**：`node scripts/…` 或控制台里拉评论列表，看自己那条的 `status` 字段。
+
+**解决**：降低频率（自动评论默认关）、等账号权重起来；不要用新号高频评论刷量。
+
+## 桥接起不来：`控制台端口已被占用，判定已有实例在运行（锁文件 PID xxx 无权限探测）`
+
+**现象**：守护每 5/10/20/40 秒重启一次，每次 7 秒退出，`exit code 2`。
+
+**原因**：有个**残留的旧桥接进程**占着 `:3100`（常见于手工 kill 失败、或旧版本崩溃没清锁），
+新实例探测锁里的 pid 没有权限（EPERM），保守判定「已有实例」。
+
+**排查**
+
+```powershell
+Get-NetTCPConnection -LocalPort 3100 -State Listen | Select-Object OwningProcess
+Get-CimInstance Win32_Process -Filter "ProcessId=<上一步的 pid>" | Select-Object ProcessId, CommandLine
+```
+
+**解决**
+
+```powershell
+# taskkill/Stop-Process 报 Access denied 时，用 WMI 结束
+Invoke-CimMethod -InputObject (Get-CimInstance Win32_Process -Filter "ProcessId=<pid>") -MethodName Terminate
+# 清掉过期锁再起
+Remove-Item state\bridge.lock, state\bridge.pid -Force -ErrorAction SilentlyContinue
+powershell -ExecutionPolicy Bypass -File .\start-bridge.ps1 -Hidden
+```

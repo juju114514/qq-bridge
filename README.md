@@ -223,6 +223,45 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 > `已对 agent 应用工具白名单` 和 `agent 已建：preset=qq-chat-v2`，否则**不要**把通道交给插件。
 > 见 [PLUGIN-MODE.md 的安全边界一节](docs/guides/PLUGIN-MODE.md)。
 
+## 运行所需工具（缺什么一目了然）
+
+一键体检，缺哪个、怎么装都会直接说：
+
+```powershell
+node tools/doctor-tools.mjs
+#  带一条真实抖音链接顺带测识别：
+node tools/doctor-tools.mjs --url https://v.douyin.com/xxxx/
+```
+
+| 工具 | 必需性 | 作用 |
+| --- | --- | --- |
+| Node.js ≥ 22.13 | **必须** | 桥接本体 |
+| SnowLuma + 扫码登录 | **必须** | QQ 侧 OneBot 网关（本项目只探测、不代启） |
+| DeepSeek Harness (DSH) | **必须** | 模型（端口每次重启会变，用自动探测） |
+| yt-dlp | 按功能 | 群里说「发视频」时下载抖音/B站视频 |
+| ffmpeg | 按功能 | 高清合流 / 音频转码 |
+| 抖音 cookies（登录态） | 按功能 | 抖音链接解析、视频下载、评论/私信接口；几天就过期 |
+| Python 3（可选） | 按功能 | `tools/export-cookies.py` 导出 cookies |
+
+完整安装方式、各工具对应哪项能力、以及「工具没配好」的表现表：
+**[tools/README.md](tools/README.md)**
+
+```
+
+## 抖音能力（0.5.64 起）
+
+群里贴抖音链接不再只是"能识别"：
+
+| 能力 | 行为 |
+| --- | --- |
+| 链接识别 | 短链 / `video/` / `note/` / `discover?modal_id` / `iesdouyin` 分享页 / 合集页 / 「复制打开抖音」文案里夹的链接，七种形态都能认 |
+| 自动附信息 | 作者（含作者号）、时长、赞/评/转/藏、视频 id，一次性附进对话，**不下载** |
+| 按需下载 | 群友说「发视频」才把上一条链接交给下载通道（30 分钟内有效），下载后以 `video` 段发到群里 |
+| 防重复 | 同一条视频 10 分钟内只解析一次；同一个 SnowLuma 不会被重复拉起（单飞 + 已有进程就等 + 5 分钟冷却） |
+| 登录 | 控制台「抖音登录」：独立浏览器出二维码 → 扫码 → 同步 cookies，验证码用截图点击过 |
+
+开关在 `config.json`：`socialV2.media.video.links.{autoMeta,sendVideo,maxSeconds,ytdlpPath,cookiesPath}`。
+
 ## 它现在能干什么
 
 | 类别 | 能力 |
