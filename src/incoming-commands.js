@@ -12,6 +12,7 @@
 import { readErrors, errorSummary } from './agent/error-code.js';
 
 export function createIncomingCommands(deps = {}) {
+  const { pixivCommand } = deps;
   const {
     log = () => {},
     fs, path,
@@ -25,6 +26,10 @@ export function createIncomingCommands(deps = {}) {
   } = deps;
 
   async function handlePublic(ctx = {}) {
+  if (pixivCommand && /^\/pixiv(?:@\S+)?(?:\s|$)/i.test(String(ctx?.text || '').trim())) {
+    await pixivCommand.handle({ key: ctx.key, text: String(ctx.text || '') });
+    return true;
+  }
     const { key, kind, isOwner, plainContent } = ctx;
     const cfg = getCfg();
     // 公开命令：任何人都能用，桥接直接回固定文本（不经过模型，零 token）

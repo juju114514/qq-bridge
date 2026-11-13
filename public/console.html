@@ -1835,6 +1835,7 @@ button:active:not(:disabled) {
         <button data-view="social-v1" class="nav-item"><span class="nav-icon" aria-hidden="true">◇</span>一代仿真<span class="nav-note">V1</span></button>
         <button data-view="role-map" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>角色分配</button>
         <button data-view="persona" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>人格与角色</button>
+        <button data-view="pixiv" class="nav-item"><span class="nav-icon" aria-hidden="true">🖼</span>Pixiv 取图</button>
         <button data-view="song" class="nav-item"><span class="nav-icon" aria-hidden="true">♪</span>点歌</button>
 
         <div class="nav-label">记忆</div>
@@ -2120,30 +2121,6 @@ button:active:not(:disabled) {
         </div>
       </details>
 
-      <details class="settings-group" id="pvGroup">
-        <summary>Pixiv 取图（分级 / 搜索 / 作者链接）</summary>
-        <div class="settings-content">
-          <div class="meta" style="margin-top:8px">只做「搜 + 看见作者和链接」；R-18 还需要 pixiv cookies，并且该群 personaPolicy 得放开成人内容，两个都满足才生效。</div>
-          <div class="row" style="margin-top:10px;gap:10px;align-items:center">
-            <label style="min-width:96px">R-18 档位</label>
-            <select id="pvMode" style="width:240px">
-              <option value="off">off（只搜全年龄）</option>
-              <option value="r18">r18（只搜 R-18）</option>
-              <option value="all">all（全年龄 + R-18）</option>
-            </select>
-            <label style="min-width:80px;margin-left:10px">默认条数</label>
-            <input type="number" id="pvLimit" value="6" min="1" max="20" style="width:80px">
-          </div>
-          <div class="meta" id="pvStatus" style="margin-top:8px">（读取中…）</div>
-          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
-            <input type="text" id="pvTag" style="flex:1;min-width:200px" placeholder="标签，如：蓝鲸 / 深海 / 鲸鱼娘">
-            <button id="pvSearch">搜索</button>
-            <button id="pvSave">保存档位</button>
-            <span class="meta" id="pvMsg"></span>
-          </div>
-          <div id="pvList" style="margin-top:10px"></div>
-        </div>
-      </details>
 
       <details class="settings-group">
         <summary>切换当前启用的人格</summary>
@@ -3496,6 +3473,49 @@ button:active:not(:disabled) {
           </div>
         </div>
       </section>
+
+      <section id="section-pixiv" data-page="pixiv" class="card span-all">
+        <h2>Pixiv 取图</h2>
+        <div class="meta" style="margin-bottom:10px">搜图 → 看作者/链接 → 要图时发。图片进图库（记忆数据库），超过上限按「最久没用过的」自动删。</div>
+        <div class="settings-group" id="pvGroup" style="border:1px solid #2a2340;border-radius:12px;padding:12px">
+        
+        <div class="settings-content">
+          <div class="meta" style="margin-top:8px">只做「搜 + 看见作者和链接」；R-18 还需要 pixiv cookies，并且该群 personaPolicy 得放开成人内容，两个都满足才生效。</div>
+          <div class="row" style="margin-top:10px;gap:10px;align-items:center">
+            <label style="min-width:96px">R-18 档位</label>
+            <select id="pvMode" style="width:240px">
+              <option value="off">off（只搜全年龄）</option>
+              <option value="r18">r18（只搜 R-18）</option>
+              <option value="all">all（全年龄 + R-18）</option>
+            </select>
+            <label style="min-width:80px;margin-left:10px">默认条数</label>
+            <input type="number" id="pvLimit" value="6" min="1" max="20" style="width:80px">
+          </div>
+          <div class="meta" id="pvStatus" style="margin-top:8px">（读取中…）</div>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+            <input type="text" id="pvTag" style="flex:1;min-width:200px" placeholder="标签，如：蓝鲸 / 深海 / 鲸鱼娘">
+            <button id="pvSearch">搜索</button>
+            <button id="pvSave">保存档位</button>
+            <span class="meta" id="pvMsg"></span>
+          </div>
+          <div id="pvList" style="margin-top:10px"></div>
+        </div>
+      </div>
+          <div style="margin-top:16px;border-top:1px solid #2a2340;padding-top:12px">
+            <div style="font-weight:600">图库（记忆数据库）</div>
+            <div class="meta" id="pvLibStats" style="margin-top:6px">（读取中…）</div>
+            <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+              <label class="meta">上限(MB)</label>
+              <input type="number" id="pvLibCap" value="500" min="20" max="20000" style="width:100px">
+              <button id="pvLibSaveCap">保存上限</button>
+              <button id="pvLibClean">按 LRU 清理到上限</button>
+              <button id="pvLibClear" class="danger">清空图库</button>
+              <span class="meta" id="pvLibMsg"></span>
+            </div>
+            <div id="pvLibList" style="margin-top:10px"></div>
+          </div>
+
+      </section>
     </main>
   </div>
       <div class="modal-overlay" id="slangModalOverlay">
@@ -3863,6 +3883,67 @@ async function pvSearch() {
 document.getElementById('pvSave').addEventListener('click', pvSave);
 document.getElementById('pvSearch').addEventListener('click', pvSearch);
 setTimeout(() => { try { pvRefresh(); } catch {} }, 700);
+
+
+// ── Pixiv 图库（记忆数据库）─────────────────────────────────────────────
+function pvLibMsg(text, ok) {
+  const el = document.getElementById('pvLibMsg');
+  el.className = ok === undefined ? 'meta' : (ok ? 'meta ok' : 'meta err');
+  el.textContent = text || '';
+}
+
+function pvRenderLibrary(r) {
+  const box = document.getElementById('pvLibStats');
+  const cap = Number(r.capMB || 0);
+  const used = Number(r.usedMB || 0);
+  box.textContent = `${r.count || 0} 张｜已用 ${used} MB / 上限 ${cap} MB（${r.percent || 0}%）`;
+  document.getElementById('pvLibCap').value = cap || 500;
+
+  const list = document.getElementById('pvLibList');
+  list.replaceChildren();
+  if (!r.files || !r.files.length) { list.textContent = '（图库是空的）'; return; }
+  for (const f of r.files) {
+    const row = document.createElement('div');
+    row.style.cssText = 'border:1px solid #2a2340;border-radius:8px;padding:8px;margin-bottom:6px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between';
+    const msg = document.createElement('div');
+    msg.textContent = `${f.title || '(无题)'} — ${f.author || '?'}｜${f.grade}｜${Math.round((f.bytes || 0) / 1024)} KB｜用过 ${f.hits || 0} 次｜最后用在 ${String(f.lastUsedAt || '').slice(0, 16).replace('T', ' ')}`;
+    const del = document.createElement('button');
+    del.textContent = '删除';
+    del.className = 'danger';
+    del.onclick = async () => {
+      const res = await api('/api/pixiv/library/remove', 'POST', { file: f.file });
+      if (!res.ok) { pvLibMsg(res.error || '删除失败', false); return; }
+      pvRenderLibrary(res); pvLibMsg('已删除', true);
+    };
+    row.append(msg, del);
+    list.appendChild(row);
+  }
+}
+
+async function pvLoadLibrary() {
+  try {
+    const r = await api('/api/pixiv/library');
+    if (!r.ok) { pvLibMsg(r.error || '读取失败', false); return; }
+    pvRenderLibrary(r);
+  } catch (e) { pvLibMsg('读取失败：' + (e && e.message ? e.message : e), false); }
+}
+
+async function pvLibAction(path, body, okText) {
+  const r = await api(path, 'POST', body || {});
+  if (!r.ok) { pvLibMsg(r.error || '操作失败', false); return; }
+  pvRenderLibrary(r);
+  pvLibMsg(okText, true);
+}
+
+document.getElementById('pvLibClean').addEventListener('click', () => pvLibAction('/api/pixiv/library/clean', {}, '已按 LRU 清理'));
+document.getElementById('pvLibClear').addEventListener('click', () => {
+  if (confirm('确定清空整个图库？')) pvLibAction('/api/pixiv/library/clean', { clear: true }, '图库已清空');
+});
+document.getElementById('pvLibSaveCap').addEventListener('click', () => {
+  const mb = Number(document.getElementById('pvLibCap').value) || 500;
+  pvLibAction('/api/pixiv/library/cap', { libraryMaxMB: mb }, `上限已改为 ${mb}MB`);
+});
+setTimeout(() => { try { pvLoadLibrary(); } catch {} }, 900);
 
 // ── 示例对话草稿箱 ───────────────────────────────────────────────────────
 function ddMsg(text, ok) {
@@ -6418,6 +6499,7 @@ const consolePages = {
   sessions: ['会话与审批', '让每一段对话，都有迹可循。', '查看 QQ 与 DSH 的会话映射，以及等待你回复的审批和提问。'],
   'role-map': ['角色分配', '每个群，用谁。', '看每个群/私聊接入的是哪张角色卡、现在是潜水还是活跃；可就地单独指定角色。'],
   persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
+  pixiv: ['Pixiv 取图', '搜图、看图、存图。', '按标签搜 Pixiv，看作者与链接；要图时发到会话，图片进图库（记忆数据库），超上限按最久没用过的删。'],
   'social-v2': ['二代仿真', '自主参与，恰到好处。', '管理 AI 的工具、唤醒与发言节奏。展开需要调整的分组，修改后保存参数。'],
   'social-v1': ['一代仿真', '为自然对话，设定合适的节奏。', '调整参与概率、活跃周期和分条发送；所有配置项完整保留。'],
   slang: ['黑话词库', '读懂群聊里的，言外之意。', '从候选到确认，让 AI 逐渐熟悉大家的表达习惯。'],

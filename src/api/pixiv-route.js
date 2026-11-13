@@ -19,6 +19,7 @@ import {
   searchWeb
 } from '../pixiv-web.js';
 import { resolvePolicy } from '../persona-policy.js';
+import { clearLibrary, evict, maxBytes, readIndex, removeEntry, stats as libStats } from '../pixiv-library.js';
 
 export function createPixivHandler(deps) {
   const { sendJson, readBody, log, fs, ROOT, STATE_DIR, getCfg } = deps;
@@ -43,6 +44,7 @@ export function createPixivHandler(deps) {
       effectiveReason: eff.reason,
       modes: R18_MODES,
       defaultLimit: Number(cfg?.pixiv?.defaultLimit ?? 6),
+      library: libStats(STATE_DIR, cfg),
       policy: { profanity: policy.profanity, nsfw: policy.nsfw }
     };
   };
@@ -109,6 +111,59 @@ export function createPixivHandler(deps) {
       } catch (e) {
         sendJson({ ok: false, error: String(e?.message ?? e).slice(0, 140) }, 500);
       }
+      return true;
+    }
+
+
+    // ── 图库（记忆数据库）──────────────────────────────────────────────
+    if (method === 'GET' && pathname === '/api/pixiv/library') {
+      sendJson({ ok: true, ...libStats(STATE_DIR, getCfg()) });
+      return true;
+    }
+
+    if (method === 'POST' && pathname === '/api/pixiv/library/clean') {
+      const body = await readBody();
+      if (body?.clear === true) {
+        const removed = clearLibrary(STATE_DIR);
+        log(`[pixiv] 图库已清空（${removed} 个文件）`);
+      } else {
+        const r = evict(STATE_DIR, getCfg());
+        log(`[pixiv] 图库按 LRU 清理：删 ${r.removed} 个，释放 ${Math.round(r.freedBytes / 1024 / 1024)}MB`);
+      }
+      sendJson({ ok: true, ...libStats(STATE_DIR, getCfg()) });
+      return true;
+    }
+
+    if (method === 'POST' && pathname === '/api/pixiv/library/remove') {
+      const body = await readBody();
+      const file = String(body?.file || '');
+      if (!file) { sendJson({ ok: false, error: '缺 file' }, 400); return true; }
+      removeEntry(STATE_DIR, file);
+      sendJson({ ok: true, ...libStats(STATE_DIR, getCfg()) });
+      return true;
+    }
+
+    if (method === 'POST' && pathname === '/api/pixiv/library/cap') {
+      const body = await readBody();
+      const mb = Number(body?.libraryMaxMB);
+      if (!Number.isFinite(mb) || mb < 20 || mb > 20000) {
+        sendJson({ ok: false, error: 'libraryMaxMB 必须在 20~20000 之间' }, 400);
+        return true;
+      }
+      const cfg = getCfg();
+      const next = { ...(cfg.pixiv || {}), libraryMaxMB: Math.round(mb) };
+      try {
+        const file = JSON.parse(fs.readFileSync(configFile(), 'utf8'));
+        file.pixiv = next;
+        fs.writeFileSync(configFile(), JSON.stringify(file, null, 2) + '\n', 'utf8');
+      } catch (e) {
+        sendJson({ ok: false, error: `写 config.json 失败：${String(e?.message ?? e).slice(0, 80)}` }, 500);
+        return true;
+      }
+      cfg.pixiv = next;
+      const ev = evict(STATE_DIR, cfg);
+      log(`[pixiv] 图库上限改为 ${next.libraryMaxMB}MB（顺带清理 ${ev.removed} 个）`);
+      sendJson({ ok: true, ...libStats(STATE_DIR, cfg) });
       return true;
     }
 

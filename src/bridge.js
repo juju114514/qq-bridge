@@ -159,6 +159,7 @@ import { createImageHandler } from './api/image-route.js';
 import { createPersonaPolicyHandler } from './api/persona-policy-route.js';
 import { createDialogueDraftsHandler } from './api/dialogue-drafts-route.js';
 import { createPixivHandler } from './api/pixiv-route.js';
+import { createPixivCommand } from './pixiv-command.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
 import { createConfigLoader } from './config.js';
@@ -3974,7 +3975,12 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             roleName,
             socialV2BusySnapshot,
           });
-          const handlePixiv = createPixivHandler({
+          const sendSegments = async (key, segs) => { const [kind, id] = String(key).split(':'); return onebotSend(kind, id, segs); };
+  const pixivCommand = createPixivCommand({
+    sendSegments, log, stateDir: STATE_DIR, getCfg: () => cfg, resolvePolicy: resolvePersonaPolicy
+  });
+
+  const handlePixiv = createPixivHandler({
     sendJson, readBody, log, fs, ROOT, STATE_DIR,
     getCfg: () => cfg
   });
@@ -8999,6 +9005,7 @@ function scheduleWakeV2(key, reason) {
   // 公开命令 + 首次人设引导：已拆到 src/incoming-commands.js（惰性创建，避免 TDZ）
   let incomingCommandsInstance = null;
   const getIncomingCommands = () => (incomingCommandsInstance ??= createIncomingCommands({
+    pixivCommand,
     log, fs, path,
     getCfg: () => cfg,
     sendToQQ,

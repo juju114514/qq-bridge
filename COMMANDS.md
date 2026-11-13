@@ -135,3 +135,35 @@ curl -X POST http://127.0.0.1:3100/api/voice/send `
 ```
 
 > 所有 `123456789` 之类的号码都是占位符，请换成你自己的。
+
+## Pixiv 取图（/pixiv）
+
+| 命令 | 作用 |
+| --- | --- |
+| `/pixiv <标签>` | 搜图，回 3 条「标题 — 作者｜分级｜链接」 |
+| `/pixiv 发 <序号>` | 发上一次搜索里第 N 条的图（缓存 10 分钟） |
+| `/pixiv <标签> 发` | 搜完直接发第一张 |
+| `/pixiv 清` | 清掉本会话的搜索缓存 |
+
+分级两道闸门：`config.json` 的 `pixiv.r18Mode`（`off` / `r18` / `all`，控制台里是下拉选择）
+**和** 该群的 `personaPolicy.nsfw`（要 `explicit` 且做过成年确认）同时满足才会出 R-18；
+缺一个就只出全年龄。
+
+前提：全年龄免登录可用；R-18 需要 `state/pixiv-cookies.txt`：
+
+```powershell
+python room-pet/export_cookies.py --port 9238 --urls "https://www.pixiv.net/,https://accounts.pixiv.net/" --out state/pixiv-cookies.txt
+```
+
+发送形式：先发一行「标题 — 作者｜链接」，再发图（超过 2.5MB 自动用 ffmpeg 压到长边 1600）。
+
+### 图库（记忆数据库）
+
+控制台左侧「Pixiv 取图」是独立一页（不再塞在人格页里）：
+
+- **上限**：`pixiv.libraryMaxMB`（默认 500MB，20~20000）
+- **淘汰**：满了按 **lastUsedAt** 删（最久没用过的先删），不是按存入时间
+- **复用**：同一个作品再要时直接发库里的，不重复下载，只更新"用过次数/最后使用时间"
+- **操作**：保存上限 / 按 LRU 清理到上限 / 清空图库 / 单张删除
+
+存储位置：`state/pixiv-library/`（index.json + 图片），不进 git。
