@@ -34,7 +34,7 @@ cd D:\qq-bridge
 ```
   [OK]   守护进程   pid=20880（在跑）
   [OK]   桥接进程   pid=12776（在跑）
-  [OK]   控制台 3100  在听；mode=reserved2 role=小鲸鱼（已测试） dshReady=True
+  [OK]   控制台 3100  在听；mode=reserved2 role=小鲸鱼 dshReady=True
   [OK]   上游       snowluma.connected=True accountOnline=True 心跳=1639ms
   [OK]   SnowLuma   :3000/:3001 在听
 ```

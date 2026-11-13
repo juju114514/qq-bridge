@@ -109,7 +109,7 @@ QQ 侧在 `bridge.js` 的 `handleSafetyWord()`，抖音侧 `safety_words.py` + �
 
 | 卡 | 内容 | 什么时候用 |
 | --- | --- | --- |
-| `roles/小鲸鱼（已测试）.md` | 正常版，**没有任何脏话/荤示例** | `personaPolicy` 全 off（默认） |
+| `roles/小鲸鱼.md` | 正常版，**没有任何脏话/荤示例** | `personaPolicy` 全 off（默认） |
 | `roles/小鲸鱼（放开版）.md` | 同一人设 + 6 组嘴臭/荤示例（`id: xiaojingyu-intense`） | 该群 profanity/nsfw 任一非 off |
 
 配置：
@@ -117,7 +117,7 @@ QQ 侧在 `bridge.js` 的 `handleSafetyWord()`，抖音侧 `safety_words.py` + �
 ```json
 "personaPolicy": {
   "autoSwitchRole": true,
-  "baseRole": "小鲸鱼（已测试）",
+  "baseRole": "小鲸鱼",
   "intenseRole": "小鲸鱼（放开版）"
 }
 ```

@@ -13,7 +13,7 @@
 ```markdown
 ---
 id: xiaojingyu
-name: 小鲸鱼（已测试）
+name: 小鲸鱼
 ---
 # 角色卡：…
 ```

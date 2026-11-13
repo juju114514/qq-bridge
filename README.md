@@ -347,7 +347,7 @@ node tools/doctor-tools.mjs --url https://v.douyin.com/xxxx/
 | **Prompt 模拟器** | `/api/preset/sim-prompt` · `/backups` · `/restore` | 在控制台试 prompt 效果，改坏了能回滚 | 控制台「人格与角色」 |
 | **控制台直推 AI** | `/api/console/notify-ai` | 从控制台直接给 AI 发一条（不用绕 QQ） | — |
 | **黑话 / 俚语学习** | `src/slang-learner.js` · `/api/slang/*`（7 个端点） | 从群聊里学新词，人工批量确认/删除 | 控制台「黑话词库」 |
-| **角色卡系统** | `src/role-card.js` · `/api/roles/*`（10 个端点）· `roles/` | 人格卡 CRUD + 热切换；内置 4 个：傲娇助手 / **小鲸鱼（已测试）** / 樱羽艾玛 / 派蒙 | [roles/README.md](roles/README.md) |
+| **角色卡系统** | `src/role-card.js` · `/api/roles/*`（10 个端点）· `roles/` | 人格卡 CRUD + 热切换；内置 4 个：傲娇助手 / **小鲸鱼** / 樱羽艾玛 / 派蒙 | [roles/README.md](roles/README.md) |
 | **红包处理** | `src/domains/red-packet.js` | 群里红包事件的识别与响应 | [CHANGELOG](CHANGELOG.md) |
 | **睡眠定时器** | `src/domains/sleep-timer.js` | 到点自己"睡"（停止主动说话），到点自己醒 | [CHANGELOG](CHANGELOG.md) |
 | **频道模式** | `src/domains/channel-mode.js` · `channel-mode-store.js` | 不同频道/群用不同运行模式，可切换可持久化 | [PLUGIN-MODE.md](docs/guides/PLUGIN-MODE.md) |
