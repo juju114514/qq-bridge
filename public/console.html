@@ -3911,6 +3911,8 @@ async function gwRestart() {
     msg.textContent = r.onebotReady
       ? `已重启（停 ${n} 个，OneBot 就绪：${portText}）`
       : `已重启（停 ${n} 个，进程 ${r.processes ?? '?'}；${portText || ''}）${r.hint || ''}`;
+    // 重启后自动等 OneBot（3000+3001）起来，最多 90 秒；账号没加载的话这里会等超时并给提示
+    if (!r.onebotReady) await gwWaitOneBot(90, msg);
     if (typeof refreshDashboard === 'function') setTimeout(() => { try { refreshDashboard(); } catch {} }, 1200);
   } catch (e) {
     msg.className = 'meta err';
@@ -3921,6 +3923,34 @@ async function gwRestart() {
 }
 const gwBtnEl = document.getElementById('gwRestartBtn');
 if (gwBtnEl) gwBtnEl.addEventListener('click', gwRestart);
+
+// 等 OneBot 端口起来（重启后账号已加载的情况会自动变绿）
+async function gwWaitOneBot(maxSeconds, msgEl) {
+  const started = Date.now();
+  for (let i = 0; i < maxSeconds; i += 2) {
+    await new Promise((res) => setTimeout(res, 2000));
+    let st = null;
+    try { st = await api('/api/gateway/control'); } catch { /* 忽略单次失败 */ }
+    const ports = st?.listening || {};
+    const up = !!(ports['3000'] && ports['3001']);
+    const left = maxSeconds - Math.round((Date.now() - started) / 1000);
+    if (msgEl) {
+      msgEl.className = up ? 'meta ok' : 'meta';
+      msgEl.textContent = up
+        ? `OneBot 已就绪（3000✓ 3001✓），${Math.round((Date.now() - started) / 1000)} 秒`
+        : `等 OneBot 起来… 剩 ${left}s（3000${ports['3000'] ? '✓' : '✗'} 3001${ports['3001'] ? '✓' : '✗'}）`;
+    }
+    if (up) {
+      if (typeof refreshDashboard === 'function') { try { refreshDashboard(); } catch {} }
+      return true;
+    }
+  }
+  if (msgEl) {
+    msgEl.className = 'meta';
+    msgEl.textContent = '等了 90 秒 OneBot 还没起来 —— 去网关页「加载 QQ 账号」，加载后桥接会自动连上';
+  }
+  return false;
+}
 
 // ── Pixiv 图库（记忆数据库）─────────────────────────────────────────────
 function pvLibMsg(text, ok) {
