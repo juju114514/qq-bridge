@@ -1,5 +1,5 @@
 // 网关状态 / 手动启动路由（0.4.131）
-import { getGatewayStatus, startGateway, stopGateway, gatewayHealthPayload } from '../gateway-control.js';
+import { getGatewayStatus, startGateway, stopGateway, restartGateway, gatewayHealthPayload } from '../gateway-control.js';
 
 export async function handleGatewayControlRoute(ctx = {}) {
   const { req, url, sendJson } = ctx;
@@ -34,6 +34,12 @@ export async function handleGatewayControlRoute(ctx = {}) {
     const result = await startGateway(d.gatewayPorts ? { ports: d.gatewayPorts } : {});
     d.log?.(`[gateway] 用户手动启动（来源：控制台）→ ${result.ok ? (result.started ? '已启动' : '本来就在跑') : '失败：' + result.error}`);
     sendJson({ ok: result.ok, at: Date.now(), ...result }, result.ok ? 200 : 500);
+    return true;
+  }
+  // POST /api/gateway/control/restart → 完全重启（实现见 gateway-control.restartGateway）
+  if (req.method === 'POST' && url.pathname === '/api/gateway/control/restart') {
+    const result = await restartGateway({ ...(d.gatewayPorts ? { ports: d.gatewayPorts } : {}), log: d.log });
+    sendJson(result, result.ok ? 200 : 500);
     return true;
   }
 

@@ -1881,7 +1881,11 @@ button:active:not(:disabled) {
       <h2 data-note="一个端点聚合，统一时间戳">本程序仪表盘</h2>
       <div class="meta">数据来自 <code>/api/overview</code>：8 项指标一次取回。每格标注来源与时间；取不到时显示「暂不可用」，不会用 0 冒充。</div>
     </div>
-    <button class="btn" id="dashboardRefresh" type="button">刷新</button>
+    <div class="row" style="gap:8px;align-items:center">
+      <button class="btn" id="gwRestartBtn" type="button" title="先停掉所有 SnowLuma 进程，等端口释放，再启动（新登录的 QQ 号不识别时用）">完全重启网关</button>
+      <span class="meta" id="gwRestartMsg"></span>
+      <button class="btn" id="dashboardRefresh" type="button">刷新</button>
+    </div>
   </div>
   <div id="appDashboard" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px">（加载中…）</div>
 
@@ -3884,6 +3888,39 @@ document.getElementById('pvSave').addEventListener('click', pvSave);
 document.getElementById('pvSearch').addEventListener('click', pvSearch);
 setTimeout(() => { try { pvRefresh(); } catch {} }, 700);
 
+
+// 网关完全重启（先停后起）：新登录的 QQ 不识别时用
+async function gwRestart() {
+  const msg = document.getElementById('gwRestartMsg');
+  const btn = document.getElementById('gwRestartBtn');
+  if (!confirm('确定完全重启网关？\n\n会先停掉所有 SnowLuma 进程（QQ 会短暂掉线），等端口释放后重新启动。')) return;
+  btn.disabled = true;
+  msg.className = 'meta';
+  msg.textContent = '停止中…';
+  try {
+    const r = await api('/api/gateway/control/restart', 'POST', {});
+    if (!r.ok) {
+      msg.className = 'meta err';
+      msg.textContent = '失败：' + (r.error || '未知');
+      return;
+    }
+    const n = (r.stopped || []).length;
+    const ports = r.ports || {};
+    const portText = Object.entries(ports).map(([k, v]) => k + (v ? '✓' : '✗')).join(' ');
+    msg.className = r.onebotReady ? 'meta ok' : 'meta';
+    msg.textContent = r.onebotReady
+      ? `已重启（停 ${n} 个，OneBot 就绪：${portText}）`
+      : `已重启（停 ${n} 个，进程 ${r.processes ?? '?'}；${portText || ''}）${r.hint || ''}`;
+    if (typeof refreshDashboard === 'function') setTimeout(() => { try { refreshDashboard(); } catch {} }, 1200);
+  } catch (e) {
+    msg.className = 'meta err';
+    msg.textContent = '失败：' + (e && e.message ? e.message : e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+const gwBtnEl = document.getElementById('gwRestartBtn');
+if (gwBtnEl) gwBtnEl.addEventListener('click', gwRestart);
 
 // ── Pixiv 图库（记忆数据库）─────────────────────────────────────────────
 function pvLibMsg(text, ok) {

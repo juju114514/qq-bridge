@@ -387,3 +387,53 @@ export async function stopGateway(opts = {}) {
   const remaining = (await listImpl(opts)).filter((p) => !stopped.includes(p));
   return { stopped, remaining };
 }
+
+/**
+ * 完全重启网关（0.5.65）
+ * 现实：SnowLuma 有 launcher，杀了子进程会自己拉回来，"进程清零"永远达不到。
+ * 所以：多轮 stop → 等自愈（或没有 launcher 时 spawn）→ 报端口状态。
+ */
+export async function restartGateway(opts = {}) {
+  const { ports = DEFAULT_PORTS, log = () => {}, waitUpMs = 45000 } = opts;
+  const gwOpts = { ports };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const stoppedAll = [];
+  for (let round = 1; round <= 3; round += 1) {
+    const stop = await stopGateway(gwOpts);
+    stoppedAll.push(...stop.stopped);
+    log(`[gateway] 完全重启 第${round}轮：停 ${stop.stopped.length} 个，剩余 ${stop.remaining.length} 个`);
+    if (!stop.remaining.length && round >= 2) break;
+    await sleep(2000);
+  }
+
+  let back = false;
+  for (let waited = 0; waited < waitUpMs; waited += 1000) {
+    const procs = await listGatewayPids(gwOpts);
+    const st = await getGatewayStatus(gwOpts);
+    if (procs.length > 0 && Object.values(st.listening).some(Boolean)) { back = true; break; }
+    await sleep(1000);
+  }
+
+  let spawned = null;
+  if (!back) {
+    const procs = await listGatewayPids(gwOpts);
+    if (procs.length === 0) spawned = await startGateway({ ...gwOpts, waitMs: 30000 });
+  }
+
+  const st = await getGatewayStatus(gwOpts);
+  const procs = await listGatewayPids(gwOpts);
+  const onebotUp = !!(st.listening[3000] && st.listening[3001]);
+  const ok = onebotUp || !!spawned?.ok || (back && Object.values(st.listening).some(Boolean));
+  log(`[gateway] 完全重启完成：进程 ${procs.length}，端口 ${JSON.stringify(st.listening)}${onebotUp ? '' : '（OneBot 未就绪，可能需要在网关里加载 QQ 账号）'}`);
+  return {
+    ok,
+    at: Date.now(),
+    stopped: stoppedAll,
+    processes: procs.length,
+    ports: st.listening,
+    onebotReady: onebotUp,
+    spawned: !!spawned,
+    hint: onebotUp ? '' : 'OneBot 端口还没起来：打开网关 WebUI 看是否需要「加载 QQ 账号」'
+  };
+}
