@@ -76,6 +76,24 @@ export function resolvePolicy({ cfg, key, adultOk = false } = {}) {
   return policy;
 }
 
+
+/** 安全词默认清单（群里任何一人说出 → 立刻关掉该群的放开策略） */
+export const DEFAULT_SAFETY_WORDS = ['安全词', '收一下', '打住'];
+
+/** 解析安全词：配置里给了就用配置，没给用默认；空数组 = 禁用安全词 */
+export function resolveSafetyWords(cfg) {
+  const raw = cfg?.personaPolicy?.safetyWords;
+  if (Array.isArray(raw)) return raw.map((w) => String(w ?? '').trim()).filter(Boolean);
+  return [...DEFAULT_SAFETY_WORDS];
+}
+
+/** 文本里是否出现安全词（去空白后做包含匹配，允许"安全词！""嗯，安全词"这类写法） */
+export function isSafetyWordText(text, words = DEFAULT_SAFETY_WORDS) {
+  const s = String(text ?? '').replace(/\s+/g, '');
+  if (!s) return false;
+  return words.some((w) => w && s.includes(String(w).replace(/\s+/g, '')));
+}
+
 /** 策略是否等于「什么都不放开」（等价于旧行为，不需要注入） */
 export function isNeutral(policy) {
   return policy.profanity === 'off' && policy.nsfw === 'off' && !policy.note;
@@ -122,6 +140,13 @@ export function policyBlock(policy) {
   return lines.join('\n');
 }
 
+
+/** 把某个会话的放开策略清零（安全词用）：返回新的 personaPolicy 对象，不改原对象 */
+export function disablePolicyForGroup(policy, key) {
+  const cur = policy && typeof policy === 'object' ? policy : {};
+  return { ...cur, perGroup: { ...(cur.perGroup || {}), [key]: { profanity: 'off', nsfw: 'off' } } };
+}
+
 /** 读/写「成年确认」名单（state/persona-adult.json） */
 export function readAdultList(fs, file) {
   try {
@@ -135,4 +160,14 @@ export function readAdultList(fs, file) {
 export function writeAdultList(fs, file, set) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ confirmed: [...set], updatedAt: new Date().toISOString() }, null, 2));
+}
+
+/** 一步到位：解析 + 生成注入块（bridge 侧只调这一行，省得在 10k 行的文件里堆逻辑） */
+export function blockTextFor(cfg, key, { adultOk = false } = {}) {
+  try {
+    const p = resolvePolicy({ cfg, key, adultOk });
+    return { block: policyBlock(p), policy: p };
+  } catch {
+    return { block: '', policy: null };
+  }
 }

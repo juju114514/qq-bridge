@@ -1,6 +1,6 @@
 // 人格语气策略（personaPolicy）：默认不放开、按群覆盖、成人确认、硬底线不可绕过
 import assert from 'node:assert/strict';
-import { isNeutral, policyBlock, resolvePolicy, hardLimitsBlock } from '../src/persona-policy.js';
+import { isNeutral, policyBlock, resolvePolicy, hardLimitsBlock, isSafetyWordText, resolveSafetyWords, DEFAULT_SAFETY_WORDS } from '../src/persona-policy.js';
 
 let failures = 0;
 const check = (name, fn) => {
@@ -59,6 +59,19 @@ check('硬底线永远出现在放开后的块里', () => {
 check('note 会透传（按群 note 覆盖全局）', () => {
   const cfg = { personaPolicy: { note: '全局备注', perGroup: { 'group:3': { note: '群备注' } } } };
   assert.match(policyBlock(resolvePolicy({ cfg, key: 'group:3', adultOk: true })), /群备注/);
+});
+
+
+check('安全词：默认清单命中', () => {
+  assert.equal(isSafetyWordText('安全词'), true);
+  assert.equal(isSafetyWordText('嗯 安全词！'), true);
+  assert.equal(isSafetyWordText('今天天气不错'), false);
+});
+
+check('安全词：配置覆盖 / 空数组关闭', () => {
+  assert.deepEqual(resolveSafetyWords({ personaPolicy: { safetyWords: ['停'] } }), ['停']);
+  assert.equal(isSafetyWordText('安全词', resolveSafetyWords({ personaPolicy: { safetyWords: ['停'] } })), false);
+  assert.deepEqual(resolveSafetyWords({}), DEFAULT_SAFETY_WORDS);
 });
 
 console.log(`\n结果：${failures === 0 ? '全部通过' : failures + ' 项失败'}`);
