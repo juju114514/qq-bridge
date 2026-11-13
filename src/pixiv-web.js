@@ -151,3 +151,29 @@ export function summarize(it) {
   const grade = it.grade === 'safe' ? '全年龄' : it.grade === 'r18' ? 'R-18' : 'R-18G';
   return `${it.title || '(无题)'} — ${it.author || '未知作者'}｜${grade}｜${it.pageCount} 张｜${it.link}`;
 }
+
+/**
+ * R-18 档位（控制台里是个下拉选择，不是开关）：
+ *   off  只发全年龄
+ *   r18  只搜 R-18（需要 cookies + 该群策略允许）
+ *   all  全年龄 + R-18 都要
+ *
+ * 最终是否真的放开，还要过 personaPolicy：
+ *   群策略 nsfw=off → 无论 pixiv.r18Mode 选什么都降级成 off（不允许偷偷绕过）
+ */
+export const R18_MODES = ['off', 'r18', 'all'];
+
+export function resolveR18Mode(cfg) {
+  const raw = String(cfg?.pixiv?.r18Mode || 'off').toLowerCase();
+  return R18_MODES.includes(raw) ? raw : 'off';
+}
+
+export function effectiveR18Mode({ cfg, policy, hasCookiesNow = false }) {
+  const mode = resolveR18Mode(cfg);
+  if (mode === 'off') return { mode: 'off', reason: 'pixiv.r18Mode=off' };
+  if (!hasCookiesNow) return { mode: 'off', reason: '没有 pixiv cookies（R-18 需要登录）' };
+  const nsfw = String(policy?.nsfw || 'off');
+  if (nsfw === 'off') return { mode: 'off', reason: '该群 personaPolicy 没开成人内容' };
+  if (nsfw === 'suggestive' && mode === 'r18') return { mode: 'off', reason: '该群只到 suggestive，不搜纯 R-18' };
+  return { mode, reason: '' };
+}

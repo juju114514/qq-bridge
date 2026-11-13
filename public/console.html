@@ -2120,6 +2120,31 @@ button:active:not(:disabled) {
         </div>
       </details>
 
+      <details class="settings-group" id="pvGroup">
+        <summary>Pixiv 取图（分级 / 搜索 / 作者链接）</summary>
+        <div class="settings-content">
+          <div class="meta" style="margin-top:8px">只做「搜 + 看见作者和链接」；R-18 还需要 pixiv cookies，并且该群 personaPolicy 得放开成人内容，两个都满足才生效。</div>
+          <div class="row" style="margin-top:10px;gap:10px;align-items:center">
+            <label style="min-width:96px">R-18 档位</label>
+            <select id="pvMode" style="width:240px">
+              <option value="off">off（只搜全年龄）</option>
+              <option value="r18">r18（只搜 R-18）</option>
+              <option value="all">all（全年龄 + R-18）</option>
+            </select>
+            <label style="min-width:80px;margin-left:10px">默认条数</label>
+            <input type="number" id="pvLimit" value="6" min="1" max="20" style="width:80px">
+          </div>
+          <div class="meta" id="pvStatus" style="margin-top:8px">（读取中…）</div>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+            <input type="text" id="pvTag" style="flex:1;min-width:200px" placeholder="标签，如：蓝鲸 / 深海 / 鲸鱼娘">
+            <button id="pvSearch">搜索</button>
+            <button id="pvSave">保存档位</button>
+            <span class="meta" id="pvMsg"></span>
+          </div>
+          <div id="pvList" style="margin-top:10px"></div>
+        </div>
+      </details>
+
       <details class="settings-group">
         <summary>切换当前启用的人格</summary>
         <div class="settings-content">
@@ -3770,6 +3795,74 @@ document.getElementById('ppAdultAdd').addEventListener('click', () => ppAdult('c
 document.getElementById('ppAdultRemove').addEventListener('click', () => ppAdult('revoke'));
 // 进页面就读一次
 setTimeout(() => { try { ppLoad(); } catch {} }, 300);
+
+// ── Pixiv 取图 ───────────────────────────────────────────────────────────
+function pvMsg(text, ok) {
+  const el = document.getElementById('pvMsg');
+  el.className = ok === undefined ? 'meta' : (ok ? 'meta ok' : 'meta err');
+  el.textContent = text || '';
+}
+
+async function pvRefresh() {
+  try {
+    const r = await api('/api/pixiv/status');
+    if (!r.ok) { pvMsg(r.error || '读取失败', false); return; }
+    document.getElementById('pvMode').value = r.r18Mode || 'off';
+    document.getElementById('pvLimit').value = r.defaultLimit || 6;
+    const cookie = r.cookies?.present ? '✓ 有 cookies' : '✗ 无 cookies（只能全年龄）';
+    const eff = r.effective === 'off' ? '当前实际：只全年龄' : `当前实际：${r.effective}`;
+    const why = r.effectiveReason ? `（${r.effectiveReason}）` : '';
+    document.getElementById('pvStatus').textContent = `${cookie}｜档位 ${r.r18Mode}｜${eff}${why}｜群策略 nsfw=${r.policy?.nsfw || 'off'}`;
+  } catch (e) { pvMsg('读取失败：' + (e && e.message ? e.message : e), false); }
+}
+
+async function pvSave() {
+  pvMsg('保存中…');
+  try {
+    const r = await api('/api/pixiv/save', 'POST', {
+      r18Mode: document.getElementById('pvMode').value,
+      defaultLimit: Number(document.getElementById('pvLimit').value) || 6
+    });
+    if (!r.ok) { pvMsg(r.error || '保存失败', false); return; }
+    await pvRefresh();
+    pvMsg('已保存', true);
+  } catch (e) { pvMsg('保存失败：' + (e && e.message ? e.message : e), false); }
+}
+
+async function pvSearch() {
+  const tag = (document.getElementById('pvTag').value || '').trim();
+  const box = document.getElementById('pvList');
+  if (!tag) { pvMsg('先填标签', false); return; }
+  pvMsg('搜索中…');
+  box.replaceChildren();
+  try {
+    const r = await api('/api/pixiv/search', 'POST', { tag, limit: Number(document.getElementById('pvLimit').value) || 6 });
+    if (!r.ok) { pvMsg(r.error || '搜索失败', false); return; }
+    if (!r.items.length) { pvMsg('没有结果（R-18 需要 cookies + 该群放开）', false); return; }
+    for (const it of r.items) {
+      const row = document.createElement('div');
+      row.style.cssText = 'border:1px solid #2a2340;border-radius:8px;padding:8px;margin-bottom:6px;font-size:13px';
+      const head = document.createElement('div');
+      head.textContent = `${it.title || '(无题)'} — ${it.author}｜${it.grade === 'safe' ? '全年龄' : it.grade === 'r18' ? 'R-18' : 'R-18G'}｜${it.pageCount} 张`;
+      const link = document.createElement('a');
+      link.href = it.link; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.textContent = it.link; link.style.display = 'block'; link.style.marginTop = '4px';
+      row.append(head, link);
+      if (it.tags?.length) {
+        const tg = document.createElement('div');
+        tg.className = 'meta';
+        tg.textContent = it.tags.slice(0, 6).join(' / ');
+        row.appendChild(tg);
+      }
+      box.appendChild(row);
+    }
+    pvMsg(`共 ${r.items.length} 条（实际档位 ${r.effective}）`, true);
+  } catch (e) { pvMsg('搜索失败：' + (e && e.message ? e.message : e), false); }
+}
+
+document.getElementById('pvSave').addEventListener('click', pvSave);
+document.getElementById('pvSearch').addEventListener('click', pvSearch);
+setTimeout(() => { try { pvRefresh(); } catch {} }, 700);
 
 // ── 示例对话草稿箱 ───────────────────────────────────────────────────────
 function ddMsg(text, ok) {

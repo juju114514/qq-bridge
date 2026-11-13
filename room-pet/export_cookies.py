@@ -40,9 +40,9 @@ async def _send(ws, mid, method, params=None):
             return m
 
 
-async def get_cookies(target_url):
+async def get_cookies(target_url, urls=None):
     async with websockets.connect(target_url, max_size=2 ** 25) as ws:
-        r = await _send(ws, 1, "Network.getCookies", {"urls": DOUYIN_URLS})
+        r = await _send(ws, 1, "Network.getCookies", {"urls": urls or DOUYIN_URLS})
         res = (r.get("result") or {}).get("cookies") or []
         return res
 
@@ -76,6 +76,7 @@ def to_netscape(cookies):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=PORT)
+    ap.add_argument("--urls", default="", help="逗号分隔的 URL 列表；默认是抖音那几条（导出 pixiv 时传 https://www.pixiv.net/）")
     ap.add_argument("--out", default=os.environ.get("QQB_COOKIES") or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state", "cookies", "site-cookies.txt"))
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
@@ -86,7 +87,8 @@ def main():
         print("[失败] 调试浏览器没有可用页面")
         return
     target = next((p for p in pages if "douyin.com" in (p.get("url") or "")), pages[0])
-    cookies = asyncio.run(get_cookies(target["webSocketDebuggerUrl"]))
+    _urls = [u.strip() for u in (args.urls or "").split(",") if u.strip()] or None
+    cookies = asyncio.run(get_cookies(target["webSocketDebuggerUrl"], _urls))
     print(f"[取到] {len(cookies)} 个 cookie（页面：{(target.get('url') or '')[:40]}）")
 
     if args.check:

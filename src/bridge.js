@@ -158,6 +158,7 @@ import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBloc
 import { createImageHandler } from './api/image-route.js';
 import { createPersonaPolicyHandler } from './api/persona-policy-route.js';
 import { createDialogueDraftsHandler } from './api/dialogue-drafts-route.js';
+import { createPixivHandler } from './api/pixiv-route.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
 import { createConfigLoader } from './config.js';
@@ -3973,7 +3974,12 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             roleName,
             socialV2BusySnapshot,
           });
-          const handleDialogueDrafts = createDialogueDraftsHandler({
+          const handlePixiv = createPixivHandler({
+    sendJson, readBody, log, fs, ROOT, STATE_DIR,
+    getCfg: () => cfg
+  });
+
+  const handleDialogueDrafts = createDialogueDraftsHandler({
     sendJson, readBody, log, fs, ROOT, STATE_DIR,
     roleFilePath, roleEntry
   });
@@ -4366,7 +4372,7 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
           }
         }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
-        .chain(handleRoles).chain(handleImage).chain(handlePersonaPolicy).chain(handleDialogueDrafts).chain(handleSlang).chain(handleSessions).chain(handleSocial)
+        .chain(handleRoles).chain(handleImage).chain(handlePersonaPolicy).chain(handleDialogueDrafts).chain(handlePixiv).chain(handleSlang).chain(handleSessions).chain(handleSocial)
         .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay).chain(handleDeadLetter)
         .chain(handleStickers).chain(handleTokens);
       // 注意：handleV2Wait / handleImages / handleSend **不进链**。
