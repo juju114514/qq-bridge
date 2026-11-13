@@ -94,8 +94,12 @@ node scripts/test-persona-policy.mjs     # 8 条：默认关闭 / 按群覆盖 /
 | QQ 群 | 群里**任何人**说 `安全词` / `收一下` / `打住` | 立刻把**本群**的放开策略写成 off（持久化到 config.json），回一句「收到安全词，本群的『放开』设定已关闭。」，这条消息**不进模型** |
 | 抖音（room-pet） | 对方私信/评论里含 `安全词` / `别回了` / `停下` | 不生成、不发送，并在 `dm_replies.json` 标记已处理（避免下一轮又回） |
 
-配置：`personaPolicy.safetyWords`（QQ 侧）与 `auto.json` 的 `safetyWords`（抖音侧）；
-给空数组 = 关闭安全词（不建议）。
+配置：
+- QQ 侧：`personaPolicy.safetyWords` + `safetyAction`（`off` / `reset` / `pause`）+ `safetyPauseMinutes`
+  - `off`   安全词完全不生效（不建议）
+  - `reset` 只说：把本群放开策略写成 off
+  - `pause` 关策略 **+ 该群静默 N 分钟**（期间普通消息也不回）
+- 抖音侧：`auto.json` 的 `safetyWords`（给空数组 = 关闭）
 
 实现：`src/persona-policy.js` 的 `isSafetyWordText()` / `resolveSafetyWords()`；
 QQ 侧在 `bridge.js` 的 `handleSafetyWord()`，抖音侧 `safety_words.py` + 两个 auto_* 脚本。

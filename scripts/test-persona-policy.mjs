@@ -1,6 +1,6 @@
 // 人格语气策略（personaPolicy）：默认不放开、按群覆盖、成人确认、硬底线不可绕过
 import assert from 'node:assert/strict';
-import { isNeutral, policyBlock, resolvePolicy, hardLimitsBlock, isSafetyWordText, resolveSafetyWords, DEFAULT_SAFETY_WORDS } from '../src/persona-policy.js';
+import { isNeutral, policyBlock, resolvePolicy, hardLimitsBlock, isSafetyWordText, resolveSafetyWords, DEFAULT_SAFETY_WORDS, resolveSafetyConfig, safetyGate, withPause, pauseRemainingSeconds } from '../src/persona-policy.js';
 
 let failures = 0;
 const check = (name, fn) => {
@@ -72,6 +72,43 @@ check('安全词：配置覆盖 / 空数组关闭', () => {
   assert.deepEqual(resolveSafetyWords({ personaPolicy: { safetyWords: ['停'] } }), ['停']);
   assert.equal(isSafetyWordText('安全词', resolveSafetyWords({ personaPolicy: { safetyWords: ['停'] } })), false);
   assert.deepEqual(resolveSafetyWords({}), DEFAULT_SAFETY_WORDS);
+});
+
+
+check('安全词动作开关：off 时完全不生效', () => {
+  const cfg = { personaPolicy: { safetyAction: 'off' } };
+  assert.equal(resolveSafetyConfig(cfg).enabled, false);
+  assert.equal(safetyGate({ cfg, key: 'group:1', text: '安全词', paused: {} }).skip, false);
+});
+
+check('安全词动作开关：reset 只关策略、不静默', () => {
+  const cfg = { personaPolicy: { safetyAction: 'reset' } };
+  const g = safetyGate({ cfg, key: 'group:1', text: '安全词', paused: {} });
+  assert.equal(g.skip, true);
+  assert.equal(g.resetPolicy, true);
+  assert.equal(g.pauseMinutes, 0);
+  assert.match(g.notify, /已关闭/);
+});
+
+check('安全词动作开关：pause 关策略 + 静默 N 分钟', () => {
+  const cfg = { personaPolicy: { safetyAction: 'pause', safetyPauseMinutes: 10 } };
+  const g = safetyGate({ cfg, key: 'group:1', text: '安全词', paused: {} });
+  assert.equal(g.pauseMinutes, 10);
+  assert.match(g.notify, /静默 10 分钟/);
+});
+
+check('静默期内：普通消息也被跳过（left > 0）', () => {
+  const cfg = { personaPolicy: { safetyAction: 'pause', safetyPauseMinutes: 10 } };
+  const paused = withPause({}, 'group:1', 10);
+  const g = safetyGate({ cfg, key: 'group:1', text: '在吗', paused });
+  assert.equal(g.skip, true);
+  assert.equal(g.resetPolicy, false);
+  assert.ok(g.left > 0);
+});
+
+check('静默过期后恢复', () => {
+  const paused = { 'group:1': Date.now() - 1000 };
+  assert.equal(pauseRemainingSeconds(paused, 'group:1'), 0);
 });
 
 console.log(`\n结果：${failures === 0 ? '全部通过' : failures + ' 项失败'}`);

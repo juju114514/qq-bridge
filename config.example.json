@@ -450,6 +450,8 @@
       "安全词",
       "收一下",
       "打住"
-    ]
+    ],
+    "safetyAction": "pause",
+    "safetyPauseMinutes": 30
   }
 }

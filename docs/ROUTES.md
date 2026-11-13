@@ -487,5 +487,5 @@
 
 | 方法 | 路径 | 行号 |
 |---|---|---|
-| ANY | `/api/tokens/summary` | L4514 |
-| ANY | `/api/tokens/` | L4514 |
+| ANY | `/api/tokens/summary` | L4515 |
+| ANY | `/api/tokens/` | L4515 |

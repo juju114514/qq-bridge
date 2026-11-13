@@ -154,7 +154,7 @@ import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { draftRoleCard } from './role-draft.js';
-import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList, isSafetyWordText, resolveSafetyWords, disablePolicyForGroup, blockTextFor } from './persona-policy.js';
+import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList, isSafetyWordText, resolveSafetyWords, disablePolicyForGroup, blockTextFor, safetyGate, withPause } from './persona-policy.js';
 import { createImageHandler } from './api/image-route.js';
 import { createPersonaPolicyHandler } from './api/persona-policy-route.js';
 import { createDialogueDraftsHandler } from './api/dialogue-drafts-route.js';
@@ -243,6 +243,7 @@ const STATE_DIR = path.join(ROOT, 'state');
 const STATE_FILE = path.join(STATE_DIR, 'sessions.json');
 const ROLE_STATE_FILE = path.join(STATE_DIR, 'current-role.json');
 const PERSONA_ADULT_FILE = path.join(STATE_DIR, 'persona-adult.json');
+const SAFETY_PAUSE_FILE = path.join(STATE_DIR, 'safety-pause.json');
 const QZONE_DRAFT_FILE = path.join(STATE_DIR, 'qzone-draft.json');
 // 断电/崩溃检测（0.4.84）：心跳 + 运行标记 + 异常事件
 const HEARTBEAT_FILE = path.join(STATE_DIR, 'heartbeat.json');
@@ -9467,33 +9468,37 @@ function selfCheckSnapshot() {
     // 语气/内容许可：按群解析，拼在角色卡之后，永不被注入上限截断
   function personaPolicyBlockText(key) {
     const gid = key.startsWith('group:') ? key.slice(6) : '';
-    const adultOk = !!gid && readPersonaAdultList(fs, PERSONA_ADULT_FILE).has(gid);
-    const r = blockTextFor(cfg, key, { adultOk });
+    const r = blockTextFor(cfg, key, { adultOk: !!gid && readPersonaAdultList(fs, PERSONA_ADULT_FILE).has(gid) });
     if (r.policy?.downgraded) log(`[persona-policy] ${key}: ${r.policy.downgraded}`);
     return r.block;
   }
 
-  // 安全词：任何一人说出 → 关掉本群放开策略（写回 config），这条不进模型
-  function handleSafetyWord(key, text) {
-    if (!isSafetyWordText(text, resolveSafetyWords(cfg))) return false;
+  // 安全词：关掉本群放开策略（写回 config）；action=pause 时再静默 N 分钟
+  function handleSafetyWord(key, pauseMinutes) {
     try {
       const file = readConfigObject(path.join(ROOT, 'config.json'));
       file.personaPolicy = disablePolicyForGroup(file.personaPolicy, key);
       atomicWriteJson(path.join(ROOT, 'config.json'), file);
       cfg.personaPolicy = file.personaPolicy;
+      if (pauseMinutes > 0) atomicWriteJson(SAFETY_PAUSE_FILE, withPause(readJsonSafe(SAFETY_PAUSE_FILE, {}), key, pauseMinutes));
     } catch (e) { log('[safety] 写盘失败：' + (e?.message ?? e)); }
-    log(`[safety] ${key} 触发安全词`);
-    return true;
+    log(`[safety] ${key} 安全词${pauseMinutes > 0 ? ` + 静默 ${pauseMinutes} 分钟` : ''}`);
   }
+
   // 角色扮演提示注入（仅注入给 agent，不影响群友之间的正常对话语义）
     const roleHint = currentRoleHint(key);
 
     // 群聊里带发送者信息，私聊不用；角色提示注入到消息开头（agent 可见）；
     // 管理员消息带身份标记（供 agent 识别，但其权限仍受工具面硬限制）
-    // 安全词优先：命中就关策略、回一句、不进模型
-    if (kind === 'group' && handleSafetyWord(key, textContent)) {
-      void sendToQQ(key, '收到安全词，本群的「放开」设定已关闭。');
-      return;
+    // 安全词：静默期内跳过；命中则关策略(+静默)并回一句，都不进模型
+    if (kind === 'group') {
+      const gate = safetyGate({ cfg, key, text: textContent, paused: readJsonSafe(SAFETY_PAUSE_FILE, {}) });
+      if (gate.skip) {
+        if (gate.resetPolicy) handleSafetyWord(key, gate.pauseMinutes);
+        if (gate.notify) void sendToQQ(key, gate.notify);
+        log(`[safety] ${key} 安全词生效${gate.left ? `（静默剩 ${gate.left}s）` : ''}`);
+        return;
+      }
     }
     const toneBlock = personaPolicyBlockText(key);
     const promptText = (roleHint ? roleHint + '\n\n' : '')

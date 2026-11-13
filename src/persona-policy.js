@@ -171,3 +171,64 @@ export function blockTextFor(cfg, key, { adultOk = false } = {}) {
     return { block: '', policy: null };
   }
 }
+
+/**
+ * 安全词的「动作」开关（2026-11-13）：
+ *   off           —— 安全词完全不生效（不推荐）
+ *   reset（默认） —— 只说：把本群的放开策略写成 off
+ *   pause         —— 关策略 + 该群**静默** safetyPauseMinutes 分钟（连普通回复也停，只回一句确认）
+ * 配置在 personaPolicy.safetyAction / safetyPauseMinutes。
+ */
+export const SAFETY_ACTIONS = ['off', 'reset', 'pause'];
+
+export function resolveSafetyConfig(cfg) {
+  const raw = cfg?.personaPolicy || {};
+  const action = SAFETY_ACTIONS.includes(String(raw.safetyAction || '').toLowerCase())
+    ? String(raw.safetyAction).toLowerCase()
+    : 'reset';
+  const minutes = Math.max(1, Math.min(24 * 60, Number(raw.safetyPauseMinutes) || 30));
+  return { enabled: action !== 'off', action, minutes, words: resolveSafetyWords(cfg) };
+}
+
+/** 该会话现在是否处于「安全词静默」中；返回剩余秒数（0 = 不在静默） */
+export function pauseRemainingSeconds(paused, key, now = Date.now()) {
+  const until = Number(paused && typeof paused === 'object' ? paused[key] : 0);
+  if (!until || until <= now) return 0;
+  return Math.max(0, Math.round((until - now) / 1000));
+}
+
+/**
+ * 一条决策：要不要因为安全词停下 / 现在是不是静默期。
+ * bridge 里只调这一个函数，保持主文件体积。
+ * @returns {{kill:boolean, pauseMinutes:number, pausedLeft:number, words:string[]}}
+ */
+export function safetyDecision({ cfg, key, text, paused }) {
+  const c = resolveSafetyConfig(cfg);
+  if (!c.enabled) return { kill: false, pauseMinutes: 0, pausedLeft: 0, words: c.words };
+  const pausedLeft = pauseRemainingSeconds(paused, key);
+  const hit = isSafetyWordText(text, c.words);
+  return { kill: hit, pauseMinutes: hit && c.action === 'pause' ? c.minutes : 0, pausedLeft, words: c.words };
+}
+
+/** 记录静默期：返回新的 paused 对象（不改原对象） */
+export function withPause(paused, key, minutes, now = Date.now()) {
+  const base = paused && typeof paused === 'object' ? paused : {};
+  return { ...base, [key]: now + Math.max(1, Number(minutes) || 30) * 60000 };
+}
+
+/**
+ * 安全词总闸（纯函数，不做 IO）：返回给 bridge 的处置建议。
+ * @returns {{skip:boolean, resetPolicy:boolean, pauseMinutes:number, notify:string, left:number}}
+ */
+export function safetyGate({ cfg, key, text, paused }) {
+  const sd = safetyDecision({ cfg, key, text, paused });
+  if (sd.pausedLeft > 0) return { skip: true, resetPolicy: false, pauseMinutes: 0, notify: '', left: sd.pausedLeft };
+  if (!sd.kill) return { skip: false, resetPolicy: false, pauseMinutes: 0, notify: '', left: 0 };
+  return {
+    skip: true,
+    resetPolicy: true,
+    pauseMinutes: sd.pauseMinutes,
+    notify: sd.pauseMinutes > 0 ? `收到安全词，本群静默 ${sd.pauseMinutes} 分钟。` : '收到安全词，本群的「放开」设定已关闭。',
+    left: 0
+  };
+}
