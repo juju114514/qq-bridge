@@ -239,10 +239,39 @@ Windows 上也可以直接双击 `切换-桥接模式.bat` / `切换-插件模�
 | 本机 Ollama（默认） | 装 Ollama + 任意中文模型即可 | qwen2.5vl:3b-cpu 约 57 秒 / 6 条资料 |
 | DSH 的模型 | `config.json` 设 `role.draftProvider: "dsh"` | ⚠️ 见下 |
 
-> **已知限制（DSH 后端）**：桥接用 `qq-chat` 预设建会话，但该预设不是为「非 QQ 会话」设计的，
-> 实测 turn 会直接 `error`（会话能建、模型能设、prompt 能排队，回复阶段失败）。
-> 要真正用上 DSH 的文笔，需要给草稿单独做一个**无工具预设**（还要重启 DSH 让它生效）。
-> 在此之前请保持默认（本机 Ollama），否则会退化成模板。
+> **DSH 后端怎么开**：仓库已带专用无工具预设 `role-draft`（`dsh/agent-presets/role-draft/`），
+> 生成时用它建会话，不受 QQ 场景规则影响。
+>
+> ```
+> 1 部署预设：node scripts/build-agent-preset-patches.mjs --write
+>            （产物 plugins/qq-agent-presets/presets/role-draft.patch.yml 拷到
+>             %USERPROFILE%\.dsh\plugins\qq-agent-presets\presets\ 并在其 package.json 的 dsh.bundle.patch 里登记）
+> 2 重启 DSH（预设只在启动/建会话时生效）
+> 3 config.json 里设 role.draftProvider = "dsh"（可选 role.draftPreset = "role-draft"）
+> ```
+>
+> 没做这三步就设成 `dsh` 会退回模板（并给出 warning）。
+
+## 生图（ComfyUI，0.5.64 起）
+
+控制台 → 人格与角色 → **生图（ComfyUI）**：填提示词 → 生成 → 直接出图预览。
+
+```
+前置：本机跑 ComfyUI（默认 http://127.0.0.1:8188），models/checkpoints 里至少有一个模型
+配置：config.json 的 image 段（comfyUrl / width / height / steps / cfg / checkpoint / timeoutMs）
+接口：POST /api/image/generate { prompt, negative?, width?, height?, steps?, seed? }
+      GET  /api/image/list
+产物：state/images/<时间戳>-<promptId>.png（≤3MB 时同时返回 dataUrl 供控制台预览）
+```
+
+ComfyUI 没启动时会返回一句人话（不是堆栈）：
+
+```
+连不上 ComfyUI（http://127.0.0.1:8188）：fetch failed。先启动 ComfyUI，或把 image.comfyUrl 改成实际地址
+```
+
+> 内置的是最小 txt2img 工作流（CheckpointLoaderSimple → CLIPTextEncode ×2 → KSampler → VAEDecode → SaveImage），
+> 只依赖一个 checkpoint；想用自己的工作流，把 API 格式 JSON 里的节点 id 填进 `image.promptNode` / `image.negativeNode` 即可（后续版本支持）。
 
 ## 运行所需工具（缺什么一目了然）
 

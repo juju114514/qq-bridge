@@ -1,0 +1,26 @@
+# 本文件由 scripts/build-agent-preset-patches.mjs 生成，请勿手工编辑。
+# 源：dsh/agent-presets/role-draft/preset.yml + agent.cordis.yml（人格正文与工具面都在那里改）。
+# 作用：把 role-draft 作为一条 @deepseek-ai/dsh-agent-preset 行插入 profile（DSH 0.1.7+ 的 preset 机制）。
+# 守卫行 qq-tool-restrict 用裸说明符 qq-agent-presets/qq-tool-restrict.mjs：子行 name 按 profile 目录解析，
+# 该包以 link: 依赖注册在 profile package.json（node_modules junction 由 setup-dsh.mjs 维护）。
+- insert:
+    - id: preset-role-draft
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: role-draft
+        name: 人格卡撰写
+        description: 只把「名字 + 偏好 + 资料」写成人格卡正文；无工具、无 QQ 上下文。
+        order: 30
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a writing assistant powered by the {{model}} model.
+                【任务】你只做一件事：把用户给的「名字 + 偏好 + 联网资料」写成一张中文人格卡正文。
+                【输出格式】 1. 直接用二级标题组织，顺序固定：## 身份 / ## 性格与语气 / ## 说话习惯 / ## 喜欢与讨厌 / ## 边界 / ## 示例对话 2. 「身份」2~3 句；其余小节用简短条目；「示例对话」写 2 组，格式是「> 对方：…」和「> <名字>：…」 3. 不要写"以下是"这种开场白，不要解释你在做什么，直接输出 markdown 正文 4. 不要编造具体事实（获奖、数据、真实人物关系）；资料不足就写得克制一些
+                【硬规则】 - 不要调用任何工具（你没有工具） - 不要输出 QQ 消息、不要寒暄、不要问用户问题 - 不要提到"我是一个 AI 助手"这类自我指涉
+          - id: qq-tool-restrict
+            name: qq-agent-presets/qq-tool-restrict.mjs
+            config:
+              allowedTools: []

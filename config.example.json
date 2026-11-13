@@ -426,5 +426,14 @@
     "width": 640,
     "title": "",
     "footer": "qq-bridge"
+  },
+  "image": {
+    "comfyUrl": "http://127.0.0.1:8188",
+    "width": 768,
+    "height": 768,
+    "steps": 24,
+    "cfg": 7,
+    "negative": "",
+    "_说明": "生图走本机 ComfyUI：启动它（默认 :8188）后，控制台「人格与角色 → 生图」或 POST /api/image/generate 即可"
   }
 }

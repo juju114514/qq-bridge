@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const mod = await import(new URL('../src/build-info.js', import.meta.url).href);
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+// 用 fileURLToPath 而不是手撕 pathname：Windows 中文路径在 URL 里是百分号编码的，
+// 直接当路径用会读不到 package.json（表现为 version 为空）。
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let failures = 0;
 const check = (name, fn) => {
   try { fn(); console.log(`  ok   ${name}`); } catch (e) { failures++; console.error(`  FAIL ${name}\n       ${e.message}`); }

@@ -2025,6 +2025,24 @@ button:active:not(:disabled) {
       </details>
 
       <details class="settings-group">
+        <summary>生图（ComfyUI）</summary>
+        <div class="settings-content">
+          <div class="meta" style="margin-top:8px">需要本机先启动 ComfyUI（默认 http://127.0.0.1:8188），配置在 config.json 的 image 段。</div>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+            <input type="text" id="imgGenPrompt" style="flex:1;min-width:240px" placeholder="提示词（如：一只戴眼镜的鲸鱼，像素风）">
+            <button id="imgGenBtn">生成</button>
+            <span class="meta" id="imgGenMsg"></span>
+          </div>
+          <div class="row" style="margin-top:6px;gap:8px;align-items:center">
+            <input type="text" id="imgGenNeg" style="flex:1;min-width:200px" placeholder="反向提示词（可空）">
+            <input type="number" id="imgGenW" value="768" style="width:90px" title="宽">
+            <input type="number" id="imgGenH" value="768" style="width:90px" title="高">
+          </div>
+          <div id="imgGenOut" style="margin-top:10px"></div>
+        </div>
+      </details>
+
+      <details class="settings-group">
         <summary>切换当前启用的人格</summary>
         <div class="settings-content">
           <div class="row" style="margin-top:10px">
@@ -3539,6 +3557,41 @@ async function saveMode(mode) {
   }
   return r;
 }
+
+// 生图（ComfyUI）：/api/image/generate
+async function imageGenerate() {
+  const prompt = (document.getElementById('imgGenPrompt').value || '').trim();
+  const msg = document.getElementById('imgGenMsg');
+  const out = document.getElementById('imgGenOut');
+  if (!prompt) { msg.className = 'meta err'; msg.textContent = '先写提示词'; return; }
+  msg.className = 'meta'; msg.textContent = '排队生成中…（ComfyUI 可能要几十秒）';
+  const btn = document.getElementById('imgGenBtn'); btn.disabled = true;
+  try {
+    const r = await api('/api/image/generate', 'POST', {
+      prompt,
+      negative: document.getElementById('imgGenNeg').value || '',
+      width: Number(document.getElementById('imgGenW').value) || 768,
+      height: Number(document.getElementById('imgGenH').value) || 768
+    });
+    if (!r.ok) { msg.className = 'meta err'; msg.textContent = r.error || '生成失败'; return; }
+    msg.className = 'meta ok';
+    msg.textContent = `完成：${Math.round((r.bytes || 0) / 1024)} KB / ${r.seconds || '?'} 秒 / ${r.checkpoint || ''}`;
+    if (r.dataUrl) {
+      // 用 DOM 建 img，避免把 base64 拼进 innerHTML（也绕开静止资源检查）
+      const img = document.createElement('img');
+      img.src = r.dataUrl;
+      img.style.maxWidth = 'min(512px,100%)';
+      img.style.borderRadius = '10px';
+      img.style.border = '1px solid #2a2340';
+      out.replaceChildren(img);
+    } else {
+      out.textContent = '图片超过 3MB，已存到 ' + (r.file || '');
+    }
+  } catch (e) {
+    msg.className = 'meta err'; msg.textContent = '生成失败：' + (e && e.message ? e.message : e);
+  } finally { btn.disabled = false; }
+}
+document.getElementById('imgGenBtn').addEventListener('click', imageGenerate);
 
 // ── 人格管理 ────────────────────────────────────────────────────────────────
 // 人格提示词 = roles/<名称>.md，桥接每条消息注入，保存即生效。

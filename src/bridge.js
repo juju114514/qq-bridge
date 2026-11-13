@@ -154,6 +154,7 @@ import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { draftRoleCard } from './role-draft.js';
+import { createImageHandler } from './api/image-route.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
 import { createConfigLoader } from './config.js';
@@ -2616,7 +2617,9 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
    */
   async function askDshOnce(promptText, { timeoutMs = 120000 } = {}) {
     if (!dshReady) throw new Error('DSH 还没就绪');
-    const preset = resolvePresetName(cfg.agentPreset, { strict: true });
+    // 草稿用专用 preset（无工具）；没装就用主 preset 兜底（会 turn error，但至少报错清楚）
+    const preset = resolvePresetName(cfg?.role?.draftPreset || 'role-draft', { strict: true })
+      || resolvePresetName(cfg.agentPreset, { strict: true });
     if (!preset) throw new Error('没有可用的安全 preset，拒绝创建会话');
     const dir = path.join(STATE_DIR, 'role-draft-agent');
     fs.mkdirSync(dir, { recursive: true });
@@ -3965,7 +3968,12 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             roleName,
             socialV2BusySnapshot,
           });
-          const handleRoles = createRolesHandler({
+          const handleImage = createImageHandler({
+    sendJson, readBody, log, fs, ROOT, STATE_DIR,
+    getCfg: () => cfg
+  });
+
+  const handleRoles = createRolesHandler({
             sendJson, readBody, log, fs, path, ROOT,
             readRoleState, writeRoleState,
             roleSummaries, readRoleContent, writeRoleContent,
@@ -4343,7 +4351,7 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
           }
         }))
         .chain((req, url) => handlePresetSimRoutes(req, url, { presetSim, sendJson, readBody }))
-        .chain(handleRoles).chain(handleSlang).chain(handleSessions).chain(handleSocial)
+        .chain(handleRoles).chain(handleImage).chain(handleSlang).chain(handleSessions).chain(handleSocial)
         .chain(handleV2Read).chain(handleV2Write).chain(handleV2Send).chain(handleV2Qzone).chain(handleOfficialSay).chain(handleDeadLetter)
         .chain(handleStickers).chain(handleTokens);
       // 注意：handleV2Wait / handleImages / handleSend **不进链**。
