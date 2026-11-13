@@ -39,6 +39,15 @@ function run(cmd, args, { timeoutMs = 8000 } = {}) {
   });
 }
 
+// 防重复拉起（0.5.64）：
+//   ① 同一进程内的并发/连点 —— 用一个 in-flight Promise 合流
+//   ② 同一进程内的连续尝试 —— 冷却窗口（默认 5 分钟）
+//   ③ 已经有 SnowLuma 进程在跑（可能正在启动）—— 只等端口，绝不再起第二份
+// 现场事故：拉不起来时每 1~2 分钟起一套，堆到 13 套 / 27 个进程 / 上百 MB，窗口铺满屏幕。
+const SPAWN_COOLDOWN_MS = Number(process.env.QQB_GATEWAY_SPAWN_COOLDOWN_MS) || 5 * 60 * 1000;
+let spawnInflight = null;
+let lastSpawnAt = 0;
+
 /** 网关日志落点（0.4.134）：<dir>/logs/gateway.log */
 export function gatewayLogPath(dir = snowlumaDir()) {
   return path.join(dir || '.', 'logs', 'gateway.log');
@@ -61,28 +70,64 @@ export function snowlumaDir(env = process.env) {
  * 退路：直接拉起一个**脱离父进程**的网关进程。
  * 为什么 detached：这样桥接重启不会把它带走（子进程关系不成立）。
  */
-export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, probe = probePort, ports = DEFAULT_PORTS, now = () => Date.now(), spawnImpl = spawn } = {}) {
-  // 【0.5.63】spawn 分支同样防重复：端口已在听就别再起一份
+export async function startViaSpawn(opts = {}) {
+  // 单飞：并发调用共享同一个 Promise，绝不起两份
+  if (spawnInflight) return spawnInflight;
+  const running = startViaSpawnOnce(opts).finally(() => { spawnInflight = null; });
+  spawnInflight = running;
+  return running;
+}
+
+async function startViaSpawnOnce({
+  dir = snowlumaDir(),
+  timeoutMs = 12000,
+  probe = probePort,
+  ports = DEFAULT_PORTS,
+  now = () => Date.now(),
+  spawnImpl = spawn,
+  listPidsImpl = null,
+  cooldownMs = SPAWN_COOLDOWN_MS,
+  waitExistingMs = 8000
+} = {}) {
+  const t0 = now();
+
+  // ① 端口已在听 → 复用，绝不再起
   if ((await probe(3000)) || (await probe(3001))) {
     return { ok: true, started: false, reused: true, waited: 0, ports };
   }
+  // ② 已经有 SnowLuma 进程（可能在启动中）→ 只等端口，绝不叠加第二份
+  let existing = [];
+  try { existing = await (listPidsImpl || listGatewayPids)({}); } catch { existing = []; }
+  if (Array.isArray(existing) && existing.length) {
+    const deadline = now() + Math.min(timeoutMs, waitExistingMs);
+    while (now() < deadline) {
+      if ((await probe(3000)) || (await probe(3001))) {
+        return { ok: true, started: false, reused: true, waited: now() - t0, ports, existing: existing.length };
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return {
+      ok: false, started: false, reused: false, existing: existing.length,
+      error: `已有 ${existing.length} 个 SnowLuma 进程在跑但端口没起来（${existing.join(',')}），为防重复不再启动第二份`
+    };
+  }
+
   if (!dir) return { ok: false, started: false, error: '找不到 SnowLuma 目录（设 QQB_SNOWLUMA_DIR）' };
   const nodeExe = path.join(dir, 'node.exe');
   const entry = path.join(dir, 'index.mjs');
   if (!fs.existsSync(nodeExe)) return { ok: false, started: false, error: '缺少 node.exe：' + dir };
-  const t0 = now();
-  // 关键（0.4.142）：端口没通时先清理残留 —— SnowLuma 不做单例，
-  // 不清就会一套套往上堆（实测堆到 8 套 / 16 个进程 / 1 GB）。
-  try {
-    const stale = await listGatewayPids(opts);
-    if (stale.length) {
-      log(`[gateway] 发现 ${stale.length} 个残留 SnowLuma 进程，先清理（${stale.join(',')}）`);
-      await stopGateway({ ...opts, listImpl: async () => stale });
-    }
-  } catch { /* 清理失败不阻塞启动 */ }
-  // 关键（0.4.134）：**不能**用 stdio:'ignore' —— 实测 SnowLuma 起来几秒后会静默退出，
-  // 因为它需要一个真实的 stdout 句柄。这里把输出重定向到 logs/gateway.log（追加），
-  // 既保住句柄，也留下它自己的日志。
+  if (!fs.existsSync(entry)) return { ok: false, started: false, error: '缺少 index.mjs：' + dir };
+
+  // ③ 冷却窗口：本进程刚试过就等一会儿（现场堆到 13 套就是缺这一层）
+  const tNow = now();
+  if (cooldownMs > 0 && lastSpawnAt && tNow - lastSpawnAt < cooldownMs) {
+    return {
+      ok: false, started: false, throttled: true,
+      error: `刚启动过（${Math.round((tNow - lastSpawnAt) / 1000)} 秒前），冷却 ${Math.round(cooldownMs / 1000)} 秒内不再重复拉起`
+    };
+  }
+
+  // ④ 端口没通又没有进程 → 此时才是真的需要拉起（日志句柄不能是 ignore）
   const logFile = gatewayLogPath(dir);
   let outFd = null;
   try {
@@ -90,6 +135,7 @@ export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, pr
     outFd = fs.openSync(logFile, 'a');
   } catch { outFd = null; }
 
+  lastSpawnAt = tNow;
   const child = spawnImpl(nodeExe, ['index.mjs'], {
     cwd: dir,
     detached: true,
@@ -97,17 +143,20 @@ export async function startViaSpawn({ dir = snowlumaDir(), timeoutMs = 12000, pr
     windowsHide: true
   });
   child.unref();
-  // 父进程这侧的句柄可以关了：子进程已持有自己的副本
   if (outFd !== null) { try { fs.closeSync(outFd); } catch { /* ignore */ } }
+
   let waited = 0;
   while (waited < timeoutMs) {
-    for (const p of ports) {
-      if (await probe(p)) return { ok: true, started: true, waited: now() - t0, pid: child.pid, via: 'spawn', error: '' };
+    for (const pt of ports) {
+      if (await probe(pt)) return { ok: true, started: true, waited: now() - t0, pid: child.pid, via: 'spawn', error: '' };
     }
     await new Promise((r) => setTimeout(r, 800));
     waited = now() - t0;
   }
-  return { ok: false, started: true, waited: now() - t0, pid: child.pid, via: 'spawn', error: `已拉起（pid ${child.pid}），但 ${Math.round(timeoutMs / 1000)} 秒内端口没起来` };
+  return {
+    ok: false, started: true, waited: now() - t0, pid: child.pid, via: 'spawn',
+    error: `已拉起（pid ${child.pid}），但 ${Math.round(timeoutMs / 1000)} 秒内端口没起来`
+  };
 }
 
 /** 计划任务在不在（windows only） */

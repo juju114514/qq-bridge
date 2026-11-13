@@ -166,33 +166,82 @@ await check('gatewayLogPath：落在 <dir>/logs/gateway.log', async () => {
   assert.equal(m.gatewayLogPath(pathMod.join('x', 'snowluma')), pathMod.join('x', 'snowluma', 'logs', 'gateway.log'));
 });
 
-await check('startViaSpawn：spawn 时 stdout/stderr 指向日志文件，不是 ignore', async () => {
+await check('startViaSpawn：端口已在听 → 复用，不再 spawn（防重复第一层）', async () => {
+  let spawned = 0;
+  const r = await m.startViaSpawn({
+    dir: 'x',
+    probe: async () => true,
+    spawnImpl: () => { spawned += 1; return { pid: 1, unref() {} }; }
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.started, false);
+  assert.equal(r.reused, true);
+  assert.equal(spawned, 0, '端口在听时绝不能 spawn');
+});
+
+await check('startViaSpawn：已有 SnowLuma 进程 → 等端口，绝不起第二份（防重复第二层）', async () => {
+  let spawned = 0;
+  const r = await m.startViaSpawn({
+    dir: 'x',
+    probe: async () => false,
+    listPidsImpl: async () => [111, 222],
+    waitExistingMs: 60,
+    timeoutMs: 200,
+    cooldownMs: 0,
+    spawnImpl: () => { spawned += 1; return { pid: 1, unref() {} }; }
+  });
+  assert.equal(spawned, 0, '已有进程时不能再 spawn');
+  assert.equal(r.started, false);
+  assert.equal(r.existing, 2);
+  assert.match(r.error, /已有 2 个 SnowLuma 进程/);
+});
+
+await check('startViaSpawn：冷却窗口内不重复拉起（防重复第三层）', async () => {
   const os = await import('node:os');
   const fsp = await import('node:fs');
   const nodePath = await import('node:path');
-  const dir = fsp.mkdtempSync(nodePath.join(os.tmpdir(), 'qqb-gw-'));
+  const dir = fsp.mkdtempSync(nodePath.join(os.tmpdir(), 'qqb-gw2-'));
+  fsp.writeFileSync(nodePath.join(dir, 'node.exe'), '');
+  fsp.writeFileSync(nodePath.join(dir, 'index.mjs'), '');
+  let spawned = 0;
+  const spawnImpl = () => { spawned += 1; return { pid: 9, unref() {} }; };
+  // 第一次：真的拉起（端口一直不通，超时返回）
+  await m.startViaSpawn({ dir, probe: async () => false, listPidsImpl: async () => [], cooldownMs: 60000, timeoutMs: 5, spawnImpl });
+  // 第二次：应被冷却挡住
+  const r2 = await m.startViaSpawn({ dir, probe: async () => false, listPidsImpl: async () => [], cooldownMs: 60000, timeoutMs: 5, spawnImpl });
+  fsp.rmSync(dir, { recursive: true, force: true });
+  assert.equal(spawned, 1, '冷却期内只能 spawn 一次');
+  assert.equal(r2.throttled, true);
+  assert.match(r2.error, /冷却/);
+});
+
+await check('startViaSpawn：端口空且无进程 → spawn 且 stdio 指向日志文件', async () => {
+  const os = await import('node:os');
+  const fsp = await import('node:fs');
+  const nodePath = await import('node:path');
+  const dir = fsp.mkdtempSync(nodePath.join(os.tmpdir(), 'qqb-gw3-'));
   fsp.writeFileSync(nodePath.join(dir, 'node.exe'), '');
   fsp.writeFileSync(nodePath.join(dir, 'index.mjs'), '');
   let seen = null;
+  let up = false;                       // 拉起前端口不通，拉起后通
   const r = await m.startViaSpawn({
     dir,
-    probe: async () => true,
-    spawnImpl: (exe, args, opts) => { seen = opts; return { pid: 1234, unref() {} }; }
+    probe: async () => up,
+    listPidsImpl: async () => [],
+    cooldownMs: 0,
+    timeoutMs: 200,
+    spawnImpl: (exe, args, o) => { seen = o; up = true; return { pid: 1234, unref() {} }; }
   });
   fsp.rmSync(dir, { recursive: true, force: true });
   assert.equal(r.ok, true);
-  assert.ok(seen, '没调到 spawn');
-  assert.notEqual(seen.stdio, 'ignore', 'stdio 不能再是 ignore（会让 SnowLuma 起来后自杀）');
-  assert.ok(Array.isArray(seen.stdio), 'stdio 应该是数组');
-  assert.equal(seen.detached, true, '必须 detached（不随桥接退出）');
+  assert.equal(r.started, true);
+  assert.ok(seen, '这个用例要真的调到 spawn');
+  assert.notEqual(seen.stdio, 'ignore', 'stdio 不能是 ignore（SnowLuma 需要真实句柄）');
+  assert.ok(Array.isArray(seen.stdio));
+  assert.equal(seen.detached, true);
   assert.equal(seen.windowsHide, true);
 });
 
-console.log('');
-if (failures === 0) console.log('  全部通过');
-else { console.error(`  ${failures} 项失败`); process.exitCode = 1; }
-
-// 0.5.63：端口已在听时，startGateway 必须复用而不是再拉一份
 await check('startGateway：3000/3001 已在听 → 复用，不启动', async () => {
   let started = 0;
   const probe = async (port) => (port === 3000 || port === 3001);
