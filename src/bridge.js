@@ -2603,6 +2603,46 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
     }
   }
 
+  /**
+   * 一次性问 DSH 模型拿纯文本（0.5.64）。
+   * 复用黑话学习那套「安全 preset 会话 → prompt → 等回复」，不复用 QQ 会话，
+   * 也就不受人格/群上下文影响。主要给「人格卡联网生成」用。
+   */
+  /**
+   * 一次性问 DSH 模型拿纯文本（0.5.64）。
+   * 每次**新建一个独立会话**（独立工作区 state/role-draft-agent），用完即弃：
+   *   · 不复用 QQ 会话，不受人格/群上下文影响
+   *   · 不复用黑话学习会话 —— 那个会话可能处于异常态（实测 turn 直接 error）
+   */
+  async function askDshOnce(promptText, { timeoutMs = 120000 } = {}) {
+    if (!dshReady) throw new Error('DSH 还没就绪');
+    const preset = resolvePresetName(cfg.agentPreset, { strict: true });
+    if (!preset) throw new Error('没有可用的安全 preset，拒绝创建会话');
+    const dir = path.join(STATE_DIR, 'role-draft-agent');
+    fs.mkdirSync(dir, { recursive: true });
+    const wsValue = unwrap(await api.workspace.create({ path: dir }), 'role-draft workspace.create');
+    try { await api.workspace.rename({ workspaceId: wsValue.workspace.workspaceId, title: '人格卡草稿' }); } catch {}
+    const created = unwrap(await api.sessions.create({ workspaceId: wsValue.workspace.workspaceId, agentPreset: preset }), 'role-draft session.create');
+    const sessionId = created.sessionId;
+    learnerSessions.add(sessionId);
+    api.events.follow(sessionId);
+    try {
+      await ensureChatModel(sessionId);
+      const accepted = await api.sessions.prompt({
+        sessionId, mode: 'queue', content: [{ type: 'text', text: String(promptText ?? '') }]
+      });
+      if (!accepted?.result?.ok) {
+        const e = accepted?.result?.error;
+        throw new Error(`DSH 拒绝排队：${e?.code || '?'} ${e?.message || ''}`.trim());
+      }
+      const output = await waitLearnerTurn(sessionId, timeoutMs);
+      return String(output ?? '').trim();
+    } finally {
+      learnerSessions.delete(sessionId);
+      try { unwrap(await api.sessions.cancel({ sessionId }), 'role-draft cancel'); } catch {}
+    }
+  }
+
   async function runSlangResearch(candidates) {
     if (!candidates || !candidates.length) return;
     if (cfg.slang?.enabled === false) return;
@@ -3931,7 +3971,18 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             roleSummaries, readRoleContent, writeRoleContent,
             roleName, roleEntry, readRoleRaw,
             createRoleCard,
-        draftRoleCard, renameRoleCard, deleteRoleCard,
+        // 人格卡草稿：默认走本机 Ollama（可用）。想用 DSH 的模型就设 role.draftProvider="dsh"。
+        // ⚠️ DSH 这条路目前受限于预设：qq-chat 预设不在 QQ 会话里跑，turn 会直接 error，
+        //    等有了「无工具」的草稿预设再切过来（见 docs/guides/OUTSOURCE.md 末尾的已知问题）。
+        draftRoleCard: (opts) => {
+          const useDsh = String(cfg?.role?.draftProvider || 'local').toLowerCase() === 'dsh';
+          if (!useDsh) return draftRoleCard(opts);
+          return draftRoleCard({
+            ...opts,
+            modelProbe: async () => ({ ok: !!dshReady, model: String(cfg.dsh?.model || 'deepseek') + '（DSH）' }),
+            modelAsk: ({ prompt }) => askDshOnce(prompt)
+          });
+        }, renameRoleCard, deleteRoleCard,
             roleWarnings, roleCharStats, roleSectionReport,
             validateRoleName,
             resolveExistingRole, validateRoleContent, sanitizeRoleName, roleFilePath,

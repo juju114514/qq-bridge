@@ -2,6 +2,22 @@
 
 只记**用户能感知的变化**与**踩过的坑**。按日期倒序。
 
+## 2026-11-13 — 0.5.64 追加：人格卡「联网生成」
+
+控制台「人格与角色」可以只填名字 + 几个偏好词，让 AI 联网搜资料再写一张卡片草稿：
+
+| 环节 | 实现 |
+| --- | --- |
+| 搜索 | 复用 `web-search.js`（bing / deepseek 两个 provider，失败降级） |
+| 生成 | 默认本机 Ollama（`qwen2.5vl:3b-cpu` 实测 57 秒）；没有模型退化成结构化模板 + 资料摘录 |
+| 核查 | 末尾强制补「## 参考资料」（标题 + 链接） |
+| 开关 | `role.draftProvider: "dsh"` 可切到 DSH 模型（当前受限，见 README 已知限制） |
+
+接口：`POST /api/roles/draft { name, hints, useAi? }`。
+
+踩坑记录：新模块忘了注入 `scripts/audit-bridge-harness.mjs`，6 个 bridge 测试一起变红；
+新增路由没跑 `gen-route-index --write`，`check-route-index-fresh` 失败。
+
 ## 2026-11-13 — 0.5.64：抖音链接三件套 + 按需小节串味修复
 
 群里贴抖音链接的处理从「只认两种 URL」扩到「七种形态 + 要视频才下载 + 真把视频发出来」。
