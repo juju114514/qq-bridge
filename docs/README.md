@@ -47,6 +47,7 @@
 | [guides/DSH-UPGRADE-ADAPTATION.md](guides/DSH-UPGRADE-ADAPTATION.md) | **DSH 升级后的适配清单**：快照对比 → 六步检查（插件加载/工具面/控制台/预设）→ 验收三步 | ✅ 2026-11-01 |
 | [guides/OFFICIAL-TROUBLESHOOTING.md](guides/OFFICIAL-TROUBLESHOOTING.md) | **官方通道报错调整方案**：8 类实测报错（两层白名单 / not-friend / 被动窗口 / 鉴权 / 去重）逐条给办法 | ✅ 2026-11-01 |
 | [guides/SWITCH-FROM-UPSTREAM.md](guides/SWITCH-FROM-UPSTREAM.md) | **从上游切到本 fork**：三条路径（脚本/手工/并行装）、受保护清单、三个坑（配置键/任务路径/插件重挂）、回退 | ✅ 2026-11-01 |
+| [guides/OUTSOURCE.md](guides/OUTSOURCE.md) | **把活外包给别的 AI**：能外包/不能外包的边界、交接巡检命令（`tools/handoff-check.ps1`）、投喂模板、结果怎么验 |
 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 控制台离线预览（`npm run preview:console`）与离线浏览器回归（`npm run test:console-ui`）怎么用 | ✅ 2026 整理时自 `scripts/` 移入 |
 | [guides/LAUNCHER.md](guides/LAUNCHER.md) | **启动与守护**：三层链条（`start-bridge.ps1` → `bridge-supervisor.ps1` → `node src\bridge.js`）、退出码契约（0/1/2/3/4/5）、运行态文件、重启退避、登录自启的两种实现（计划任务 / 启动文件夹 `.vbs`）、与旧看门狗共存的禁忌 | ✅ 2026-10-27 |
 | [guides/OFFICIAL-VS-BRIDGE.md](guides/OFFICIAL-VS-BRIDGE.md) | **官方插件 vs 本仓库**：QQ 官方 `@tencent-connect/dsh-qqbot` 三步接入的实测信息与能力边界；诚实对照两条路（账号风险 / 群消息可见性 / 主动插话 / 表情包 / 记忆），附决策树 | ✅ 2026-10-31 |

@@ -2006,6 +2006,11 @@ button:active:not(:disabled) {
           </div>
           <label>人格名（中文 / 字母 / 数字 / 横线）</label>
           <input type="text" id="newRoleName" placeholder="如：猫娘">
+          <div class="row" style="margin-top:6px;gap:8px;align-items:center">
+            <input type="text" id="roleDraftHints" style="flex:1;min-width:200px" placeholder="偏好 / 关键词（如：话少、毒舌、喜欢观察别人）">
+            <button id="roleDraftBtn">AI 联网生成</button>
+            <span class="meta" id="roleDraftMsg">联网搜资料 → 本机模型写草稿（约 1 分钟）；没有模型就用模板</span>
+          </div>
           <label>人格提示词（Markdown）</label>
           <textarea id="newRoleContent" class="role-editor" placeholder="- 性格：…&#10;- 说话风格：…&#10;- 背景设定：…"></textarea>
           <div class="row" style="margin-top:8px">
@@ -3547,6 +3552,34 @@ function setRoleMsg(text, ok) {
   el.className = ok === undefined ? 'meta' : (ok ? 'meta ok' : 'meta err');
 }
 
+// 联网生成人格卡草稿（0.5.64）：名字 + 偏好 → /api/roles/draft → 填进编辑器
+async function roleDraft() {
+  const nameEl = document.getElementById('newRoleName');
+  const hintsEl = document.getElementById('roleDraftHints');
+  const msg = document.getElementById('roleDraftMsg');
+  const name = (nameEl.value || '').trim();
+  const hints = (hintsEl.value || '').trim();
+  if (!name) { msg.className = 'meta err'; msg.textContent = '先填人格名'; return; }
+  msg.className = 'meta';
+  msg.textContent = '联网搜索 + 生成中…（本机模型约 1 分钟）';
+  const btn = document.getElementById('roleDraftBtn');
+  btn.disabled = true;
+  try {
+    const r = await api('/api/roles/draft', 'POST', { name, hints });
+    if (!r.ok) { msg.className = 'meta err'; msg.textContent = r.error || '生成失败'; return; }
+    document.getElementById('newRoleContent').value = r.markdown || '';
+    const src = (r.sources || []).length;
+    msg.className = 'meta ok';
+    msg.textContent = (r.ai ? `已用 ${r.aiModel} 生成` : '已用模板生成（本机没有可用模型）')
+      + `，参考 ${src} 条资料` + (r.warning ? `；${r.warning}` : '') + '。可继续手改。';
+  } catch (e) {
+    msg.className = 'meta err';
+    msg.textContent = '生成失败：' + (e && e.message ? e.message : e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function renderRoleEditor() {
   const editing = roleEditorState.mode === 'edit';
   document.getElementById('roleEditorMeta').textContent = editing
@@ -4596,6 +4629,7 @@ document.getElementById('roleSet').addEventListener('click', async () => {
   if (r.ok) refreshRoles(); else alert(r.error || '设置失败');
 });
 document.getElementById('roleClear').addEventListener('click', async () => { await api('/api/role', 'POST', { role: null }); refreshRoles(); refresh(); });
+document.getElementById('roleDraftBtn').addEventListener('click', roleDraft);
 document.getElementById('roleCreate').addEventListener('click', async () => {
   const name = document.getElementById('newRoleName').value.trim();
   const content = document.getElementById('newRoleContent').value.trim();

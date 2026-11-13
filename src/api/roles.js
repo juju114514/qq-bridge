@@ -24,6 +24,7 @@ export function createRolesHandler(deps) {
     roleName,
     roleEntry,
     createRoleCard,
+    draftRoleCard,
     renameRoleCard,
     deleteRoleCard,
     roleWarnings,
@@ -51,6 +52,26 @@ export function createRolesHandler(deps) {
     const method = req.method;
 
     // ── POST /api/role —— 切换/清除当前人格 ─────────────────────────────────
+    // ── POST /api/roles/draft —— 联网生成人格卡草稿（0.5.64） ──
+    if (method === 'POST' && pathname === '/api/roles/draft') {
+      const body = await readBody();
+      if (typeof draftRoleCard !== 'function') return fail(new Error('本版本没有联网草稿模块（需要 0.5.64+）'));
+      try {
+        const r = await draftRoleCard({
+          name: body.name,
+          hints: body.hints,
+          root: ROOT,
+          useAi: body.useAi !== false,
+          logger: log
+        });
+        if (!r.ok) return fail(new Error(r.error));
+        sendJson(r);
+      } catch (e) {
+        fail(new Error('生成草稿失败：' + String(e?.message ?? e).slice(0, 120)), 500);
+      }
+      return true;
+    }
+
     if (method === 'POST' && pathname === '/api/role') {
       const body = await readBody();
       const rs = readRoleState();

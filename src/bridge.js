@@ -153,6 +153,7 @@ import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } fro
 import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
+import { draftRoleCard } from './role-draft.js';
 import { createSlangHandler } from './api/slang.js';
 import { createStickersHandler } from './api/stickers.js';
 import { createConfigLoader } from './config.js';
@@ -3929,7 +3930,8 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             readRoleState, writeRoleState,
             roleSummaries, readRoleContent, writeRoleContent,
             roleName, roleEntry, readRoleRaw,
-            createRoleCard, renameRoleCard, deleteRoleCard,
+            createRoleCard,
+        draftRoleCard, renameRoleCard, deleteRoleCard,
             roleWarnings, roleCharStats, roleSectionReport,
             validateRoleName,
             resolveExistingRole, validateRoleContent, sanitizeRoleName, roleFilePath,
