@@ -36,9 +36,23 @@ let cached = null;
 /**
  * @returns {{name:string, exe:string}|null}
  */
+/**
+ * 浏览器优先级：默认 Chrome（2026-11-13 用户要求「用谷歌浏览器」），
+ * 可用环境变量 QQB_BROWSER=edge|chrome 或 config.browser.prefer 覆盖。
+ * 注意：只是**排序**，机器上没有 Chrome 时仍会回落到 Edge —— 不会因为偏好而失败。
+ */
+function preferOrder() {
+  const raw = String(process.env.QQB_BROWSER || 'chrome').toLowerCase();
+  const first = raw === 'edge' ? 'edge' : (raw === 'chrome' ? 'chrome' : '');
+  if (!first) return CANDIDATES;
+  const hit = CANDIDATES.filter((g) => g.name === first);
+  const rest = CANDIDATES.filter((g) => g.name !== first);
+  return [...hit, ...rest];
+}
+
 export function findBrowser() {
   if (cached !== null) return cached || null;
-  for (const group of CANDIDATES) {
+  for (const group of preferOrder()) {
     for (const p of group.paths) {
       try {
         if (p && fs.existsSync(p) && fs.statSync(p).isFile()) {

@@ -2108,6 +2108,18 @@ button:active:not(:disabled) {
         </div>
       </details>
 
+      <details class="settings-group" id="ddGroup">
+        <summary>示例对话草稿（AI 生成 → 你确认 / 修改 → 应用）</summary>
+        <div class="settings-content">
+          <div class="meta" style="margin-top:8px">草稿不会自动进卡片：改完点「应用到卡片」才写进 roles/&lt;名字&gt;.md（写完下一轮就生效）。</div>
+          <div id="ddList" style="margin-top:10px"></div>
+          <div class="row" style="margin-top:10px;gap:10px;align-items:center">
+            <button id="ddReload">刷新</button>
+            <span class="meta" id="ddMsg"></span>
+          </div>
+        </div>
+      </details>
+
       <details class="settings-group">
         <summary>切换当前启用的人格</summary>
         <div class="settings-content">
@@ -3758,6 +3770,80 @@ document.getElementById('ppAdultAdd').addEventListener('click', () => ppAdult('c
 document.getElementById('ppAdultRemove').addEventListener('click', () => ppAdult('revoke'));
 // 进页面就读一次
 setTimeout(() => { try { ppLoad(); } catch {} }, 300);
+
+// ── 示例对话草稿箱 ───────────────────────────────────────────────────────
+function ddMsg(text, ok) {
+  const el = document.getElementById('ddMsg');
+  el.className = ok === undefined ? 'meta' : (ok ? 'meta ok' : 'meta err');
+  el.textContent = text || '';
+}
+
+async function ddLoad() {
+  const box = document.getElementById('ddList');
+  try {
+    const r = await api('/api/dialogue-drafts');
+    if (!r.ok) { ddMsg(r.error || '读取失败', false); return; }
+    box.replaceChildren();
+    if (!r.items.length) { ddMsg('（草稿箱是空的）'); return; }
+    for (const d of r.items) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'border:1px solid #2a2340;border-radius:10px;padding:10px;margin-bottom:10px';
+
+      const head = document.createElement('div');
+      head.className = 'meta';
+      head.textContent = `${d.card || '(未指定卡片)'} · ${d.pairs} 组 · ${d.level || '?'} · ${d.source || ''} · ${String(d.createdAt || '').slice(0, 19).replace('T', ' ')}`;
+      wrap.appendChild(head);
+
+      const ta = document.createElement('textarea');
+      ta.value = d.text || '';
+      ta.rows = Math.min(12, Math.max(6, String(d.text || '').split('\n').length + 1));
+      ta.style.cssText = 'width:100%;margin-top:8px;font-family:monospace';
+      wrap.appendChild(ta);
+
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.cssText = 'margin-top:8px;gap:8px;align-items:center';
+
+      const save = document.createElement('button');
+      save.textContent = '保存修改';
+      save.onclick = async () => {
+        const res = await api('/api/dialogue-drafts/update', 'POST', { id: d.id, text: ta.value });
+        if (!res.ok) { ddMsg(res.error || '保存失败', false); return; }
+        ddMsg(`已保存 ${res.draft.pairs} 组`, true);
+      };
+
+      const apply = document.createElement('button');
+      apply.textContent = '应用到卡片';
+      apply.onclick = async () => {
+        // 先把编辑框里的内容存回去，再应用 —— 避免"改了没保存却点了应用"
+        const up = await api('/api/dialogue-drafts/update', 'POST', { id: d.id, text: ta.value });
+        if (!up.ok) { ddMsg(up.error || '保存失败', false); return; }
+        const res = await api('/api/dialogue-drafts/apply', 'POST', { id: d.id });
+        if (!res.ok) { ddMsg(res.error || '应用失败', false); return; }
+        ddMsg(`已写进 ${res.file}（${res.pairs} 组）`, true);
+        ddLoad();
+      };
+
+      const drop = document.createElement('button');
+      drop.textContent = '丢弃';
+      drop.className = 'danger';
+      drop.onclick = async () => {
+        const res = await api('/api/dialogue-drafts/discard', 'POST', { id: d.id });
+        if (!res.ok) { ddMsg(res.error || '丢弃失败', false); return; }
+        ddMsg('已丢弃', true);
+        ddLoad();
+      };
+
+      row.append(save, apply, drop);
+      wrap.appendChild(row);
+      box.appendChild(wrap);
+    }
+    ddMsg(`共 ${r.items.length} 条草稿`);
+  } catch (e) { ddMsg('读取失败：' + (e && e.message ? e.message : e), false); }
+}
+
+document.getElementById('ddReload').addEventListener('click', ddLoad);
+setTimeout(() => { try { ddLoad(); } catch {} }, 600);
 
 // ── 人格管理 ────────────────────────────────────────────────────────────────
 // 人格提示词 = roles/<名称>.md，桥接每条消息注入，保存即生效。

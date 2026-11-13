@@ -24,6 +24,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { addDraft } from '../src/role-dialogue-write.js';
 
 const argv = process.argv.slice(2);
 const arg = (k, d = '') => { const i = argv.indexOf(k); return i >= 0 ? (argv[i + 1] ?? d) : d; };
@@ -147,6 +148,15 @@ if (!generated) { console.error('✗ 没解析出任何「用户：/我：」行
 console.log('── 生成的示例对话 ───────────────────────────────');
 console.log(generated);
 console.log('───────────────────────────────────────────────');
+
+if (has('--queue')) {
+  // 只进草稿箱：控制台「示例对话草稿」里人看、人改、人点「应用」才写卡
+  const stateDir = path.resolve(process.cwd(), 'state');
+  const draft = addDraft(stateDir, { card: path.basename(file), level, text: generated, source: 'grok' });
+  console.log(`✓ 已进草稿箱：${draft.id}（${draft.pairs} 组）`);
+  console.log('  打开控制台 → 人格与角色 → 示例对话草稿 → 改完点「应用到卡片」');
+  process.exit(0);
+}
 
 if (has('--apply')) {
   applyToCard(generated);
