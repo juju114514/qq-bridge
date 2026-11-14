@@ -1882,6 +1882,8 @@ button:active:not(:disabled) {
       <div class="meta">数据来自 <code>/api/overview</code>：8 项指标一次取回。每格标注来源与时间；取不到时显示「暂不可用」，不会用 0 冒充。</div>
     </div>
     <div class="row" style="gap:8px;align-items:center">
+      <button class="btn" id="gwStopBtn" type="button" title="停掉所有 SnowLuma 进程（不再有任何自动重启）">停止网关</button>
+      <button class="btn" id="gwStartBtn" type="button" title="启动 SnowLuma（端口不通用它拉起）">启动网关</button>
       <button class="btn" id="gwRestartBtn" type="button" title="先停掉所有 SnowLuma 进程，等端口释放，再启动（新登录的 QQ 号不识别时用）">完全重启网关</button>
       <span class="meta" id="gwRestartMsg"></span>
       <button class="btn" id="dashboardRefresh" type="button">刷新</button>
@@ -3889,6 +3891,39 @@ document.getElementById('pvSearch').addEventListener('click', pvSearch);
 setTimeout(() => { try { pvRefresh(); } catch {} }, 700);
 
 
+// 一键停网关 / 一键起网关（配合「完全重启」，状态都写在同一个 span 里）
+function gwMsg(text, ok) {
+  const el = document.getElementById('gwRestartMsg');
+  el.className = ok === undefined ? 'meta' : (ok ? 'meta ok' : 'meta err');
+  el.textContent = text || '';
+}
+
+async function gwStop(btn) {
+  if (!confirm('确定停止网关？\n\n会杀掉所有 SnowLuma 进程，QQ 会掉线；启动要手动点「启动网关」。')) return;
+  if (btn) btn.disabled = true;
+  gwMsg('停止中…');
+  try {
+    const r = await api('/api/gateway/control/stop', 'POST', {});
+    const n = (r.stopped || []).length;
+    const left = (r.remaining || []).length;
+    gwMsg(left ? `停了 ${n} 个，仍有 ${left} 个没退出` : `已停止（停 ${n} 个）`, !left);
+    if (!left && typeof refreshDashboard === 'function') { try { refreshDashboard(); } catch {} }
+  } catch (e) { gwMsg('停止失败：' + (e && e.message ? e.message : e), false); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function gwStart(btn) {
+  if (btn) btn.disabled = true;
+  gwMsg('启动中…');
+  try {
+    const r = await api('/api/gateway/control/start', 'POST', {});
+    if (!r.ok) { gwMsg('启动失败：' + (r.error || '未知'), false); return; }
+    gwMsg(r.started ? `已拉起（pid ${r.pid || '?'}）` : '本来就在跑', true);
+    await gwWaitOneBot(90, document.getElementById('gwRestartMsg'));
+  } catch (e) { gwMsg('启动失败：' + (e && e.message ? e.message : e), false); }
+  finally { if (btn) btn.disabled = false; }
+}
+
 // 网关完全重启（先停后起）：新登录的 QQ 不识别时用
 async function gwRestart() {
   const msg = document.getElementById('gwRestartMsg');
@@ -3923,6 +3958,10 @@ async function gwRestart() {
 }
 const gwBtnEl = document.getElementById('gwRestartBtn');
 if (gwBtnEl) gwBtnEl.addEventListener('click', gwRestart);
+const gwStopEl = document.getElementById('gwStopBtn');
+if (gwStopEl) gwStopEl.addEventListener('click', () => gwStop(gwStopEl));
+const gwStartEl = document.getElementById('gwStartBtn');
+if (gwStartEl) gwStartEl.addEventListener('click', () => gwStart(gwStartEl));
 
 // 等 OneBot 端口起来（重启后账号已加载的情况会自动变绿）
 async function gwWaitOneBot(maxSeconds, msgEl) {
