@@ -154,7 +154,11 @@ import { createStatusHandler } from './api/status.js';
 import { createImagesHandler } from './api/images.js';
 import { createRolesHandler } from './api/roles.js';
 import { draftRoleCard } from './role-draft.js';
-import { resolvePolicy as resolvePersonaPolicy, policyBlock as personaPolicyBlock, readAdultList as readPersonaAdultList, isSafetyWordText, resolveSafetyWords, disablePolicyForGroup, blockTextFor, safetyGate, withPause, desiredRoleFor } from './persona-policy.js';
+import { resolvePolicy, policyBlock, readAdultList, isSafetyWordText, resolveSafetyWords, disablePolicyForGroup, blockTextFor, safetyGate, withPause, desiredRoleFor } from './persona-policy.js';
+// 别名用 const 而不是 import as：audit-bridge-harness 的 VM 只注入原名，`import as` 会 undefined
+const resolvePersonaPolicy = resolvePolicy;
+const personaPolicyBlock = policyBlock;
+const readPersonaAdultList = readAdultList;
 import { createImageHandler } from './api/image-route.js';
 import { createPersonaPolicyHandler } from './api/persona-policy-route.js';
 import { createDialogueDraftsHandler } from './api/dialogue-drafts-route.js';
@@ -3975,12 +3979,7 @@ try { board = createBoardBridge({ getConfig: () => cfg, log }); } catch (e) { lo
             roleName,
             socialV2BusySnapshot,
           });
-          const sendSegments = async (key, segs) => { const [kind, id] = String(key).split(':'); return onebotSend(kind, id, segs); };
-  const pixivCommand = createPixivCommand({
-    sendSegments, log, stateDir: STATE_DIR, getCfg: () => cfg, resolvePolicy: resolvePersonaPolicy
-  });
-
-  const handlePixiv = createPixivHandler({
+          const handlePixiv = createPixivHandler({
     sendJson, readBody, log, fs, ROOT, STATE_DIR,
     getCfg: () => cfg
   });
@@ -9004,6 +9003,11 @@ function scheduleWakeV2(key, reason) {
   // QQ 消息 → DSH prompt
   // 公开命令 + 首次人设引导：已拆到 src/incoming-commands.js（惰性创建，避免 TDZ）
   let incomingCommandsInstance = null;
+  const sendSegments = async (key, segs) => { const [kind, id] = String(key).split(':'); return onebotSend(kind, id, segs); };
+  const pixivCommand = createPixivCommand({
+    sendSegments, log, stateDir: STATE_DIR, getCfg: () => cfg, resolvePolicy: resolvePersonaPolicy
+  });
+
   const getIncomingCommands = () => (incomingCommandsInstance ??= createIncomingCommands({
     pixivCommand,
     log, fs, path,

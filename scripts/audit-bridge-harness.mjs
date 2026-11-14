@@ -39,6 +39,8 @@ import * as douyinPending from '../src/douyin-pending.js';
 import * as videoSend from '../src/video-send.js';
 import * as roleDraft from '../src/role-draft.js';
 import * as personaPolicy from '../src/persona-policy.js';
+import * as pixivCommand from '../src/pixiv-command.js';
+import * as pixivWeb from '../src/pixiv-web.js';
 // 控制台新拆的模块：bridge 在 startConsoleServer 里**立即**调用工厂，必须注入。
 import { createConsoleDshHandlers } from '../src/api/console-dsh.js';
 import { createSocialV2VideoHandlers } from '../src/api/socialV2-video.js';
@@ -272,7 +274,7 @@ let source = fs.readFileSync(path.join(root, 'src/bridge.js'), 'utf8');
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
     ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...bootReportMod, ...healthStateMod, ...stickerPending, ...privateAccess,
-  ...douyinResolve, ...douyinLink, ...douyinPending, ...videoSend, ...roleDraft, ...personaPolicy, ...quietHours, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
+  ...douyinResolve, ...douyinLink, ...douyinPending, ...videoSend, ...roleDraft, ...personaPolicy, ...pixivCommand, ...pixivWeb, ...quietHours, createConsoleDshHandlers, createSocialV2VideoHandlers, createIncomingCommands,  ...stickerCurator, ...configModule, ...officialTransport, ...convKey, ...stateSchema,
   createIncomingStatusCommands, buildSelfCheckReport, createGroupMembersHandler, createSlangSubmitHandler, createLearnerFrameHandler, createMuxToolTracker, createDecisionTrace, createPeopleNoteHandler, createSessionResetter, createIncomingGuards,
     decideNoAction, finalizeTurn, decideReplyAction, decideWakeReminder,
     createRuntime,
