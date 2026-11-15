@@ -1836,6 +1836,7 @@ button:active:not(:disabled) {
         <button data-view="role-map" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>角色分配</button>
         <button data-view="persona" class="nav-item"><span class="nav-icon" aria-hidden="true">◉</span>人格与角色</button>
         <button data-view="pixiv" class="nav-item"><span class="nav-icon" aria-hidden="true">🖼</span>Pixiv 取图</button>
+        <button data-view="image" class="nav-item"><span class="nav-icon" aria-hidden="true">✎</span>生图</button>
         <button data-view="song" class="nav-item"><span class="nav-icon" aria-hidden="true">♪</span>点歌</button>
 
         <div class="nav-label">记忆</div>
@@ -2031,23 +2032,6 @@ button:active:not(:disabled) {
         </div>
       </details>
 
-      <details class="settings-group">
-        <summary>生图（ComfyUI）</summary>
-        <div class="settings-content">
-          <div class="meta" style="margin-top:8px">需要本机先启动 ComfyUI（默认 http://127.0.0.1:8188），配置在 config.json 的 image 段。</div>
-          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
-            <input type="text" id="imgGenPrompt" style="flex:1;min-width:240px" placeholder="提示词（如：一只戴眼镜的鲸鱼，像素风）">
-            <button id="imgGenBtn">生成</button>
-            <span class="meta" id="imgGenMsg"></span>
-          </div>
-          <div class="row" style="margin-top:6px;gap:8px;align-items:center">
-            <input type="text" id="imgGenNeg" style="flex:1;min-width:200px" placeholder="反向提示词（可空）">
-            <input type="number" id="imgGenW" value="768" style="width:90px" title="宽">
-            <input type="number" id="imgGenH" value="768" style="width:90px" title="高">
-          </div>
-          <div id="imgGenOut" style="margin-top:10px"></div>
-        </div>
-      </details>
 
       <details class="settings-group" id="ppGroup">
         <summary>语气与内容（personaPolicy）</summary>
@@ -3522,6 +3506,34 @@ button:active:not(:disabled) {
           </div>
 
       </section>
+
+      <section id="section-image" data-page="image" class="card span-all">
+        <h2>生图</h2>
+        <div class="meta" style="margin-bottom:10px">本地 ComfyUI（默认 http://127.0.0.1:8188）。模型放 D 盘，首次启动较慢；点「生成」会排队，出图后可右键保存。</div>
+        <div class="row" style="gap:8px;align-items:center;margin-bottom:8px">
+          <button id="imgStartBtn" type="button">启动 ComfyUI</button>
+          <button id="imgStatusBtn" type="button">刷新状态</button>
+          <span class="meta" id="imgSvcMsg">（状态读取中…）</span>
+        </div>
+        <div class="settings-group" style="border:1px solid #2a2340;border-radius:12px;padding:12px">
+        
+        <div class="settings-content">
+          <div class="meta" style="margin-top:8px">需要本机先启动 ComfyUI（默认 http://127.0.0.1:8188），配置在 config.json 的 image 段。</div>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+            <input type="text" id="imgGenPrompt" style="flex:1;min-width:240px" placeholder="提示词（如：一只戴眼镜的鲸鱼，像素风）">
+            <button id="imgGenBtn">生成</button>
+            <span class="meta" id="imgGenMsg"></span>
+          </div>
+          <div class="row" style="margin-top:6px;gap:8px;align-items:center">
+            <input type="text" id="imgGenNeg" style="flex:1;min-width:200px" placeholder="反向提示词（可空）">
+            <input type="number" id="imgGenW" value="768" style="width:90px" title="宽">
+            <input type="number" id="imgGenH" value="768" style="width:90px" title="高">
+          </div>
+          <div id="imgGenOut" style="margin-top:10px"></div>
+        </div>
+      </div>
+        <div class="meta" id="imgModelInfo" style="margin-top:10px">（模型信息读取中…）</div>
+      </section>
     </main>
   </div>
       <div class="modal-overlay" id="slangModalOverlay">
@@ -3990,6 +4002,50 @@ async function gwWaitOneBot(maxSeconds, msgEl) {
   }
   return false;
 }
+
+// 生图页：ComfyUI 状态 + 一键启动
+async function imgRefreshStatus() {
+  const el = document.getElementById('imgSvcMsg');
+  if (!el) return;
+  try {
+    const r = await api('/api/image/status');
+    if (!r.ok) { el.className = 'meta err'; el.textContent = r.error || '状态读取失败'; return; }
+    const ck = (r.checkpoints || []);
+    const ckText = ck.length ? ck.map((c) => `${c.name}（${c.gb}GB）`).join('、') : '（丁点模型都没有）';
+    el.className = r.running ? 'meta ok' : 'meta';
+    el.textContent = `${r.running ? 'ComfyUI 已运行' : 'ComfyUI 未运行'}｜模型：${ckText}`;
+    const info = document.getElementById('imgModelInfo');
+    if (info) {
+      const gpu = r.gpu ? `${r.gpu.name}，显存 ${Math.round((r.gpu.vramTotal || 0) / 1024 / 1024)}MB` : '（未取到 GPU 信息）';
+      info.textContent = `目录 ${r.dir}｜${gpu}${r.comfyVersion ? '｜ComfyUI ' + r.comfyVersion : ''}｜配置里的默认模型：${r.checkpointCfg || '（未指定，用目录里第一个）'}`;
+    }
+  } catch (e) { el.className = 'meta err'; el.textContent = '状态读取失败：' + (e && e.message ? e.message : e); }
+}
+
+async function imgStartComfy(btn) {
+  if (btn) btn.disabled = true;
+  const el = document.getElementById('imgSvcMsg');
+  el.className = 'meta';
+  el.textContent = '启动中…（首次加载模型可能要 30~60 秒）';
+  try {
+    const r = await api('/api/image/start', 'POST', {});
+    if (!r.ok) {
+      el.className = 'meta err';
+      el.textContent = '启动失败：' + (r.error || '未知') + (r.stderr ? '｜' + String(r.stderr).slice(-160) : '');
+      return;
+    }
+    el.className = 'meta ok';
+    el.textContent = r.started ? `已启动（pid ${r.pid}）` : '本来就在跑';
+    await imgRefreshStatus();
+  } catch (e) { el.className = 'meta err'; el.textContent = '启动失败：' + (e && e.message ? e.message : e); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+const imgStartEl = document.getElementById('imgStartBtn');
+if (imgStartEl) imgStartEl.addEventListener('click', () => imgStartComfy(imgStartEl));
+const imgStatusEl = document.getElementById('imgStatusBtn');
+if (imgStatusEl) imgStatusEl.addEventListener('click', () => imgRefreshStatus());
+setTimeout(() => { try { imgRefreshStatus(); } catch {} }, 1200);
 
 // ── Pixiv 图库（记忆数据库）─────────────────────────────────────────────
 function pvLibMsg(text, ok) {
@@ -6606,6 +6662,7 @@ const consolePages = {
   'role-map': ['角色分配', '每个群，用谁。', '看每个群/私聊接入的是哪张角色卡、现在是潜水还是活跃；可就地单独指定角色。'],
   persona: ['人格与角色', '给你的伙伴，一点独特个性。', '选择已有角色，或用自己的语言写下新的性格与表达方式。'],
   pixiv: ['Pixiv 取图', '搜图、看图、存图。', '按标签搜 Pixiv，看作者与链接；要图时发到会话，图片进图库（记忆数据库），超上限按最久没用过的删。'],
+  image: ['生图', '一句话出一张图。', '本地 ComfyUI 文生图：提示词、尺寸、出图；模型在 D 盘。'],
   'social-v2': ['二代仿真', '自主参与，恰到好处。', '管理 AI 的工具、唤醒与发言节奏。展开需要调整的分组，修改后保存参数。'],
   'social-v1': ['一代仿真', '为自然对话，设定合适的节奏。', '调整参与概率、活跃周期和分条发送；所有配置项完整保留。'],
   slang: ['黑话词库', '读懂群聊里的，言外之意。', '从候选到确认，让 AI 逐渐熟悉大家的表达习惯。'],

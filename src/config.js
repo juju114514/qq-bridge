@@ -167,6 +167,7 @@ export function createConfigLoader(deps = {}) {
     pricing: file.pricing ?? null,
     // 语气/内容许可：写入端已校验档位，这里原样透传（缺省 = 全 off）
     personaPolicy: file.personaPolicy ?? null,
+  image: file.image ?? null,
     security: {
       interceptNotify: true,
       ...(file.security ?? {})

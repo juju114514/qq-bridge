@@ -7,6 +7,7 @@
 
 import path from 'node:path';
 import { generateImage } from '../comfy-image.js';
+import { comfyStatus, startComfy } from '../comfy-launch.js';
 
 export function createImageHandler(deps) {
   const { sendJson, readBody, log, fs, ROOT, getCfg, STATE_DIR } = deps;
@@ -40,6 +41,23 @@ export function createImageHandler(deps) {
       sendJson(r, r.ok ? 200 : 200);
       return true;
     }
+
+      // GET /api/image/status → 通了没 / 有哪些模型
+      if (method === 'GET' && pathname === '/api/image/status') {
+        const cfg = imageCfg();
+        const st = await comfyStatus({ baseUrl: cfg.comfyUrl || 'http://127.0.0.1:8188', dir: cfg.comfyDir || '' });
+        sendJson({ ok: true, ...st, checkpointCfg: cfg.checkpoint || '' });
+        return true;
+      }
+
+      // POST /api/image/start → 用 ComfyUI 自己的 venv 启动
+      if (method === 'POST' && pathname === '/api/image/start') {
+        const cfg = imageCfg();
+        const port = Number(new URL(cfg.comfyUrl || 'http://127.0.0.1:8188').port || 8188);
+        const r = await startComfy({ dir: cfg.comfyDir || '', port, log, waitMs: cfg.startWaitMs || 60000 });
+        sendJson({ ok: r.ok, ...r }, r.ok ? 200 : 500);
+        return true;
+      }
 
     // ── GET /api/image/list ──────────────────────────────────────────────
     if (method === 'GET' && pathname === '/api/image/list') {
