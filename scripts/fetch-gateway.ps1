@@ -46,6 +46,7 @@ $Catalog = @{
         sha256 = '0912926c5e73260f35b000278a8658493fc9452f36782c32fa86f0e825bad81a'
         mark  = 'package.json'
         urls  = @(
+            'https://github.com/juju114514/snowluma-mirror/releases/download/v2.4.2/SnowLuma-v2.4.2-win-x64.zip',
             'https://github.com/TomyJan/SnowLuma/releases/download/v2.4.2/SnowLuma-v2.4.2-win-x64.zip',
             'https://github.com/zhx57/SnowLuma/releases/download/v2.4.2/SnowLuma-v2.4.2-win-x64.zip',
             'https://github.com/venti1112/snowluma/releases/download/v2.4.2/SnowLuma-v2.4.2-win-x64.zip'
@@ -57,6 +58,7 @@ $Catalog = @{
         sha256 = '77397ac38d66f46383e48f08f35d5f9d37ec575c22069f62d6c600e73b4521ed'
         mark  = 'napcat.mjs'
         urls  = @(
+            'https://github.com/juju114514/napcat-mirror/releases/download/v4.18.42/NapCat.Shell.Windows.Node.zip',
             'https://github.com/19901115/NapCatQQ/releases/download/v4.18.42/NapCat.Shell.Windows.Node.zip',
             'https://github.com/talentestors/NapCatQQ/releases/download/v4.18.42/NapCat.Shell.Windows.Node.zip'
         )

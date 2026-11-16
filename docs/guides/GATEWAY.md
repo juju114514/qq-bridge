@@ -37,6 +37,19 @@ powershell -ExecutionPolicy Bypass -File scripts\fetch-gateway.ps1 -Kind snowlum
 3. 解压到 `-To`，并检查标志文件（SnowLuma 看 `package.json`，NapCat 看 `napcat.mjs`）；
 4. **不启动、不配置、不改**任何东西 —— 启动与扫码登录仍然是你自己的事（见 [LAUNCHER.md](LAUNCHER.md) 与设计不变量 L6）。
 
+
+## 3.0 本项目的自建镜像（首选）
+
+为了不再依赖别人的仓库，本 fork 已把两个安装包存档到自己的 Release：
+
+| 仓库 | 内容 | 直链 |
+| --- | --- | --- |
+| `juju114514/snowluma-mirror` | SnowLuma v2.4.2 win-x64（41.4 MB）+ 上游 checksums | `https://github.com/juju114514/snowluma-mirror/releases/download/v2.4.2/SnowLuma-v2.4.2-win-x64.zip` |
+| `juju114514/napcat-mirror` | NapCat v4.18.42 四个 Windows 包 | `https://github.com/juju114514/napcat-mirror/releases/download/v4.18.42/NapCat.Shell.Windows.Node.zip` |
+
+`scripts/fetch-gateway.ps1` 已经把它们放在镜像链**第一位**，所以默认就走这里；
+后面仍保留 TomyJan / zhx57 / 19901115 等社区镜像做兜底。
+
 ## 3. 镜像清单（2026-11-17 实测可用）
 
 ### SnowLuma v2.4.2
