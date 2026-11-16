@@ -42,8 +42,8 @@
 
 
 > **网关下不了？** SnowLuma / NapCat 的上游仓库在 2026-11 已下架（404 / 源码清空）。
-> 用 `powershell -ExecutionPolicy Bypass -File scripts\fetch-gateway.ps1 -Kind list` 查看社区镜像，
-> 详见 [docs/guides/GATEWAY.md](docs/guides/GATEWAY.md)。
+> 本仓库已把**原始安装包**存档到自己的 Release，并提供一键脚本 →
+> [网关（协议端）怎么拿](#网关协议端怎么拿)。
 
 ## 三种安装方式（按你的情况选）
 
@@ -63,9 +63,46 @@ GitHub 直连不稳定时，用下面任一加速通道（实测可用，随时�
 
 - 源码 zip：`https://ghproxy.com/https://github.com/juju114514/qq-bridge/archive/refs/heads/main.zip`
 - 仓库页面：`https://gh-proxy.com/https://github.com/juju114514/qq-bridge`
+- 网关镜像（SnowLuma）：`https://gh-proxy.com/https://github.com/juju114514/snowluma-mirror/releases`
+- 网关镜像（NapCat）：`https://gh-proxy.com/https://github.com/juju114514/napcat-mirror/releases`
 
 > 这类公益加速服务会随时关停（kkgithub / bgithub 已经 404）。如果两个都失效，
 > 把上面的 `ghproxy.com` 换成当时的可用镜像即可——链接格式是 `<镜像>/<原始 URL>`。
+
+## 网关（协议端）怎么拿
+
+桥接本身**不含网关**，只走 OneBot v11。两个主流网关的上游仓库在 2026-11 都已下架
+（SnowLuma 转 private、NapCat 源码清空并删 releases），所以本仓库把**原始发行包**
+存档到了自己的 Release：
+
+| 网关 | 存档仓库 | 文件 | 大小 |
+| --- | --- | --- | --- |
+| SnowLuma v2.4.2 | [snowluma-mirror](https://github.com/juju114514/snowluma-mirror/releases/tag/v2.4.2) | `SnowLuma-v2.4.2-win-x64.zip` | 41.4 MB |
+| NapCat v4.18.42 | [napcat-mirror](https://github.com/juju114514/napcat-mirror/releases/tag/v4.18.42) | `NapCat.Shell.Windows.Node.zip` | 118.4 MB |
+| | | `NapCat.Framework.zip` | 35.1 MB |
+| | | `NapCat.Shell.zip` | 34.3 MB |
+| | | `NapCat.Shell.Windows.OneKey.zip` | 0.9 MB |
+
+一键下载 + 解压（SHA256 校验，镜像挂了自动换源）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\fetch-gateway.ps1 -Kind list
+powershell -ExecutionPolicy Bypass -File scripts\fetch-gateway.ps1 -Kind snowluma -To D:\QQBot\snowluma
+powershell -ExecutionPolicy Bypass -File scripts\fetch-gateway.ps1 -Kind napcat   -To D:\QQBot\napcat
+```
+
+直链（也可以手动下）：
+
+```
+https://github.com/juju114514/snowluma-mirror/releases/download/v2.4.2/SnowLuma-v2.4.2-win-x64.zip
+sha256 0912926c5e73260f35b000278a8658493fc9452f36782c32fa86f0e825bad81a
+
+https://github.com/juju114514/napcat-mirror/releases/download/v4.18.42/NapCat.Shell.Windows.Node.zip
+sha256 77397ac38d66f46383e48f08f35d5f9d37ec575c22069f62d6c600e73b4521ed
+```
+
+> 只存档原始压缩包：**不修改、不反编译、不再分发源码树**；版权与许可归原作者（非商业许可）。
+> 上游消失的经过、其它社区镜像、长期选型见 [docs/guides/GATEWAY.md](docs/guides/GATEWAY.md)。
 
 ## 你已经装了什么？不用换，直接用
 
