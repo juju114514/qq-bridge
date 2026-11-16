@@ -1,5 +1,6 @@
 # 排障手册 · TROUBLESHOOT
 
+> 网关本身装不上/下不了（上游已下架）→ [GATEWAY.md](GATEWAY.md) 与 `scripts/fetch-gateway.ps1`
 > 这份手册按**症状**索引。每条都来自真实事故，不是设想。
 > 遇到问题先做一件事：**跑一次网关体检**
 

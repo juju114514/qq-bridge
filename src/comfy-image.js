@@ -14,18 +14,39 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { listLoras, parseLoraTags, resolveLoraNames } from './comfy-lora.js';
+
 
 /** 内置的最小 txt2img 工作流（ComfyUI API 格式）。 */
-export function defaultWorkflow({ prompt, negative = '', width = 768, height = 768, steps = 24, cfg = 7, seed = 0, checkpoint = '', filenamePrefix = 'qqb' } = {}) {
-  return {
-    '3': { class_type: 'KSampler', inputs: { seed, steps, cfg, sampler_name: 'euler', scheduler: 'normal', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] } },
+export function defaultWorkflow({ prompt, negative = '', width = 768, height = 768, steps = 24, cfg = 7, seed = 0, checkpoint = '', filenamePrefix = 'qqb', loras = [] } = {}) {
+  const wf = {
     '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpoint } },
     '5': { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: 1 } },
-    '6': { class_type: 'CLIPTextEncode', inputs: { text: String(prompt ?? ''), clip: ['4', 1] } },
-    '7': { class_type: 'CLIPTextEncode', inputs: { text: String(negative ?? ''), clip: ['4', 1] } },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
     '9': { class_type: 'SaveImage', inputs: { filename_prefix: filenamePrefix, images: ['8', 0] } }
   };
+  // LoRA 链：checkpoint → LoraLoader(10) → LoraLoader(11) … → KSampler/CLIP
+  let modelRef = ['4', 0];
+  let clipRef = ['4', 1];
+  const list = (Array.isArray(loras) ? loras : []).filter((l) => l && l.name);
+  list.forEach((l, i) => {
+    const id = String(10 + i);
+    const w = Number(l.weight);
+    const strength = Number.isFinite(w) && w > 0 ? w : 1;
+    wf[id] = {
+      class_type: 'LoraLoader',
+      inputs: { lora_name: String(l.name), strength_model: strength, strength_clip: strength, model: modelRef, clip: clipRef }
+    };
+    modelRef = [id, 0];
+    clipRef = [id, 1];
+  });
+  wf['3'] = {
+    class_type: 'KSampler',
+    inputs: { seed, steps, cfg, sampler_name: 'euler', scheduler: 'normal', denoise: 1, model: modelRef, positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] }
+  };
+  wf['6'] = { class_type: 'CLIPTextEncode', inputs: { text: String(prompt ?? ''), clip: clipRef } };
+  wf['7'] = { class_type: 'CLIPTextEncode', inputs: { text: String(negative ?? ''), clip: clipRef } };
+  return wf;
 }
 
 /** 读 ComfyUI 上装了什么 checkpoint（用来填默认值，避免用户手抄模型名）。 */
@@ -49,7 +70,11 @@ function joinUrl(base, p) {
  */
 export async function generateImage(opts = {}) {
   const baseUrl = String(opts.baseUrl || 'http://127.0.0.1:8188');
-  const prompt = String(opts.prompt ?? '').trim();
+  const rawPrompt = String(opts.prompt ?? '').trim();
+  const parsedLora = parseLoraTags(rawPrompt);
+  const prompt = parsedLora.text;
+  const loras = [...(Array.isArray(opts.loras) ? opts.loras : []), ...parsedLora.loras];
+  if (loras.length) resolveLoraNames(loras, await listLoras(baseUrl));
   if (!prompt) return { ok: false, error: '提示词不能为空' };
   const log = typeof opts.logger === 'function' ? opts.logger : () => {};
   const timeoutMs = Number(opts.timeoutMs) || 120000;
@@ -88,7 +113,8 @@ export async function generateImage(opts = {}) {
     steps: Math.max(1, Math.min(80, Number(opts.steps) || 24)),
     cfg: Number(opts.cfg) || 7,
     seed: Number.isFinite(Number(opts.seed)) ? Number(opts.seed) : Math.floor(Math.random() * 1e15),
-    checkpoint
+    checkpoint,
+    loras
   });
   const clientId = 'qqb-' + Math.random().toString(36).slice(2);
   let submitted;

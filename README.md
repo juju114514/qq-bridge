@@ -41,6 +41,10 @@
 > 桥接模式（路线 A）本来就有这层边界，见 `docs/guides/SECURITY_BASELINE.md`。
 
 
+> **网关下不了？** SnowLuma / NapCat 的上游仓库在 2026-11 已下架（404 / 源码清空）。
+> 用 `powershell -ExecutionPolicy Bypass -File scripts\fetch-gateway.ps1 -Kind list` 查看社区镜像，
+> 详见 [docs/guides/GATEWAY.md](docs/guides/GATEWAY.md)。
+
 ## 三种安装方式（按你的情况选）
 
 | 方式 | 适合谁 | 怎么装 |
