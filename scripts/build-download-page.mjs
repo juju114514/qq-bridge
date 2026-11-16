@@ -11,9 +11,11 @@
 // 产物：dist/download.html（单文件，可直接丢到任何静态托管 / 蓝奏云笔记 / OSS）
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
-const ROOT = path.resolve(new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+// 中文路径必须走 fileURLToPath：URL.pathname 是百分号编码的，直接 path.resolve 会落到错目录（曾生成到 D:\deepseek工作区\dist）
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function arg(name, fallback = '') {
   const i = process.argv.indexOf(`--${name}`);
@@ -83,6 +85,45 @@ const apkCard = apk
   : `<div class="dl"><div class="dl-title">手机端 · Android</div>
       <div class="dl-meta">APK 还没生成：跑 <code>node scripts/build-download-page.mjs --apk &lt;路径&gt;</code></div></div>`;
 
+// 网关安装包（上游已下架，走本仓库自建镜像；只存档原始发行包）
+const GATEWAYS = [
+  {
+    name: 'SnowLuma',
+    version: 'v2.4.2',
+    repo: 'https://github.com/juju114514/snowluma-mirror/releases/tag/v2.4.2',
+    note: 'OneBot v11 协议端，个人号主力通道',
+    files: [{ file: 'SnowLuma-v2.4.2-win-x64.zip', mb: '41.4', sha: '0912926c5e7326…d81a' }]
+  },
+  {
+    name: 'NapCat',
+    version: 'v4.18.42',
+    repo: 'https://github.com/juju114514/napcat-mirror/releases/tag/v4.18.42',
+    note: 'NTQQ 协议端，已装 NapCat 的人不用换',
+    files: [
+      { file: 'NapCat.Shell.Windows.Node.zip', mb: '118.4', sha: '77397ac38d66f4…21ed' },
+      { file: 'NapCat.Framework.zip', mb: '35.1', sha: '118d66bb4849b7…df2e' },
+      { file: 'NapCat.Shell.zip', mb: '34.3', sha: '02e5ff0f79916c…829d' },
+      { file: 'NapCat.Shell.Windows.OneKey.zip', mb: '0.9', sha: '46c3ec155aa61f…f39c' }
+    ]
+  }
+];
+
+/** 网关卡片：桥接不含网关，这里是自建镜像（点进 release 再下文件） */
+function gatewayCards() {
+  return GATEWAYS.map((g) => {
+    const rows = g.files.map((f) => `<li><code>${f.file}</code> · ${f.mb} MB · <span class="hash" style="display:inline;padding:0">${f.sha}</span></li>`).join('');
+    return `<div class="card">
+    <div class="dl-title">网关 · ${g.name} ${g.version}</div>
+    <div class="dl-meta">${g.note}（上游已下架，本仓库存档原始发行包）</div>
+    <ul style="margin:10px 0 0 18px;padding:0;font-size:13px;line-height:1.9">${rows}</ul>
+    <div class="btns" style="margin-top:12px">
+      <a class="btn primary" href="${g.repo}" target="_blank" rel="noreferrer">去 Releases 下载</a>
+      <a class="btn" href="https://gh-proxy.com/${g.repo}" target="_blank" rel="noreferrer">加速镜像</a>
+    </div>
+  </div>`;
+  }).join('\n');
+}
+
 const html = `<!doctype html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8">
@@ -134,6 +175,10 @@ a{color:#8ec5ff}
     </div>
     <div class="hash">加速镜像随时可能失效，两个都打不开时把 ghproxy.com 换成别家镜像即可</div>
   </div>
+
+  <h2>网关（协议端）</h2>
+  <div class="sub" style="margin:-6px 0 12px">桥接本身不包含网关，只走 OneBot v11。下面两家的官方仓库在 2026-11 已下架，这里放的是本仓库存档的原始安装包。</div>
+  ${gatewayCards()}
 
   <h2>手机端怎么装</h2>
   <ol>
