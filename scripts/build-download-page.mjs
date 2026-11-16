@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
-// 中文路径必须走 fileURLToPath：URL.pathname 是百分号编码的，直接 path.resolve 会落到错目录（曾生成到 D:\deepseek工作区\dist）
+// 中文路径必须走 fileURLToPath：URL.pathname 是百分号编码的，直接 path.resolve 会落到仓库上一级目录（实测踩过）
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function arg(name, fallback = '') {

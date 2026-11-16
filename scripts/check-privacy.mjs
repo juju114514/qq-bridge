@@ -100,8 +100,13 @@ for (const f of files) {
     if (m) problems.push(`${f}: 含本机私有路径「${m[0]}」`);
   }
 
-  if (!TOKEN_ALLOW.some((re) => re.test(f)) && TOKEN_LIKE.test(text)) {
-    const m = TOKEN_LIKE.exec(text);
+  // SHA256 校验值是完整性指纹，不是凭证：先剔掉「带 sha256 字样的行」和独立的 64 位 hex，
+  // 否则 README / fetch-gateway.ps1 里贴的哈希会被当成令牌误报。
+  const shaStrip = text
+    .replace(/^.*\b(?:sha256|sha-256|checksum)\b.*$/gim, '')
+    .replace(/\b[0-9a-f]{64}\b/gi, '');
+  if (!TOKEN_ALLOW.some((re) => re.test(f)) && TOKEN_LIKE.test(shaStrip)) {
+    const m = TOKEN_LIKE.exec(shaStrip);
     problems.push(`${f}: 含令牌形态字符串「${m[0].slice(0, 8)}…」`);
   }
 
